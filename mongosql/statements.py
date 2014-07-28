@@ -366,13 +366,15 @@ class MongoJoin(_MongoStatement):
         :param relnames: List of relation names to load eagerly
         :type relnames: list(str)
         """
+        assert relnames is None or isinstance(relnames, (basestring, list, tuple)), 'Join must be one of: None, str, list, tuple'
         # TODO: User filter/sort/limit/.. on list relations, as currently, it selects the list of ALL related objects!
         # TODO: Support loading sub-relations through 'user.profiles'
 
-        if relnames is None:
+        if not relnames:
             self.relnames = []
+        elif isinstance(relnames, basestring):
+            self.relnames = relnames.split(',')
         else:
-            assert isinstance(relnames, (list, tuple)), 'Join must be one of: None, list, tuple'
             self.relnames = relnames
 
     @classmethod
