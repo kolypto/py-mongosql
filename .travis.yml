@@ -3,6 +3,12 @@ python:
   - "2.7"
 #  - "3.3"
 
+addons:
+  postgresql: "9.3"
+
+before_script:
+  - psql -c 'create database test;' -U postgres
+
 install:
   - "pip install -e '.[_tests]'"
 

@@ -4,7 +4,6 @@
 from setuptools import setup, find_packages
 
 setup(
-    # http://pythonhosted.org/setuptools/setuptools.html
     name='mongosql',
     version='0.0.1-0',
     author='Mark Vartanyan',
@@ -24,7 +23,7 @@ setup(
         'sqlalchemy >= 0.9.0',
     ],
     extras_require={
-        '_tests': ['nose'],
+        '_tests': ['nose', 'psycopg2',],
     },
     include_package_data=True,
     test_suite='nose.collector',
