@@ -18,15 +18,26 @@ class MongoModel(object):
         self.__model = model
 
         #: Model columns
-        self.__model_columns = {c.name: getattr(model, c.name) for c in ins.mapper.column_attrs}
+        self.__model_columns = {name: getattr(model, name) for name, c in ins.column_attrs.items()}
+
+        #: Model relations
+        self.__model_relations = {name: getattr(model, name) for name, c in ins.relationships.items()}
 
     @property
     def model_columns(self):
         """ Get model columns
         :return: {name: Column}
-        :rtype: dict(str, sqlalchemy.sql.schema.Column)
+        :rtype: dict(str: sqlalchemy.orm.properties.ColumnProperty)
         """
         return self.__model_columns
+
+    @property
+    def model_relations(self):
+        """ Get model relations
+        :return: {name: Relation}
+        :rtype: dict(str, sqlalchemy.orm.relationships.RelationshipProperty)
+        """
+        return self.__model_relations
 
     #region Wrappers
 
@@ -35,11 +46,11 @@ class MongoModel(object):
 
         :type projection: None | str | dict | list | tuple
         :param projection: Projection spec
-        :returns: List of columns to include in the query.
+        :returns: Query options to load specific columns
             Usage:
                 p = MongoModel(User).project(['login', 'email'])
-                query.options(*p)
-        :rtype: list(sqlalchemy.sql.schema.Column)
+                query.options(p)
+        :rtype: sqlalchemy.orm.Load
         :raises AssertionError: invalid input
         :raises AssertionError: unknown column name
         """
@@ -130,11 +141,11 @@ class MongoModel(object):
 
             :type relnames: list(str)
             :param relnames: List of relations to load eagerly
-            :returns: List of query options.
+            :returns: Query options to load specific columns
                 Usage:
                     j = MongoModel(User).join('posts')
                     query.options(*j).with_labels()
-            :rtype: list(loader_option)
+            :rtype: list(sqlalchemy.orm.Load)
         """
         # TODO: User filter/sort/limit/.. on list relations, as currently, it selects the list of ALL related objects!
         # TODO: Support loading sub-relations through 'user.profiles'

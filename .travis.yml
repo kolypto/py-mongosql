@@ -7,7 +7,7 @@ addons:
   postgresql: "9.3"
 
 before_script:
-  - psql -c 'create database test;' -U postgres
+  - psql -c 'create database test_mongosql;' -U postgres
 
 install:
   - "pip install -e '.[_tests]'"

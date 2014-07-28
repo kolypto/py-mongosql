@@ -1,6 +1,6 @@
 from collections import OrderedDict
 
-from sqlalchemy.orm import load_only, defaultload
+from sqlalchemy.orm import load_only, noload, lazyload
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func
@@ -72,9 +72,8 @@ class MongoProjection(_MongoStatement):
 
             :type columns: dict
             :param columns: dict of columns in the model
-            :rtype: list
-            :return: The list of columns to be included
-
+            :rtype: sqlalchemy.orm.Load
+            :return: Options to include columns
             :raises AssertionError: unknown column name
         """
         # Check columns
@@ -82,9 +81,9 @@ class MongoProjection(_MongoStatement):
 
         # Make query
         if inclusion_mode:
-            return load_only(columns[name] for name, inc in projection.items())
+            return load_only(*(columns[name] for name, inc in projection.items()))
         else:
-            return load_only(col for name, col in columns.items() if name not in set(projection.keys()))
+            return load_only(*(col for name, col in columns.items() if name not in set(projection.keys())))
 
     def __call__(self, model):
         """ Build the statement
@@ -234,6 +233,7 @@ class MongoCriteria(_MongoStatement):
         assert isinstance(criteria, dict), 'Criteria must be one of: None, dict'
         self.criteria = criteria
 
+    # noinspection PyComparisonWithNone
     @classmethod
     def statetement(cls, columns, criteria):
         """ Create a statement from criteria """
@@ -322,9 +322,9 @@ class MongoCriteria(_MongoStatement):
                         conditions.append(col.notin_(value))  # field NOT IN(values)
                 elif op == '$exists':
                     if value:
-                        conditions.append(col is not None)  # IS NOT NULL
+                        conditions.append(col != None)  # IS NOT NULL
                     else:
-                        conditions.append(col is None)  # IS NULL
+                        conditions.append(col == None)  # IS NULL
                 elif op == '$all':
                     assert col_array, 'Criteria: $all can only be applied to an array column'
                     assert value_array, 'Criteria: $all argument must be a list'
@@ -332,7 +332,7 @@ class MongoCriteria(_MongoStatement):
                 elif op == '$size':
                     assert col_array, 'Criteria: $all can only be applied to an array column'
                     if value == 0:
-                        conditions.append(func.array_length(col, 1) is None)  # ARRAY_LENGTH(field, 1) IS NULL
+                        conditions.append(func.array_length(col, 1) == None)  # ARRAY_LENGTH(field, 1) IS NULL
                     else:
                         conditions.append(func.array_length(col, 1) == value)  # ARRAY_LENGTH(field, 1) == value
                 else:
@@ -368,7 +368,7 @@ class MongoJoin(_MongoStatement):
         """
         assert relnames is None or isinstance(relnames, (basestring, list, tuple)), 'Join must be one of: None, str, list, tuple'
         # TODO: User filter/sort/limit/.. on list relations, as currently, it selects the list of ALL related objects!
-        # TODO: Support loading sub-relations through 'user.profiles'
+        # TODO: Support loading sub-relations through 'user.profiles' (with Load interface chaining)
 
         if not relnames:
             self.relnames = []
@@ -378,18 +378,24 @@ class MongoJoin(_MongoStatement):
             self.relnames = relnames
 
     @classmethod
-    def options(cls, columns, relnames):
+    def options(cls, model_relations, relnames):
         """ Prepare relation loader """
-        return defaultload(*relnames)
+        relnames = set(relnames)
+        model_relnames = set(model_relations.keys())
+        assert relnames <= model_relnames, 'Invalid column specified in {}'.format(cls.__name__)
+        # noload() all relations that were not asked to be loaded
+        # FIXME: apply noload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/override-a-noload-with-the-lazy-setting-defined-in-the-mode
+        return [noload(relname) for relname in model_relnames if relname not in relnames ]
 
     def __call__(self, model):
         """ Build the statement
 
             :type model: MongoModel
-            :return: SQL statement for filter()
-            :rtype: sqlalchemy.orm.Load
+            :return: Options to include columns
+            :rtype: list(sqlalchemy.orm.Load)
             :raises AssertionError: unknown column name
         """
-        return self.options(model.model_columns, self.relnames)
+        return self.options(model.model_relations, self.relnames)
 
-# TODO: update operations
+# TODO: aggregation routines
+# TODO: update operations in MongoDB-style

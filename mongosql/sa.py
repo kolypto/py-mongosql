@@ -10,19 +10,22 @@ class MongoSqlBase(object):
 
     __mongomodel = None
 
-    @property
-    def mongomodel(self):
+    @classmethod
+    def mongomodel(cls):
         """ Get MongoModel object
         :rtype: mongosql.MongoModel
         """
-        if self.__mongomodel is None:
-            self.__mongomodel = MongoModel(self)
-        return self.__mongomodel
+        if cls.__mongomodel is None:
+            cls.__mongomodel = MongoModel(cls)
+        return cls.__mongomodel
 
-    def mongoquery(self, query):
+    @classmethod
+    def mongoquery(cls, query=None):
         """ Build a MongoQuery
         :param query: Query to start with
         :type query: sqlalchemy.orm.Query
         :rtype: mongosql.MongoQuery
         """
-        return MongoQuery(self.mongomodel, query)
+        if query is None:
+            query = cls.query  # Requires Base.query = Session.query_property()
+        return MongoQuery(cls.mongomodel(), query)
