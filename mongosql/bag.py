@@ -1,0 +1,151 @@
+from sqlalchemy import inspect
+from sqlalchemy.dialects import postgresql as pg
+
+
+class _PropertiesBag(object):
+    # region Protected
+
+    @staticmethod
+    def _is_column_array(col):
+        """ Is the column an ARRAY column?
+
+        :type col: sqlalchemy.sql.schema.Column
+        :rtype: bool
+        """
+        return isinstance(col.type, pg.ARRAY)
+
+    @staticmethod
+    def _is_column_json(col):
+        """ Is the column a JSON column?
+
+        :type col: sqlalchemy.sql.schema.Column
+        :rtype: bool
+        """
+        return isinstance(col.type, pg.JSON)
+
+    @staticmethod
+    def _dot_notation(name):
+        """ Split a property name that's using dot-notation
+
+        :type name: str
+        :rtype: str, list[str]
+        """
+        path = name.split('.')
+        return path[0], path[1:]
+
+    #endregion
+
+    def __contains__(self, name):
+        """ Test if the property is in the bag
+        :param name: Property name
+        :type name: str
+        :rtype: bool
+        """
+        raise NotImplementedError
+
+    def __getitem__(self, name):
+        """ Get the property by name
+        :param name: Property name
+        :type name: str
+        :rtype: sqlalchemy.orm.interfaces.MapperProperty
+        """
+        raise NotImplementedError
+
+
+class ColumnsBag(_PropertiesBag):
+    """ Columns bag with additional capabilities:
+
+        - For JSON fields: field.prop.prop -- dot-notation access to sub-properties
+    """
+
+    def __init__(self, columns):
+        """ Init columns
+        :param columns: Model columns
+        :type columns: dict[sqlalchemy.orm.properties.ColumnProperty]
+        """
+        self._columns = columns
+        self._column_names = set(self._columns.keys())
+        self._json_columns =  {name: col for name, col in self._columns.items() if self._is_column_array(col)}
+        self._array_columns = {name: col for name, col in self._columns.items() if self._is_column_json(col)}
+
+    def is_column_array(self, name):
+        """ Is the column an ARRAY column
+        :type name: str
+        :rtype: bool
+        """
+        return name in self._array_columns
+
+    def is_column_json(self, name):
+        """ Is the column a JSON column
+        :type name: str
+        :rtype: bool
+        """
+        return name in self._json_columns
+
+    @property
+    def names(self):
+        """ Get the set of column names
+        :rtype: set[str]
+        """
+        return self._column_names
+
+    def items(self):
+        """ Get columns
+        :rtype: dict[sqlalchemy.orm.properties.ColumnProperty]
+        """
+        return self._columns.items()
+
+    def __contains__(self, name):
+        name, path = self._dot_notation(name)
+        if name not in self._columns:
+            return False  # No column
+        if path and not self.is_column_json(name):
+            return False  # Not a JSON column
+        return True
+
+    def __getitem__(self, name):
+        name, path = self._dot_notation(name)
+        col = self._columns[name]
+        if path:
+            col = col[path]
+        return col
+
+
+class RelationshipsBag(_PropertiesBag):
+    """ Relationships bag with additional capabilities """
+
+    def __init__(self, relationships):
+        """ Init relationships
+        :param relationships: Model relationships
+        :type relationships: dict[sqlalchemy.orm.relationships.RelationshipProperty]
+        """
+        self._rels = relationships
+        self._rel_names = set(self._rels.keys())
+
+    @property
+    def names(self):
+        """ Get the set of relation names
+        :rtype: set[str]
+        """
+        return self._rel_names
+
+    def items(self):
+        """ Get relationships
+        :rtype: dict[sqlalchemy.orm.relationships.RelationshipProperty]
+        """
+        return self._rels.items()
+
+    def __contains__(self, name):
+        return name in self._rels
+
+    def __getitem__(self, name):
+        return self._rels[name]
+
+
+class ModelPropertyBags(object):
+    """ Model property bags """
+
+    def __init__(self, model):
+        ins = inspect(model)
+        self.columns   =       ColumnsBag({name: getattr(model, name) for name, c in ins.column_attrs .items()})
+        self.relations = RelationshipsBag({name: getattr(model, name) for name, c in ins.relationships.items()})

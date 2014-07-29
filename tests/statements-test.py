@@ -240,6 +240,7 @@ class StatementsTest(unittest.TestCase):
         """ Test join() """
         m = models.User
 
+        # Okay
         mq = m.mongoquery(Query([models.User]))
         mq = mq.join(('articles', 'comments'))
         q = mq.end()
@@ -247,6 +248,10 @@ class StatementsTest(unittest.TestCase):
         self.assertIn('FROM u', qs)
         self.assertIn('LEFT OUTER JOIN a', qs)
         self.assertIn('LEFT OUTER JOIN c', qs)
+
+        # Unknown relation
+        mq = m.mongoquery(Query([models.User]))
+        self.assertRaises(AssertionError, mq.join, ('???'))
 
     def test_aggregate(self):
         """ Test aggregate() """
@@ -286,3 +291,8 @@ class StatementsTest(unittest.TestCase):
         q['max_age'] = {'$max': 'age'}
         q['count'] = {'$sum': OrderedDict([('id', 1), ('age', {'$gte': 16})])}
         test_aggregate(q, 'SELECT max(u.age) AS max_age, sum(CAST((u.id = 1 AND u.age >= 16) AS INTEGER)) AS count \nFROM')
+
+        # Unknown column
+        self.assertRaises(AssertionError, test_aggregate, {'a': '???'}, '')
+        self.assertRaises(AssertionError, test_aggregate, {'a': {'$max': '???'}}, '')
+        self.assertRaises(AssertionError, test_aggregate, {'a': {'$sum': {'???': 1}}}, '')

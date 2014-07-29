@@ -1,6 +1,7 @@
 from sqlalchemy import inspect
 
 from .statements import MongoProjection, MongoSort, MongoGroup, MongoCriteria, MongoJoin, MongoAggregate
+from .bag import ModelPropertyBags
 
 
 class MongoModel(object):
@@ -12,16 +13,11 @@ class MongoModel(object):
             :type model: sqlalchemy.ext.declarative.declarative_base
             :param model: The model to build queries for
         """
-        ins = inspect(model)
-
-        # : The model we're working with
+        #: The model we're working with
         self.__model = model
 
-        #: Model columns
-        self.__model_columns = {name: getattr(model, name) for name, c in ins.column_attrs.items()}
-
-        #: Model relations
-        self.__model_relations = {name: getattr(model, name) for name, c in ins.relationships.items()}
+        #: Property bags
+        self.__bag = ModelPropertyBags(model)
 
     @property
     def model(self):
@@ -31,20 +27,18 @@ class MongoModel(object):
         return self.__model
 
     @property
-    def model_columns(self):
-        """ Get model columns
-        :return: {name: Column}
-        :rtype: dict[sqlalchemy.orm.properties.ColumnProperty]
+    def columns(self):
+        """ Get model columns bag
+        :rtype: mongosql.bag.ColumnsBag
         """
-        return self.__model_columns
+        return self.__bag.columns
 
     @property
-    def model_relations(self):
-        """ Get model relations
-        :return: {name: Relation}
-        :rtype: dict[sqlalchemy.orm.relationships.RelationshipProperty]
+    def relations(self):
+        """ Get model relations bag
+        :rtype: mongosql.bag.RelationshipsBag
         """
-        return self.__model_relations
+        return self.__bag.relations
 
     #region Wrappers
 
