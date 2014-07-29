@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, Integer
@@ -67,9 +67,9 @@ def drop_all(engine):
 def content_samples():
     """ Generate content samples """
     return [
-        User(id=1, name='a', tags=['1', 'a']),
-        User(id=2, name='b', tags=['2', 'a', 'b']),
-        User(id=3, name='c', tags=['3', 'a', 'b', 'c']),
+        User(id=1, name='a', age=18, tags=['1', 'a']),
+        User(id=2, name='b', age=18, tags=['2', 'a', 'b']),
+        User(id=3, name='c', age=16, tags=['3', 'a', 'b', 'c']),
 
         Article(id=10, uid=1, title='10'),
         Article(id=11, uid=1, title='11'),
@@ -90,6 +90,17 @@ def content_samples():
     ]
 
 if __name__ == '__main__':
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+
+    engine, Session = init_database()
+    ssn = Session()
+
     from sqlalchemy import inspect
-    ins = inspect(User)
+    from sqlalchemy.orm import noload, load_only, lazyload
+
+    u = ssn.query(User).options(load_only('id'), lazyload('articles'), lazyload('comments')).first()
+    ins = inspect(u)
+
     from IPython import embed ; embed()

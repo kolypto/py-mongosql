@@ -1,3 +1,5 @@
+from sqlalchemy.orm import Session
+
 from .model import MongoModel
 from .query import MongoQuery
 
@@ -20,12 +22,12 @@ class MongoSqlBase(object):
         return cls.__mongomodel
 
     @classmethod
-    def mongoquery(cls, query=None):
+    def mongoquery(cls, query):
         """ Build a MongoQuery
-        :param query: Query to start with
-        :type query: sqlalchemy.orm.Query
+        :param query: Query to start with, or a session object to initiate the query with
+        :type query: sqlalchemy.orm.Query|sqlalchemy.orm.Session
         :rtype: mongosql.MongoQuery
         """
-        if query is None:
-            query = cls.query  # Requires Base.query = Session.query_property()
+        if isinstance(query, Session):
+            query = query.query(cls)
         return MongoQuery(cls.mongomodel(), query)

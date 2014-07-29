@@ -1,6 +1,6 @@
 from collections import OrderedDict
 
-from sqlalchemy.orm import load_only, noload, lazyload
+from sqlalchemy.orm import load_only, lazyload
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func
@@ -383,9 +383,9 @@ class MongoJoin(_MongoStatement):
         relnames = set(relnames)
         model_relnames = set(model_relations.keys())
         assert relnames <= model_relnames, 'Invalid column specified in {}'.format(cls.__name__)
-        # noload() all relations that were not asked to be loaded
-        # FIXME: apply noload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/override-a-noload-with-the-lazy-setting-defined-in-the-mode
-        return [noload(relname) for relname in model_relnames if relname not in relnames ]
+        # lazyload() on all other relations: this way, they're only loaded on demans (direct access)
+        # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
+        return [lazyload(relname) for relname in model_relnames if relname not in relnames ]
 
     def __call__(self, model):
         """ Build the statement

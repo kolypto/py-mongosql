@@ -65,6 +65,7 @@ class MongoQuery(object):
     def count(self):
         """ Count rows instead """
         self._query = self._query.from_self(func.count(1))
+        self._joined = True  # no relationships should be loaded
         return self
 
     def query(self, project=None, sort=None, group=None, filter=None, skip=None, limit=None, join=None, count=False):
