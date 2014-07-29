@@ -65,22 +65,24 @@ class ColumnsBag(_PropertiesBag):
         """
         self._columns = columns
         self._column_names = set(self._columns.keys())
-        self._json_columns =  {name: col for name, col in self._columns.items() if self._is_column_array(col)}
-        self._array_columns = {name: col for name, col in self._columns.items() if self._is_column_json(col)}
+        self._array_columns = {name: col for name, col in self._columns.items() if self._is_column_array(col)}
+        self._json_columns =  {name: col for name, col in self._columns.items() if self._is_column_json(col)}
 
     def is_column_array(self, name):
         """ Is the column an ARRAY column
         :type name: str
         :rtype: bool
         """
-        return name in self._array_columns
+        column_name = self._dot_notation(name)[0]
+        return column_name in self._array_columns
 
     def is_column_json(self, name):
         """ Is the column a JSON column
         :type name: str
         :rtype: bool
         """
-        return name in self._json_columns
+        column_name = self._dot_notation(name)[0]
+        return column_name in self._json_columns
 
     @property
     def names(self):
@@ -95,19 +97,16 @@ class ColumnsBag(_PropertiesBag):
         """
         return self._columns.items()
 
-    def __contains__(self, name):
-        name, path = self._dot_notation(name)
-        if name not in self._columns:
-            return False  # No column
-        if path and not self.is_column_json(name):
-            return False  # Not a JSON column
-        return True
-
     def __getitem__(self, name):
-        name, path = self._dot_notation(name)
-        col = self._columns[name]
-        if path:
-            col = col[path]
+        column_name, path = self._dot_notation(name)
+        # Column
+        try:
+            col = self._columns[column_name]
+        except KeyError:
+            raise AssertionError('Unknown column: `{}`'.format(name))
+        # JSON path
+        if path and self.is_column_json(column_name):
+            col = col[path].astext
         return col
 
 
@@ -139,7 +138,10 @@ class RelationshipsBag(_PropertiesBag):
         return name in self._rels
 
     def __getitem__(self, name):
-        return self._rels[name]
+        try:
+            return self._rels[name]
+        except KeyError:
+            raise AssertionError('Unknown relationship: `{}`'.format(name))
 
 
 class ModelPropertyBags(object):

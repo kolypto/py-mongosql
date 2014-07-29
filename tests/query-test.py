@@ -4,6 +4,8 @@ from sqlalchemy import inspect
 from . import models
 
 
+row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
+
 class QueryTest(unittest.TestCase):
     """ Test MongoQuery """
 
@@ -77,8 +79,6 @@ class QueryTest(unittest.TestCase):
     def test_aggregate(self):
         ssn = self.db
 
-        row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
-
         # Test: aggregate()
         q = {
             'max_age': {'$max': 'age'},
@@ -103,3 +103,38 @@ class QueryTest(unittest.TestCase):
         }
         rows = models.User.mongoquery(ssn).aggregate(q).group(['age']).sort(['age-']).end().all()
         self.assertEqual(map(row2dict, rows), [ {'age': 18, 'n': 2}, {'age': 16, 'n': 1} ])
+
+    def test_json(self):
+        """ Test operations on JSON column """
+        ssn = self.db
+
+        # Filter: >=
+        articles = models.Article.mongoquery(ssn).filter({ 'data.rating': {'$gte': 5.5} }).end().all()
+        self.assertEqual({11, 12}, {a.id for a in articles})
+
+        # Filter: == True
+        articles = models.Article.mongoquery(ssn).filter({'data.o.a': True}).end().all()
+        self.assertEqual({10, 11}, {a.id for a in articles})
+
+        # Filter: is None
+        articles = models.Article.mongoquery(ssn).filter({'data.o.a': None}).end().all()
+        self.assertEqual({21, 30}, {a.id for a in articles})
+
+        # Filter: wrong type, but still works
+        articles = models.Article.mongoquery(ssn).filter({'data.rating': '5.5'}).end().all()
+        self.assertEqual({11}, {a.id for a in articles})
+
+        # Sort
+        articles = models.Article.mongoquery(ssn).sort(['data.rating-']).end().all()
+        self.assertEqual([None, 6, 5.5, 5, 4.5, 4], [a.data.get('rating', None) for a in articles])
+
+        # Aggregate
+        q = {
+            'high': {'$sum': { 'data.rating': {'$gte': 5.0} }},
+            'max_rating': {'$max': 'data.rating'},
+            'a_is_none': {'$sum': { 'data.o.a': None } },
+        }
+        row = models.Article.mongoquery(ssn).aggregate(q).end().one()
+        self.assertEqual(row2dict(row), {'high': 3, 'max_rating': '6', 'a_is_none': 2})  # FIXME: it works with these as strings! See ColumnsBag.__getitem__(): .astext
+
+        # Aggregate & Group

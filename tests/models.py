@@ -18,7 +18,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String)
-    tags = Column(pg.ARRAY(String))
+    tags = Column(pg.ARRAY(String))  # ARRAY field
     age = Column(Integer)
 
 
@@ -28,6 +28,7 @@ class Article(Base):
     id = Column(Integer, primary_key=True)
     uid = Column(Integer, ForeignKey(User.id))
     title = Column(String)
+    data = Column(pg.JSON)  # JSON field
 
     user = relationship(User, lazy='joined', backref=backref('articles', lazy='joined',))
 
@@ -71,12 +72,12 @@ def content_samples():
         User(id=2, name='b', age=18, tags=['2', 'a', 'b']),
         User(id=3, name='c', age=16, tags=['3', 'a', 'b', 'c']),
 
-        Article(id=10, uid=1, title='10'),
-        Article(id=11, uid=1, title='11'),
-        Article(id=12, uid=1, title='12'),
-        Article(id=20, uid=2, title='20'),
-        Article(id=21, uid=2, title='21'),
-        Article(id=30, uid=3, title='30'),
+        Article(id=10, uid=1, title='10', data={'rating': 5  , 'o': {'a': True}}),
+        Article(id=11, uid=1, title='11', data={'rating': 5.5, 'o': {'a': True}}),
+        Article(id=12, uid=1, title='12', data={'rating': 6  , 'o': {'a': False}}),
+        Article(id=20, uid=2, title='20', data={'rating': 4.5, 'o': {'a': False}}),
+        Article(id=21, uid=2, title='21', data={'rating': 4  , 'o': {'z': True}}),
+        Article(id=30, uid=3, title='30', data={               'o': {'z': False}}),
 
         Comment(aid=10, uid=1, text='10-a'),
         Comment(aid=10, uid=2, text='10-b'),

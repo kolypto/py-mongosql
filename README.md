@@ -20,8 +20,10 @@ syntax with custom additions.
 
 Source for syntax handlers: [mongosql/statements.py](mongosql/statements.py)
 
-Projection Operation
---------------------
+Operations
+----------
+
+### Projection Operation
 
 Projection operation allows to specify which columns to include/exclude in the result set.
 
@@ -59,8 +61,7 @@ Produces the following queries through SqlAlchemy:
     '-a,b,c'  # Exclude fields
     ```
 
-Sort Operation
---------------
+### Sort Operation
 
 Sort rows.
 
@@ -93,8 +94,7 @@ Produces the following queries through SqlAlchemy:
     'a+,b-,c'  # = { 'a': +1, 'b': -1, 'c': +1 }
     ```
 
-Group Operation
----------------
+### Group Operation
 
 Group rows.
 
@@ -104,8 +104,7 @@ Produces the following queries through SqlAlchemy:
 
 Syntax: same as for [Sort Operation](#sort-operation).
 
-Filter Operation
-----------------
+### Filter Operation
 
 Supports most of [MongoDB query operators](http://docs.mongodb.org/manual/reference/operator/query/), 
 including array behavior (for PostgreSQL).
@@ -156,8 +155,7 @@ Supports the following boolean operators:
 * `{ $nor: [ {..criteria..}, .. ] }` - none is true
 * `{ $not: { ..criteria.. } }` - negation
 
-Join Operation
---------------
+### Join Operation
 
 Allows to eagerly load specific relations by name.
 
@@ -177,8 +175,7 @@ Allows to eagerly load specific relations by name.
   'posts, comments'
   ```
 
-Aggregation
------------
+### Aggregate Operation
 
 Allows to fetch aggregated values with the help of aggregation functions.
 
@@ -226,3 +223,49 @@ Examples:
 }  # -> SELECT SUM(age >= 18) AS adults, SUM(salary > 10000) AS expensive ...
 ```
 
+JSON Column Support
+-------------------
+
+PostgreSQL 9.3 supports [JSON column type](http://www.postgresql.org/docs/9.3/static/functions-json.html),
+and so does MongoSQL! :)
+
+To access sub-properties of a JSON field, use dot-notation.
+
+Given a model field:
+    
+```python
+model.data = { 'rating': 5.5, 'list': [1,2,3], 'obj': {'a': 1} }
+```
+    
+You can reference JSON field properties:
+    
+```python
+'data.rating'
+'data.list.0'
+'data.obj.a'
+'data.obj.z'  # gives NULL
+```
+    
+Operations that support it:
+
+* [Sort](#sort-operation) and [Group](#group-operation) operations:
+    
+    ```python
+    ['data.rating-']
+    ```
+    
+* [Filter](#filter-operation) operation:
+    
+    ```python
+    { 'data.rating': { '$gte': 5.5 } }
+    { 'data.rating': None }  # Test for missing property
+    ```
+    
+* [Aggregation](#aggregation):
+
+    ```python
+    { 'max_rating': { '$max': 'data.rating' } }
+    ```
+
+*NOTE*: PostgreSQL is a bit capricious about data types, so MongoSql tries to guess it using the operand you provide.
+Hence, when filtering with a property known to contain a `float`-typed field, provide `float` values to it.

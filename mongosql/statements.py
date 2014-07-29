@@ -1,6 +1,7 @@
 from collections import OrderedDict
 
 from sqlalchemy import Integer
+from sqlalchemy.sql.sqltypes import NullType
 from sqlalchemy.orm import load_only, lazyload
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
@@ -76,14 +77,14 @@ class MongoProjection(_MongoStatement):
             :return: Options to include columns
             :raises AssertionError: unknown column name
         """
-        # Check columns
-        projection_keys = set(projection.keys())
-        assert projection_keys <= columns.names, 'Invalid column specified in projection'
-
-        # Make query
         if inclusion_mode:
+            # Columns
             return (columns[name] for name, inc in projection.items())
         else:
+            # Check columns
+            projection_keys = set(projection.keys())
+            assert projection_keys <= columns.names, 'Invalid column specified in projection'
+            # Columns
             return (col for name, col in columns.items() if name not in projection_keys)
 
     @classmethod
@@ -160,8 +161,6 @@ class MongoSort(_MongoStatement):
 
             :raises AssertionError: unknown column name
         """
-        assert set(sort.keys()) <= columns.names, 'Invalid column specified in {}'.format(cls.__name__)
-
         return [
             columns[name].desc() if d == -1 else columns[name]
             for name, d in sort.items()
@@ -230,7 +229,6 @@ class MongoCriteria(_MongoStatement):
         * { $nor: [ {..criteria..}, .. ] } - none is true
         * { $not: { ..criteria.. } } - negation
     """
-    # TODO: support '.'-notation for JSON fields
 
     def __init__(self, criteria):
         if not criteria:
@@ -246,7 +244,6 @@ class MongoCriteria(_MongoStatement):
         :rtype: sqlalchemy.sql.elements.BooleanClauseList
         """
         # Assuming a dict of { column: value } and { column: { $op: value } }
-        assert (set(criteria.keys()) - {'$or', '$and', '$nor', '$not'}) <= columns.names, 'Invalid column specified in Criteria'
 
         conditions = []
         for col_name, criteria in criteria.items():
@@ -278,7 +275,8 @@ class MongoCriteria(_MongoStatement):
 
             # Prepare
             col = columns[col_name]
-            col_array = isinstance(col.type, pg.ARRAY)
+            col_array = columns.is_column_array(col_name)
+            col_json  = columns.is_column_json(col_name)
 
             # Fake equality
             if not isinstance(criteria, dict):
@@ -288,10 +286,14 @@ class MongoCriteria(_MongoStatement):
             for op, value in criteria.items():
                 value_array = isinstance(value, (list, tuple))
 
-                # Cast to array
+                # Coerce operand
                 if col_array and value_array:
                     value = cast(pg.array(value), pg.ARRAY(col.type.item_type))
+                if col_json:
+                    coerce_type = col.type.coerce_compared_value('=', value)  # HACKY: use sqlalchemy type coercion
+                    col = cast(col.astext, coerce_type)
 
+                # Operators
                 if op == '$eq':
                     if col_array:
                         if value_array:
@@ -445,12 +447,10 @@ class MongoAggregate(_MongoStatement):
         :rtype: list[sqlalchemy.sql.elements.ColumnElement]
         """
         # TODO: calculation expressions for selection: http://docs.mongodb.org/manual/meta/aggregation-quick-reference/
-        # TODO: aggregation should support traversing JSON fields
         selectables = []
         for comp_field, comp_expression in agg_spec.items():
             # Column reference
             if isinstance(comp_expression, basestring):
-                assert comp_expression in columns, 'Aggregate: Invalid column `{}`'.format(comp_expression)
                 selectables.append(columns[comp_expression].label(comp_field))
                 continue
 
@@ -465,12 +465,11 @@ class MongoAggregate(_MongoStatement):
                 expression_stmt = expression
             elif isinstance(expression, basestring):
                 # Column name
-                assert expression in columns, 'Aggregate: invalid column `{}`'.format(expression)
                 expression_stmt = columns[expression]
             elif isinstance(expression, dict):
                 # Boolean expression
                 expression_stmt = MongoCriteria.statetement(columns, expression)
-                # Need to case it to int
+                # Need to cast it to int
                 expression_stmt = cast(expression_stmt, Integer)
             else:
                 raise AssertionError('Aggregate: expression should be either a column name, or an object')
