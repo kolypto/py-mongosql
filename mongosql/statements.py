@@ -1,8 +1,7 @@
 from collections import OrderedDict
 
 from sqlalchemy import Integer
-from sqlalchemy.sql.sqltypes import NullType
-from sqlalchemy.orm import load_only, lazyload
+from sqlalchemy.orm import load_only, defaultload, lazyload, contains_eager, aliased
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func
@@ -364,50 +363,102 @@ class MongoCriteria(_MongoStatement):
         return self.statetement(model.columns, self.criteria)
 
 
+class _MongoJoinParams(object):
+    def __init__(self, options, relationship=None, target_model=None, query=None):
+        """ Values for joins
+        :param options: Additional query options
+        :type options: list[sqlalchemy.orm.Load]
+        :param relationship: Relationship
+        :type relationship: sqlalchemy.orm.attributes.InstrumentedAttribute
+        :param target_model: Target model
+        :type target_model: sqlalchemy.ext.declarative.api.DeclarativeMeta
+        :param query: Query dict for :meth:MongoQuery.query()
+        :type query: dict
+        """
+        self.options = options
+        self.relationship = relationship
+        self.target_model = target_model
+        self.query = query
+
+
 class MongoJoin(_MongoStatement):
     """ Joining relations (eager load)
 
-        Just provide relation names
+        - List of relation names
+        - Comma-separated list of relation names
+        - Dict: { relation-name: query-dict } for :meth:MongoQuery.query
     """
 
-    def __init__(self, relnames):
+    def __init__(self, relnames, as_relation=None):
         """ Create the joiner
 
         :param relnames: List of relation names to load eagerly
         :type relnames: list[str]
+        :param as_relation: Base relation to chain the loader options from
+        :type as_relation: sqlalchemy.orm.relationships.RelationshipProperty
         """
-        assert relnames is None or isinstance(relnames, (basestring, list, tuple)), 'Join must be one of: None, str, list, tuple'
-        # TODO: User filter/sort/limit/.. on list relations, as currently, it selects the list of ALL related objects!
-        # TODO: Support loading sub-relations through 'user.profiles' (with Load interface chaining)
 
         if not relnames:
-            self.relnames = []
+            self.rels = {}
         elif isinstance(relnames, basestring):
-            self.relnames = relnames.split(',')
+            self.rels = { relname: None for relname in relnames.split(',') }
+        elif isinstance(relnames, (list, tuple)):
+            self.rels = {relname: None for relname in relnames}
+        elif isinstance(relnames, dict):
+            self.rels = relnames
         else:
-            self.relnames = relnames
+            raise AssertionError('Join must be one of: None, str, list, tuple, dict')
+
+        self.as_relation = as_relation
 
     @classmethod
-    def options(cls, relations, relnames):
+    def options(cls, relations, rels, as_relation):
         """ Prepare relationships loader
         :type relations: mongosql.bag.RelationshipsBag
-        :rtype: list[sqlalchemy.orm.Load]
+        :returns: List of _MongoJoinParams
+        :rtype: list[_MongoJoinParams]
         """
-        relnames = set(relnames)
-        assert relnames <= relations.names, 'Invalid column specified in {}'.format(cls.__name__)
-        # lazyload() on all other relations: this way, they're only loaded on demans (direct access)
-        # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
-        return [lazyload(relname) for relname in relations.names if relname not in relnames ]
+        relnames = set(rels.keys())
+        assert relnames <= relations.names, 'Invalid relation names: {}'.format(relnames - relations.names)
+
+        # Loader options:
+        lbase = defaultload(as_relation) if as_relation else None
+        _lazyload       = lambda rel: lbase.lazyload(rel) if lbase else lazyload(rel)
+        _contains_eager = lambda rel: lbase.contains_eager(rel) if lbase else contains_eager(rel)
+
+        # Complex joins
+        mjp_list = []
+        for relname, query in rels.items():
+            if query is None:
+                pass
+            else:
+                rel = relations[relname]
+                rel_a = aliased(rel)
+                target_model = rel.property.mapper.class_
+
+                mjp_list.append(_MongoJoinParams(
+                    [_contains_eager(rel)],
+                    rel,
+                    target_model,
+                    query
+                ))
+
+        # lazyload() on all other relations
+        opts = [_lazyload(relations[relname]) for relname in relations.names if relname not in relnames]  # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
+        mjp_list.append(_MongoJoinParams(opts))
+
+        # Finish
+        return mjp_list
 
     def __call__(self, model):
         """ Build the statement
 
             :type model: MongoModel
-            :return: Options to include columns
-            :rtype: list[sqlalchemy.orm.Load]
+            :return: List of join params
+            :rtype: list[_MongoJoinParams]
             :raises AssertionError: unknown column name
         """
-        return self.options(model.relations, self.relnames)
+        return self.options(model.relations, self.rels, self.as_relation)
 
 
 class MongoAggregate(_MongoStatement):

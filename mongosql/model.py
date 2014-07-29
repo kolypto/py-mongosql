@@ -137,19 +137,18 @@ class MongoModel(object):
             self.skip(skip)
         )
 
-    def join(self, relnames):
+    def join(self, relnames, as_relation=None):
         """ Build eager loader for the relations
 
             :type relnames: list[str]
             :param relnames: List of relations to load eagerly
-            :returns: Query options to load specific columns
-                Usage:
-                    j = MongoModel(User).join('posts')
-                    query.options(*j).with_labels()
-            :rtype: list[sqlalchemy.orm.Load]
+            :returns: Join params list
+                Usage: don't ask :)
+            :returns: (list[query-options], list[(join, query-dict)])
+            :rtype: list[mongosql.statements._MongoJoinParams]
             :raises AssertionError: invalid input
         """
-        return MongoJoin(relnames)(self)
+        return MongoJoin(relnames, as_relation)(self)
 
     def aggregate(self, agg_spec):
         """ Select aggregated results

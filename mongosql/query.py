@@ -7,18 +7,38 @@ from .model import MongoModel
 class MongoQuery(object):
     """ MongoDB-style queries """
 
-    def __init__(self, model, query):
+    @classmethod
+    def get_model_mongoquery(cls, model, *args, **kwargs):
+        """ Get MongoQuery partial for a model.
+
+        Attempts to use `mongoquery` property of the model
+
+        :param model: Model
+        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.api.DeclarativeMeta
+        :rtype: MongoQuery
+        """
+        try:
+            return model.mongoquery(*args, **kwargs)
+        except AttributeError:
+            return cls(MongoModel(model), *args, **kwargs)
+
+    def __init__(self, model, query, _as_relation=None):
         """ Init a MongoDB-style query
         :param model: MongoModel
         :type model: mongosql.MongoModel
         :param query: Query to work with
         :type query: sqlalchemy.orm.Query
+        :param _as_relation: Parent relationship.
+            Internal argument used when working with deeper relations:
+            is used as initial path for defaultload(_as_relation).lazyload(...).
+        :type _as_relation: sqlalchemy.orm.relationships.RelationshipProperty
         """
         assert isinstance(model, MongoModel)
         assert isinstance(query, Query)
 
         self._model = model
         self._query = query
+        self._as_relation = _as_relation
 
         self._no_joindefaults = False
 
@@ -66,8 +86,21 @@ class MongoQuery(object):
 
     def join(self, relnames):
         """ Eagerly load relations """
-        j = self._model.join(relnames)
-        self._query = self._query.options(*j).with_labels()
+        for mjp in self._model.join(relnames, as_relation=self._as_relation):
+            # Complex joins
+            if mjp.query:
+                self._query = self.get_model_mongoquery(
+                        mjp.target_model,
+                        self._query.join(mjp.relationship),
+                        _as_relation=mjp.relationship
+                    )\
+                    .query(**mjp.query)\
+                    .end()
+
+            # Options
+            self._query = self._query.options(*mjp.options)
+
+        self._query = self._query.with_labels()
         self._no_joindefaults = True
         return self
 
@@ -89,8 +122,15 @@ class MongoQuery(object):
         :param aggregate: Select aggregated results
         :param count: True to count rows instead
         """
-        self.join(join).project(project).aggregate(aggregate).filter(filter).sort(sort).group(group).limit(limit, skip)
-        return self.count() if count else self
+        q = self
+        if join:            q = q.join(join)
+        if project:         q = q.project(project)
+        if aggregate:       q = q.aggregate(aggregate)
+        if filter:          q = q.filter(filter)
+        if sort:            q = q.sort(sort)
+        if group:           q = q.group(group)
+        if skip or limit:   q = q.limit(limit, skip)
+        return q.count() if count else q
 
     def end(self):
         """ Get the Query object

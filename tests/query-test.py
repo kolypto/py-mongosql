@@ -6,6 +6,7 @@ from . import models
 
 row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
 
+
 class QueryTest(unittest.TestCase):
     """ Test MongoQuery """
 
@@ -22,6 +23,7 @@ class QueryTest(unittest.TestCase):
         ssn.commit()
 
         # Session
+        self.Session = Session
         self.engine = engine
         self.db = Session()
 
@@ -34,6 +36,7 @@ class QueryTest(unittest.TestCase):
         pass#models.drop_all(self.engine)  # FIXME: test hangs when dropping tables for the second time!
 
     def test_projection(self):
+        """ Test project() """
         ssn = self.db
 
         # Test: load only 2 props
@@ -45,6 +48,7 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments'})
 
     def test_sort(self):
+        """ Test sort() """
         ssn = self.db
 
         # Test: sort(age+, id-)
@@ -52,6 +56,7 @@ class QueryTest(unittest.TestCase):
         self.assertEqual([3, 1, 2], [u.id for u in users])
 
     def test_filter(self):
+        """ Test filter() """
         ssn = self.db
 
         # Test: filter(age=16)
@@ -59,6 +64,7 @@ class QueryTest(unittest.TestCase):
         self.assertEqual([3], [u.id for u in users])
 
     def test_join(self):
+        """ Test join() """
         ssn = self.db
 
         # Test: no join(), relationships are unloaded
@@ -69,7 +75,39 @@ class QueryTest(unittest.TestCase):
         user = models.User.mongoquery(ssn).join(['articles']).end().first()
         self.assertEqual(inspect(user).unloaded, {'comments'})
 
+    def test_join_query(self):
+        """ Test join(dict) """
+        ssn = self.Session()
+
+        # Test: join() with comments as dict
+        user = models.User.mongoquery(ssn)\
+            .filter({'id': 1})\
+            .join({
+                'comments': None
+            })\
+            .end().one()
+        self.assertEqual(user.id, 1)
+        self.assertEqual(inspect(user).unloaded, {'articles'})
+
+        ssn = self.Session()  # need to reset it: session caches entities
+
+        # Test: join() with filtered articles
+        user = models.User.mongoquery(ssn) \
+            .filter({'id': 1}) \
+            .join({
+                'articles': {
+                    'filter': {'id': 10},
+                    'limit': 1
+                }
+            }) \
+            .end().one()
+        self.assertEqual(user.id, 1)
+        self.assertEqual(inspect(user).unloaded, {'comments'})
+        self.assertEqual([10], [a.id for a in user.articles])  # Only one article! :)
+        self.assertEqual(inspect(user.articles[0]).unloaded, {'user', 'comments'})  # No relationships loaded
+
     def test_count(self):
+        """ Test count() """
         ssn = self.db
 
         # Test: count()
@@ -77,6 +115,7 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(3, n)
 
     def test_aggregate(self):
+        """ Test aggregate() """
         ssn = self.db
 
         # Test: aggregate()
@@ -105,7 +144,7 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(map(row2dict, rows), [ {'age': 18, 'n': 2}, {'age': 16, 'n': 1} ])
 
     def test_json(self):
-        """ Test operations on JSON column """
+        """ Test operations on a JSON column """
         ssn = self.db
 
         # Filter: >=

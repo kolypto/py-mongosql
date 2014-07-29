@@ -99,9 +99,23 @@ if __name__ == '__main__':
     ssn = Session()
 
     from sqlalchemy import inspect
-    from sqlalchemy.orm import noload, load_only, lazyload
+    from sqlalchemy.orm import noload, load_only, defaultload, lazyload, aliased, contains_eager, contains_alias
 
-    u = ssn.query(User).options(load_only('id'), lazyload('articles'), lazyload('comments')).first()
-    ins = inspect(u)
+    q = ssn.query(User)
 
-    from IPython import embed ; embed()
+    rel = User.articles
+    target = rel.property.mapper.class_
+
+    q = q.\
+        options(lazyload(User.comments)).\
+        join(rel).\
+        options(contains_eager(rel)).\
+        filter(User.id == 1).\
+        filter(target.id == 10)
+
+    users = q.all()
+    u = users[0]
+    print u.id, [a.id for a in u.articles]
+    print inspect(u).unloaded
+
+    #from IPython import embed ; embed()

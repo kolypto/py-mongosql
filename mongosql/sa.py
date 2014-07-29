@@ -22,7 +22,7 @@ class MongoSqlBase(object):
         return cls.__mongomodel
 
     @classmethod
-    def mongoquery(cls, query):
+    def mongoquery(cls, query, **kwargs):
         """ Build a MongoQuery
         :param query: Query to start with, or a session object to initiate the query with
         :type query: sqlalchemy.orm.Query|sqlalchemy.orm.Session
@@ -30,4 +30,4 @@ class MongoSqlBase(object):
         """
         if isinstance(query, Session):
             query = query.query(cls)
-        return MongoQuery(cls.mongomodel(), query)
+        return MongoQuery(cls.mongomodel(), query, **kwargs)

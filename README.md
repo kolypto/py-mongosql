@@ -167,13 +167,31 @@ Allows to eagerly load specific relations by name.
     [ 'posts', 'comments' ]
     ```
 
-* String syntax
+* String syntax.
     
   Comma-separated relation names.
   
   ```python
   'posts, comments'
   ```
+
+* Dict syntax, query on relations.
+
+    Further, you can apply operations to relations using [Query Object Syntax](#query-object-syntax)!
+    
+    Map relation name to a Query Object, and the specified operations will be applied to related entities:
+    
+    ```python
+    {
+      'posts': {  # Load relation 'posts'
+        'filter': { 'id': { '$gt': 100 } },  # Only load posts with id > 100
+        'sort': ['id-'],
+        'skip': 0,
+        'limit': 100,
+        # ... see Query Object Syntax
+      }
+    }
+    ```
 
 ### Aggregate Operation
 
