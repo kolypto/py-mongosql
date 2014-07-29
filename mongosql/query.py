@@ -20,7 +20,16 @@ class MongoQuery(object):
         self._model = model
         self._query = query
 
-        self._joined = False
+        self._no_joindefaults = False
+
+    def aggregate(self, agg_spec):
+        """ Select aggregated results """
+        a = self._model.aggregate(agg_spec)
+        if a:
+            self._query = self._query.with_entities(*a)
+            self._query = self._query.select_from(self._model.model)
+            self._no_joindefaults = True  # no relationships should be loaded
+        return self
 
     def project(self, projection):
         """ Apply a projection to the query """
@@ -59,16 +68,16 @@ class MongoQuery(object):
         """ Eagerly load relations """
         j = self._model.join(relnames)
         self._query = self._query.options(*j).with_labels()
-        self._joined = True
+        self._no_joindefaults = True
         return self
 
     def count(self):
         """ Count rows instead """
         self._query = self._query.from_self(func.count(1))
-        self._joined = True  # no relationships should be loaded
+        self._no_joindefaults = True  # no relationships should be loaded
         return self
 
-    def query(self, project=None, sort=None, group=None, filter=None, skip=None, limit=None, join=None, count=False):
+    def query(self, project=None, sort=None, group=None, filter=None, skip=None, limit=None, join=None, aggregate=None, count=False):
         """ Build a query
         :param project: Projection spec
         :param sort: Sorting spec
@@ -77,15 +86,16 @@ class MongoQuery(object):
         :param skip: Skip rows
         :param limit: Limit rows
         :param join: Eagerly load relations
+        :param aggregate: Select aggregated results
         :param count: True to count rows instead
         """
-        self.project(project).sort(sort).group(group).filter(filter).limit(limit, skip).join(join)
+        self.join(join).project(project).aggregate(aggregate).filter(filter).sort(sort).group(group).limit(limit, skip)
         return self.count() if count else self
 
     def end(self):
         """ Get the Query object
         :rtype: sqlalchemy.orm.Query
         """
-        if not self._joined:
+        if not self._no_joindefaults:
             self.join(())  # have to join with an empty list explicitly so all relations get noload()
         return self._query

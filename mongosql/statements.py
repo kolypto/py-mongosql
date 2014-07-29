@@ -1,5 +1,6 @@
 from collections import OrderedDict
 
+from sqlalchemy import Integer
 from sqlalchemy.orm import load_only, lazyload
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
@@ -67,7 +68,7 @@ class MongoProjection(_MongoStatement):
         self.inclusion_mode = any(projection.values())
 
     @classmethod
-    def options(cls, columns, projection, inclusion_mode):
+    def columns(cls, columns, projection, inclusion_mode):
         """ Get the list of columns to be included
 
             :type columns: dict
@@ -81,15 +82,21 @@ class MongoProjection(_MongoStatement):
 
         # Make query
         if inclusion_mode:
-            return load_only(*(columns[name] for name, inc in projection.items()))
+            return (columns[name] for name, inc in projection.items())
         else:
-            return load_only(*(col for name, col in columns.items() if name not in set(projection.keys())))
+            return (col for name, col in columns.items() if name not in set(projection.keys()))
+
+    @classmethod
+    def options(cls, columns, projection, inclusion_mode):
+        """ Get query options for the columns """
+        return map(load_only,
+                   cls.columns(columns, projection, inclusion_mode))
 
     def __call__(self, model):
         """ Build the statement
 
             :type model: MongoModel
-            :rtype: list(sqlalchemy.sql.schema.Column)
+            :rtype: list[sqlalchemy.sql.schema.Column]
             :return: The list of columns to include
             :raises AssertionError: unknown column name
         """
@@ -102,7 +109,6 @@ class MongoSort(_MongoStatement):
         * OrderedDict({ a: +1, b: -1 })
         * [ 'a+', 'b-', 'c' ]  - array of strings '<column>[<+|->]'. default direction = +1
         * 'a+,b-,c'  - a string
-
     """
 
     def __init__(self, sort_spec):
@@ -364,7 +370,7 @@ class MongoJoin(_MongoStatement):
         """ Create the joiner
 
         :param relnames: List of relation names to load eagerly
-        :type relnames: list(str)
+        :type relnames: list[str]
         """
         assert relnames is None or isinstance(relnames, (basestring, list, tuple)), 'Join must be one of: None, str, list, tuple'
         # TODO: User filter/sort/limit/.. on list relations, as currently, it selects the list of ALL related objects!
@@ -392,10 +398,107 @@ class MongoJoin(_MongoStatement):
 
             :type model: MongoModel
             :return: Options to include columns
-            :rtype: list(sqlalchemy.orm.Load)
+            :rtype: list[sqlalchemy.orm.Load]
             :raises AssertionError: unknown column name
         """
         return self.options(model.model_relations, self.relnames)
 
-# TODO: aggregation routines
+
+class MongoAggregate(_MongoStatement):
+    """ Aggregation statements
+
+        { computed_field_name: aggregation-expression }
+
+        Aggregation expressions:
+
+            * column-name
+            * { $min: operand }
+            * { $max: operand }
+            * { $avg: operand }
+            * { $sum: operand }
+
+        An operand can be:
+
+            - Integer (for counting): { $sum: 1 }
+            - Column name
+            - Boolean expression (see :cls:MongoCriteria)
+    """
+
+    def __init__(self, agg_spec):
+        """ Create aggregation
+        :param agg_spec: Aggregation spec
+        :type agg_spec: dict
+        """
+        if not agg_spec:
+            agg_spec = {}
+        assert isinstance(agg_spec, dict), 'Aggregate spec must be one of: None, dict'
+        self.agg_spec = agg_spec
+
+    @classmethod
+    def selectables(cls, columns, agg_spec):
+        """ Create a list of statements from spec """
+        # TODO: calculation expressions for selection: http://docs.mongodb.org/manual/meta/aggregation-quick-reference/
+        # TODO: aggregation should support traversing JSON fields
+        selectables = []
+        for comp_field, comp_expression in agg_spec.items():
+            # Column reference
+            if isinstance(comp_expression, basestring):
+                assert comp_expression in columns, 'Aggregate: Invalid column `{}`'.format(comp_expression)
+                selectables.append(columns[comp_expression].label(comp_field))
+                continue
+
+            # Computed expression
+            assert isinstance(comp_expression, dict), 'Aggregate: Expression should be either a column name, or an object'
+            assert len(comp_expression) == 1, 'Aggregate: expression can only contain a single operator'
+            operator, expression = comp_expression.popitem()
+
+            # Expression statement
+            if isinstance(expression, int) and operator == '$sum':
+                # Special case for count
+                expression_stmt = expression
+            elif isinstance(expression, basestring):
+                # Column name
+                assert expression in columns, 'Aggregate: invalid column `{}`'.format(expression)
+                expression_stmt = columns[expression]
+            elif isinstance(expression, dict):
+                # Boolean expression
+                expression_stmt = MongoCriteria.statetement(columns, expression)
+                # Need to case it to int
+                expression_stmt = cast(expression_stmt, Integer)
+            else:
+                raise AssertionError('Aggregate: expression should be either a column name, or an object')
+
+            # Operator
+            if operator == '$max':
+                comp_stmt = func.max(expression_stmt)
+            elif operator == '$min':
+                comp_stmt = func.min(expression_stmt)
+            elif operator == '$avg':
+                comp_stmt = func.avg(expression_stmt)
+            elif operator == '$sum':
+                if isinstance(expression_stmt, int):
+                    # Special case for count
+                    comp_stmt = func.count()
+                    if expression_stmt != 1:
+                        comp_stmt *= expression_stmt
+                else:
+                    comp_stmt = func.sum(expression_stmt)
+            else:
+                raise AssertionError('Aggregate: unsupported operator "{}"'.format(operator))
+
+            # Append
+            selectables.append(comp_stmt.label(comp_field))
+
+        return selectables
+
+    def __call__(self, model):
+        """ Build the statement
+
+            :type model: MongoModel
+            :return: List of selectables
+            :rtype: list[sqlalchemy.sql.elements.ColumnElement]
+            :raises AssertionError: wrong expression
+        """
+        return self.selectables(model.model_columns, self.agg_spec)
+
 # TODO: update operations in MongoDB-style

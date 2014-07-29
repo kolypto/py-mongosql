@@ -176,3 +176,53 @@ Allows to eagerly load specific relations by name.
   ```python
   'posts, comments'
   ```
+
+Aggregation
+-----------
+
+Allows to fetch aggregated values with the help of aggregation functions.
+
+Dict syntax: custom name of the computed field mapped to an expression:
+    
+    { computed-field-name: expression }
+   
+The *<expression>* can be:
+
+* Column name
+* Aggregation operator:
+    
+    * `{ $min: operand }` -- smallest value
+    * `{ $max: operand }` -- largest value
+    * `{ $avg: operand }` -- average value
+    * `{ $sum: operand }` -- sum of values
+
+    The *<operand>* can be:
+    
+    * Column name
+    * Boolean expression: see [Filter Operation](#filter-operation)
+    * Integer value (only supported by `$sum` operator)
+    
+Examples:
+
+```python
+# Count people by age
+# NOTE: should be used together with grouping by 'age'
+{
+  'age': 'age',  # Column value
+  'n': { '$sum': 1 },  # Count
+}  # -> SELECT age, count(*) AS n ...
+
+# Average salary by profession
+# NOTE: should be used together with grouping by 'profession'
+{
+  'prof': 'profession',
+  'salary': { '$avg': 'salary' }
+}  # -> SELECT profession AS prof, avg(salary) AS salary ...
+
+# Count people matching certain conditions
+{
+  'adults':    { '$sum': { 'age': { '$gte': 18 } } },
+  'expensive': { '$sum': { 'salary': { '$gt': 10000 } } }
+}  # -> SELECT SUM(age >= 18) AS adults, SUM(salary > 10000) AS expensive ...
+```
+

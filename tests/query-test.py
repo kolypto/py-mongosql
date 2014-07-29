@@ -15,12 +15,13 @@ class QueryTest(unittest.TestCase):
 
         # Fill DB
         ssn = Session()
+        ssn.begin()
         ssn.add_all(models.content_samples())
         ssn.commit()
 
         # Session
         self.engine = engine
-        self.db = ssn
+        self.db = Session()
 
         # Logging
         import logging
@@ -73,11 +74,32 @@ class QueryTest(unittest.TestCase):
         n = models.User.mongoquery(ssn).count().end().scalar()
         self.assertEqual(3, n)
 
-    @unittest.SkipTest
-    def test_group(self):
+    def test_aggregate(self):
         ssn = self.db
 
-        # Test: sort(age+, id-)
-        users = models.User.mongoquery(ssn).group(['age']).end().all()
-        self.assertEqual(2, len(users))
-        self.assertEqual({16, 18}, {u.age for u in users})
+        row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
+
+        # Test: aggregate()
+        q = {
+            'max_age': {'$max': 'age'},
+            'adults': {'$sum': {'age': {'$gte': 18}}},
+        }
+        row = models.User.mongoquery(ssn).aggregate(q).end().one()
+        ':type row: sqlalchemy.util.KeyedTuple'
+        self.assertEqual(row2dict(row), {'max_age': 18, 'adults': 2})
+
+        # Test: aggregate { $sum: 1 }
+        row = models.User.mongoquery(ssn).aggregate({ 'n': {'$sum': 1} }).end().one()
+        self.assertEqual(row.n, 3)
+
+        # Test: aggregate { $sum: 10 }
+        row = models.User.mongoquery(ssn).aggregate({'n': {'$sum': 10}}).end().one()
+        self.assertEqual(row.n, 30)
+
+        # Test: aggregate() & group()
+        q = {
+            'age': 'age',
+            'n': {'$sum': 1},
+        }
+        rows = models.User.mongoquery(ssn).aggregate(q).group(['age']).sort(['age-']).end().all()
+        self.assertEqual(map(row2dict, rows), [ {'age': 18, 'n': 2}, {'age': 16, 'n': 1} ])

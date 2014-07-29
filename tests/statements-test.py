@@ -247,3 +247,42 @@ class StatementsTest(unittest.TestCase):
         self.assertIn('FROM u', qs)
         self.assertIn('LEFT OUTER JOIN a', qs)
         self.assertIn('LEFT OUTER JOIN c', qs)
+
+    def test_aggregate(self):
+        """ Test aggregate() """
+        m = models.User
+
+        aggregate = lambda agg_spec: m.mongoquery(Query([m])).project('id').aggregate(agg_spec).end()
+
+        def test_aggregate(agg_spec, expected_starts):
+            qs = q2sql(aggregate(agg_spec))
+            self.assertTrue(qs.startswith(expected_starts), '{!r} should start with {!r}'.format(qs, expected_starts))
+
+        # Empty
+        test_aggregate(None, 'SELECT u.id AS u_id \nFROM')
+        test_aggregate({},   'SELECT u.id AS u_id \nFROM')
+
+        # $func(column)
+        test_aggregate({ 'max_age': {'$max': 'age'} }, 'SELECT max(u.age) AS max_age \nFROM')
+        test_aggregate({ 'min_age': {'$min': 'age'} }, 'SELECT min(u.age) AS min_age \nFROM')
+        test_aggregate({ 'avg_age': {'$avg': 'age'} }, 'SELECT avg(u.age) AS avg_age \nFROM')
+        test_aggregate({ 'sum_age': {'$sum': 'age'} }, 'SELECT sum(u.age) AS sum_age \nFROM')
+
+        # $sum(1)
+        test_aggregate({'count': {'$sum': 1}}, 'SELECT count(*) AS count')
+        test_aggregate({'count': {'$sum': 10}}, 'SELECT count(*) * 10 AS count')
+
+        # $sum(id==1)
+        test_aggregate({'count': {'$sum': { 'id': 1 } }}, 'SELECT sum(CAST(u.id = 1 AS INTEGER)) AS count \nFROM')
+
+        # age, $sum(1)
+        q = OrderedDict()  # OrderedDict() to have predictable output
+        q['age'] = 'age'  # column
+        q['n'] = {'$sum': 1}
+        test_aggregate(q, 'SELECT u.age AS age, count(*) AS n \nFROM')
+
+        # $max(age), $sum(id=1 AND age >= 16)
+        q = OrderedDict()  # OrderedDict() to have predictable output
+        q['max_age'] = {'$max': 'age'}
+        q['count'] = {'$sum': OrderedDict([('id', 1), ('age', {'$gte': 16})])}
+        test_aggregate(q, 'SELECT max(u.age) AS max_age, sum(CAST((u.id = 1 AND u.age >= 16) AS INTEGER)) AS count \nFROM')

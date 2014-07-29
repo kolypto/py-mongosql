@@ -53,7 +53,7 @@ def init_database():
     :rtype: (sqlalchemy.engine.Engine, sqlalchemy.orm.Session)
     """
     engine = create_engine('postgresql://postgres:postgres@localhost/test_mongosql', convert_unicode=True)
-    Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Session = sessionmaker(autocommit=True, autoflush=True, bind=engine)
     return engine, Session
 
 def create_all(engine):

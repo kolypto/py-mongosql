@@ -1,6 +1,6 @@
 from sqlalchemy import inspect
 
-from .statements import MongoProjection, MongoSort, MongoGroup, MongoCriteria, MongoJoin
+from .statements import MongoProjection, MongoSort, MongoGroup, MongoCriteria, MongoJoin, MongoAggregate
 
 
 class MongoModel(object):
@@ -24,10 +24,17 @@ class MongoModel(object):
         self.__model_relations = {name: getattr(model, name) for name, c in ins.relationships.items()}
 
     @property
+    def model(self):
+        """ Get model
+        :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
+        """
+        return self.__model
+
+    @property
     def model_columns(self):
         """ Get model columns
         :return: {name: Column}
-        :rtype: dict(str: sqlalchemy.orm.properties.ColumnProperty)
+        :rtype: dict[sqlalchemy.orm.properties.ColumnProperty]
         """
         return self.__model_columns
 
@@ -35,7 +42,7 @@ class MongoModel(object):
     def model_relations(self):
         """ Get model relations
         :return: {name: Relation}
-        :rtype: dict(str, sqlalchemy.orm.relationships.RelationshipProperty)
+        :rtype: dict[sqlalchemy.orm.relationships.RelationshipProperty]
         """
         return self.__model_relations
 
@@ -91,7 +98,7 @@ class MongoModel(object):
 
             :type criteria: None, dict
             :param criteria: The criteria to filter with
-            :rtype: BooleanClauseList
+            :rtype: sqlalchemy.sql.elements.BooleanClauseList
             :returns: Filtering conditions.
                 Usage:
                     c = MongoModel(User).filter({ 'id': 1 })
@@ -139,16 +146,29 @@ class MongoModel(object):
     def join(self, relnames):
         """ Build eager loader for the relations
 
-            :type relnames: list(str)
+            :type relnames: list[str]
             :param relnames: List of relations to load eagerly
             :returns: Query options to load specific columns
                 Usage:
                     j = MongoModel(User).join('posts')
                     query.options(*j).with_labels()
-            :rtype: list(sqlalchemy.orm.Load)
+            :rtype: list[sqlalchemy.orm.Load]
+            :raises AssertionError: invalid input
         """
-        # TODO: User filter/sort/limit/.. on list relations, as currently, it selects the list of ALL related objects!
-        # TODO: Support loading sub-relations through 'user.profiles'
         return MongoJoin(relnames)(self)
+
+    def aggregate(self, agg_spec):
+        """ Select aggregated results
+
+        :param agg_spec: Aggregation spec
+        :type agg_spec: dict
+        :return: List of selectables.
+                Usage:
+                    a = MongoModel(User).aggregate({ oldest: { $max: 'age' } })
+                    query.add_columns(*a)
+        :rtype: list[sqlalchemy.sql.elements.ColumnElement]
+        :raises AssertionError: invalid input
+        """
+        return MongoAggregate(agg_spec)(self)
 
     #endregion
