@@ -44,7 +44,7 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments'})
 
         # Test: load without 2 props
-        user = models.User.mongoquery(ssn).project('-age,tags').end().first()
+        user = models.User.mongoquery(ssn).project({'age': 0, 'tags': 0}).end().first()
         self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments'})
 
     def test_sort(self):

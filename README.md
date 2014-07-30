@@ -49,18 +49,6 @@ Produces the following queries through SqlAlchemy:
     [ 'a', 'b' ]  # Include these fields only
     ```
 
-* String syntax.
-    
-    List field names as a comma-separated string. 
-    
-    Optionally, prefix the string with `"+"` or `"-"` to switch between inclusion and exclusion modes:
-
-    ```python
-     'a,b,c'  # Include fields
-    '+a,b,c'  # Include fields
-    '-a,b,c'  # Exclude fields
-    ```
-
 ### Sort Operation
 
 Sort rows.
@@ -84,14 +72,6 @@ Produces the following queries through SqlAlchemy:
     
     ```python
     [ 'a+', 'b-', 'c' ]  # = { 'a': +1, 'b': -1, 'c': +1 }
-    ```
-    
-* String syntax.
-
-    Same as above, comma-separated:
-    
-    ```python
-    'a+,b-,c'  # = { 'a': +1, 'b': -1, 'c': +1 }
     ```
 
 ### Group Operation
@@ -166,14 +146,6 @@ Allows to eagerly load specific relations by name.
     ```python
     [ 'posts', 'comments' ]
     ```
-
-* String syntax.
-    
-  Comma-separated relation names.
-  
-  ```python
-  'posts, comments'
-  ```
 
 * Dict syntax, query on relations.
 

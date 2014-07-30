@@ -55,17 +55,6 @@ class StatementsTest(unittest.TestCase):
         test_projection({'id': 0, 'name': 0}, ('id', 'tags', 'age'))
         test_projection({'name': 0}, ('id', 'tags', 'age'))
 
-        # String syntax
-        test_projection('id,name', ('id', 'name'))
-        test_projection('+id', ('id',))
-        test_projection('+id,name', ('id', 'name'))
-        test_projection('+name', ('id', 'name',))
-        self.assertRaises(AssertionError, project, '+id,lol')
-        test_projection('-id', ('id', 'name', 'tags', 'age'))
-        test_projection('-id,name', ('id', 'tags', 'age'))
-        test_projection('-name', ('id', 'tags', 'age'))
-        self.assertRaises(AssertionError, project, '-id,lol')
-
         # Object: invalid
         self.assertRaises(AssertionError, project, {'id': 1, 'lol': 1})
         self.assertRaises(AssertionError, project, {'id': 0, 'lol': 0})
@@ -85,10 +74,6 @@ class StatementsTest(unittest.TestCase):
         test_sort(None, u'FROM u')
         test_sort([], u'FROM u')
         test_sort(OrderedDict(), u'FROM u')
-
-        # String
-        test_sort('id,age', 'ORDER BY u.id, u.age')
-        test_sort('id+,age-', 'ORDER BY u.id, u.age DESC')
 
         # List
         test_sort(['id-', 'age-'], 'ORDER BY u.id DESC, u.age DESC')
@@ -113,10 +98,6 @@ class StatementsTest(unittest.TestCase):
         test_group(None, u'FROM u')
         test_group([], u'FROM u')
         test_group(OrderedDict(), u'FROM u')
-
-        # String
-        test_group('id,age', 'GROUP BY u.id, u.age')
-        test_group('id+,age-', 'GROUP BY u.id, u.age DESC')
 
         # List
         test_group(['id-', 'age-'], 'GROUP BY u.id DESC, u.age DESC')
@@ -257,7 +238,7 @@ class StatementsTest(unittest.TestCase):
         """ Test aggregate() """
         m = models.User
 
-        aggregate = lambda agg_spec: m.mongoquery(Query([m])).project('id').aggregate(agg_spec).end()
+        aggregate = lambda agg_spec: m.mongoquery(Query([m])).project(('id',)).aggregate(agg_spec).end()
 
         def test_aggregate(agg_spec, expected_starts):
             qs = q2sql(aggregate(agg_spec))

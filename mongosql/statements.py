@@ -20,9 +20,6 @@ class MongoProjection(_MongoStatement):
         * { a: 1, b: 1 } - include only the given fields
         * { a: 0, b: 0 } - exlude the given fields
         * [ a, b, c ] - include only the given fields
-        *  'a,b,c' - string inclusion
-        * '+a,b,c' - string inclusion
-        * '-a,b,c' - string exclusion
     """
 
     def __init__(self, projection):
@@ -44,16 +41,6 @@ class MongoProjection(_MongoStatement):
             self.projection = {}
             return
 
-        # String syntax
-        if isinstance(projection, basestring):
-            if projection[0] in {'-', '+'}:
-                self.inclusion_mode = projection[0] == '+'
-                projection = projection[1:]
-            else:
-                self.inclusion_mode = True
-            self.projection = {k: int(self.inclusion_mode) for k in projection.split(',')}
-            return
-
         # Array syntax
         if isinstance(projection, (list, tuple)):
             self.inclusion_mode = True
@@ -61,7 +48,7 @@ class MongoProjection(_MongoStatement):
             return
 
         # Object syntax
-        assert isinstance(projection, dict), 'Projection must be one of: None, str, list, dict'
+        assert isinstance(projection, dict), 'Projection must be one of: None, list, dict'
         assert sum(projection.values()) in [0, len(projection)], 'Dict projection values shall be all 0s or all 1s'
 
         self.projection = projection
@@ -108,7 +95,6 @@ class MongoSort(_MongoStatement):
 
         * OrderedDict({ a: +1, b: -1 })
         * [ 'a+', 'b-', 'c' ]  - array of strings '<column>[<+|->]'. default direction = +1
-        * 'a+,b-,c'  - a string
     """
 
     def __init__(self, sort_spec):
@@ -123,10 +109,6 @@ class MongoSort(_MongoStatement):
         # Empty
         if not sort_spec:
             sort_spec = []
-
-        # String
-        if isinstance(sort_spec, basestring):
-            sort_spec = sort_spec.split(',')
 
         # List
         if isinstance(sort_spec, (list, tuple)):
@@ -148,7 +130,7 @@ class MongoSort(_MongoStatement):
             return
 
         # Otherwise
-        raise AssertionError('{} must be one of: None, string, list of strings, OrderedDict'.format(type(self).__name__))
+        raise AssertionError('{} must be one of: None, list, OrderedDict'.format(type(self).__name__))
 
     @classmethod
     def columns(cls, bag, sort):
@@ -385,7 +367,6 @@ class MongoJoin(_MongoStatement):
     """ Joining relations (eager load)
 
         - List of relation names
-        - Comma-separated list of relation names
         - Dict: { relation-name: query-dict } for :meth:MongoQuery.query
     """
 
@@ -400,14 +381,12 @@ class MongoJoin(_MongoStatement):
 
         if not relnames:
             self.rels = {}
-        elif isinstance(relnames, basestring):
-            self.rels = { relname: None for relname in relnames.split(',') }
         elif isinstance(relnames, (list, tuple)):
             self.rels = {relname: None for relname in relnames}
         elif isinstance(relnames, dict):
             self.rels = relnames
         else:
-            raise AssertionError('Join must be one of: None, str, list, tuple, dict')
+            raise AssertionError('Join must be one of: None, list, tuple, dict')
 
         self.as_relation = as_relation
 

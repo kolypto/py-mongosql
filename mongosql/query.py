@@ -110,7 +110,7 @@ class MongoQuery(object):
         self._no_joindefaults = True  # no relationships should be loaded
         return self
 
-    def query(self, project=None, sort=None, group=None, filter=None, skip=None, limit=None, join=None, aggregate=None, count=False):
+    def query(self, project=None, sort=None, group=None, filter=None, skip=None, limit=None, join=None, aggregate=None, count=False, **__unk):
         """ Build a query
         :param project: Projection spec
         :param sort: Sorting spec
@@ -121,7 +121,11 @@ class MongoQuery(object):
         :param join: Eagerly load relations
         :param aggregate: Select aggregated results
         :param count: True to count rows instead
+        :raises AssertionError: unknown Query Object operations provided (extra keys)
+        :rtype: MongoQuery
         """
+        assert not __unk, 'Unknown Query Object operations: {}'.format(__unk.keys())
+
         q = self
         if join:            q = q.join(join)
         if project:         q = q.project(project)
