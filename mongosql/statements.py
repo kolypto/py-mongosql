@@ -68,29 +68,29 @@ class MongoProjection(_MongoStatement):
         self.inclusion_mode = any(projection.values())
 
     @classmethod
-    def columns(cls, columns, projection, inclusion_mode):
+    def columns(cls, bag, projection, inclusion_mode):
         """ Get the list of columns to be included
 
-            :type columns: mongosql.bag.ColumnsBag
+            :type bag: mongosql.bag.ModelPropertyBags
             :rtype: sqlalchemy.orm.Load
             :return: Options to include columns
             :raises AssertionError: unknown column name
         """
         if inclusion_mode:
             # Columns
-            return (columns[name] for name, inc in projection.items())
+            return (bag.columns[name] for name, inc in projection.items())
         else:
             # Check columns
             projection_keys = set(projection.keys())
-            assert projection_keys <= columns.names, 'Invalid column specified in projection'
+            assert projection_keys <= bag.columns.names, 'Invalid column specified in projection'
             # Columns
-            return (col for name, col in columns.items() if name not in projection_keys)
+            return (col for name, col in bag.columns.items() if name not in projection_keys)
 
     @classmethod
-    def options(cls, columns, projection, inclusion_mode):
+    def options(cls, bag, projection, inclusion_mode):
         """ Get query options for the columns """
         return map(load_only,
-                   cls.columns(columns, projection, inclusion_mode))
+                   cls.columns(bag, projection, inclusion_mode))
 
     def __call__(self, model):
         """ Build the statement
@@ -100,7 +100,7 @@ class MongoProjection(_MongoStatement):
             :return: The list of columns to include
             :raises AssertionError: unknown column name
         """
-        return self.options(model.columns, self.projection, self.inclusion_mode)
+        return self.options(model.model_bag, self.projection, self.inclusion_mode)
 
 
 class MongoSort(_MongoStatement):
@@ -151,17 +151,17 @@ class MongoSort(_MongoStatement):
         raise AssertionError('{} must be one of: None, string, list of strings, OrderedDict'.format(type(self).__name__))
 
     @classmethod
-    def columns(cls, columns, sort):
+    def columns(cls, bag, sort):
         """ Get the list of sorters for columns
 
-            :type columns: mongosql.bag.ColumnsBag
+            :type bag: mongosql.bag.ModelPropertyBags
             :rtype: list
             :return: The list of sort specifications
 
             :raises AssertionError: unknown column name
         """
         return [
-            columns[name].desc() if d == -1 else columns[name]
+            bag.columns[name].desc() if d == -1 else bag.columns[name]
             for name, d in sort.items()
         ]
 
@@ -174,7 +174,7 @@ class MongoSort(_MongoStatement):
 
             :raises AssertionError: unknown column name
         """
-        return self.columns(model.columns, self.sort)
+        return self.columns(model.model_bag, self.sort)
 
 
 class MongoGroup(MongoSort):
@@ -199,7 +199,7 @@ class MongoGroup(MongoSort):
 
             :raises AssertionError: unknown column name
         """
-        return self.columns(model.columns, self.sort)
+        return self.columns(model.model_bag, self.sort)
 
 
 class MongoCriteria(_MongoStatement):
@@ -237,9 +237,9 @@ class MongoCriteria(_MongoStatement):
 
     # noinspection PyComparisonWithNone
     @classmethod
-    def statetement(cls, columns, criteria):
+    def statement(cls, bag, criteria):
         """ Create a statement from criteria
-        :type columns: mongosql.bag.ColumnsBag
+        :type bag: mongosql.bag.ModelPropertyBags
         :rtype: sqlalchemy.sql.elements.BooleanClauseList
         """
         # Assuming a dict of { column: value } and { column: { $op: value } }
@@ -252,7 +252,7 @@ class MongoCriteria(_MongoStatement):
                 if len(criteria) == 0:
                     continue  # skip empty
 
-                criteria = map(lambda s: cls.statetement(columns, s), criteria)  # now a list of expressions
+                criteria = map(lambda s: cls.statement(bag, s), criteria)  # now a list of expressions
                 if col_name == '$or':
                     cc = or_(*criteria)
                 elif col_name == '$and':
@@ -268,14 +268,14 @@ class MongoCriteria(_MongoStatement):
                 continue
             elif col_name == '$not':
                 assert isinstance(criteria, dict), 'Criteria: $not argument must be a dict'
-                criteria = cls.statetement(columns, criteria)
+                criteria = cls.statement(bag, criteria)
                 conditions.append(not_(criteria))
                 continue
 
             # Prepare
-            col = columns[col_name]
-            col_array = columns.is_column_array(col_name)
-            col_json  = columns.is_column_json(col_name)
+            col = bag.columns[col_name]
+            col_array = bag.columns.is_column_array(col_name)
+            col_json  = bag.columns.is_column_json(col_name)
 
             # Fake equality
             if not isinstance(criteria, dict):
@@ -360,7 +360,7 @@ class MongoCriteria(_MongoStatement):
             :rtype: sqlalchemy.sql.elements.BooleanClauseList
             :raises AssertionError: unknown column name
         """
-        return self.statetement(model.columns, self.criteria)
+        return self.statement(model.model_bag, self.criteria)
 
 
 class _MongoJoinParams(object):
@@ -412,14 +412,14 @@ class MongoJoin(_MongoStatement):
         self.as_relation = as_relation
 
     @classmethod
-    def options(cls, relations, rels, as_relation):
+    def options(cls, bag, rels, as_relation):
         """ Prepare relationships loader
-        :type relations: mongosql.bag.RelationshipsBag
+        :type bag: mongosql.bag.ModelPropertyBags
         :returns: List of _MongoJoinParams
         :rtype: list[_MongoJoinParams]
         """
         relnames = set(rels.keys())
-        assert relnames <= relations.names, 'Invalid relation names: {}'.format(relnames - relations.names)
+        assert relnames <= bag.relations.names, 'Invalid relation names: {}'.format(relnames - bag.relations.names)
 
         # Loader options:
         lbase = defaultload(as_relation) if as_relation else None
@@ -432,7 +432,7 @@ class MongoJoin(_MongoStatement):
             if query is None:
                 pass
             else:
-                rel = relations[relname]
+                rel = bag.relations[relname]
                 rel_a = aliased(rel)
                 target_model = rel.property.mapper.class_
 
@@ -444,7 +444,7 @@ class MongoJoin(_MongoStatement):
                 ))
 
         # lazyload() on all other relations
-        opts = [_lazyload(relations[relname]) for relname in relations.names if relname not in relnames]  # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
+        opts = [_lazyload(bag.relations[relname]) for relname in bag.relations.names if relname not in relnames]  # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
         mjp_list.append(_MongoJoinParams(opts))
 
         # Finish
@@ -458,7 +458,7 @@ class MongoJoin(_MongoStatement):
             :rtype: list[_MongoJoinParams]
             :raises AssertionError: unknown column name
         """
-        return self.options(model.relations, self.rels, self.as_relation)
+        return self.options(model.model_bag, self.rels, self.as_relation)
 
 
 class MongoAggregate(_MongoStatement):
@@ -492,9 +492,9 @@ class MongoAggregate(_MongoStatement):
         self.agg_spec = agg_spec
 
     @classmethod
-    def selectables(cls, columns, agg_spec):
+    def selectables(cls, bag, agg_spec):
         """ Create a list of statements from spec
-        :type columns: mongosql.bag.ColumnsBag
+        :type bag: mongosql.bag.ModelPropertyBags
         :rtype: list[sqlalchemy.sql.elements.ColumnElement]
         """
         # TODO: calculation expressions for selection: http://docs.mongodb.org/manual/meta/aggregation-quick-reference/
@@ -502,7 +502,7 @@ class MongoAggregate(_MongoStatement):
         for comp_field, comp_expression in agg_spec.items():
             # Column reference
             if isinstance(comp_expression, basestring):
-                selectables.append(columns[comp_expression].label(comp_field))
+                selectables.append(bag.columns[comp_expression].label(comp_field))
                 continue
 
             # Computed expression
@@ -516,10 +516,10 @@ class MongoAggregate(_MongoStatement):
                 expression_stmt = expression
             elif isinstance(expression, basestring):
                 # Column name
-                expression_stmt = columns[expression]
+                expression_stmt = bag.columns[expression]
             elif isinstance(expression, dict):
                 # Boolean expression
-                expression_stmt = MongoCriteria.statetement(columns, expression)
+                expression_stmt = MongoCriteria.statement(bag, expression)
                 # Need to cast it to int
                 expression_stmt = cast(expression_stmt, Integer)
             else:
@@ -556,6 +556,6 @@ class MongoAggregate(_MongoStatement):
             :rtype: list[sqlalchemy.sql.elements.ColumnElement]
             :raises AssertionError: wrong expression
         """
-        return self.selectables(model.columns, self.agg_spec)
+        return self.selectables(model.model_bag, self.agg_spec)
 
 # TODO: update operations in MongoDB-style

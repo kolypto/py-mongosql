@@ -43,18 +43,11 @@ class MongoModel(object):
         return self.__model
 
     @property
-    def columns(self):
+    def model_bag(self):
         """ Get model columns bag
-        :rtype: mongosql.bag.ColumnsBag
+        :rtype: mongosql.bag.ModelPropertyBags
         """
-        return self.__bag.columns
-
-    @property
-    def relations(self):
-        """ Get model relations bag
-        :rtype: mongosql.bag.RelationshipsBag
-        """
-        return self.__bag.relations
+        return self.__bag
 
     #region Wrappers
 
