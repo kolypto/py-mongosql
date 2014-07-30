@@ -158,7 +158,13 @@ class ModelPropertyBags(object):
     """ Model property bags """
 
     def __init__(self, model):
+        """ Init bags
+
+        :param model: Model
+        :type model: sqlalchemy.ext.declarative.api.DeclarativeMeta
+        """
         ins = inspect(model)
+        self.model = model
 
         #: Column properties
         self.columns   =    DotColumnsBag({name:   getattr(model, name)   for name, c in ins.column_attrs .items()})

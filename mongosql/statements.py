@@ -370,13 +370,13 @@ class MongoJoin(_MongoStatement):
         - Dict: { relation-name: query-dict } for :meth:MongoQuery.query
     """
 
-    def __init__(self, relnames, as_relation=None):
+    def __init__(self, relnames, as_relation):
         """ Create the joiner
 
         :param relnames: List of relation names to load eagerly
         :type relnames: list[str]
-        :param as_relation: Base relation to chain the loader options from
-        :type as_relation: sqlalchemy.orm.relationships.RelationshipProperty
+        :param as_relation: Load interface to chain the loader options from
+        :type as_relation: sqlalchemy.orm.Load
         """
 
         if not relnames:
@@ -394,16 +394,12 @@ class MongoJoin(_MongoStatement):
     def options(cls, bag, rels, as_relation):
         """ Prepare relationships loader
         :type bag: mongosql.bag.ModelPropertyBags
+        :type as_relation: sqlalchemy.orm.Load
         :returns: List of _MongoJoinParams
         :rtype: list[_MongoJoinParams]
         """
         relnames = set(rels.keys())
         assert relnames <= bag.relations.names, 'Invalid relation names: {}'.format(relnames - bag.relations.names)
-
-        # Loader options:
-        lbase = defaultload(as_relation) if as_relation else None
-        _lazyload       = lambda rel: lbase.lazyload(rel) if lbase else lazyload(rel)
-        _contains_eager = lambda rel: lbase.contains_eager(rel) if lbase else contains_eager(rel)
 
         # Complex joins
         mjp_list = []
@@ -416,14 +412,14 @@ class MongoJoin(_MongoStatement):
                 target_model = rel.property.mapper.class_
 
                 mjp_list.append(_MongoJoinParams(
-                    [_contains_eager(rel)],
+                    [as_relation.contains_eager(rel)],
                     rel,
                     target_model,
                     query
                 ))
 
         # lazyload() on all other relations
-        opts = [_lazyload(bag.relations[relname]) for relname in bag.relations.names if relname not in relnames]  # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
+        opts = [as_relation.lazyload(bag.relations[relname]) for relname in bag.relations.names if relname not in relnames]  # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
         mjp_list.append(_MongoJoinParams(opts))
 
         # Finish

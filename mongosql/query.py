@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import Query, Load, defaultload
 from sqlalchemy.sql import func
 
 from .model import MongoModel
@@ -38,7 +38,7 @@ class MongoQuery(object):
 
         self._model = model
         self._query = query
-        self._as_relation = _as_relation
+        self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
 
         self._no_joindefaults = False
 
