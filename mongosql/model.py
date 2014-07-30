@@ -7,6 +7,22 @@ from .bag import ModelPropertyBags
 class MongoModel(object):
     """ Sqlalchemy Model wrapper that generates query chunks """
 
+    @classmethod
+    def get_for(cls, model):
+        """ Get MongoModel for a model.
+
+        Attempts to use `mongomodel` property of the model
+
+        :param model: Model
+        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.api.DeclarativeMeta
+        :rtype: MongoModel
+        """
+        try:
+            return model.mongomodel()
+        except AttributeError:
+            model.mongomodel = MongoModel(model)
+            return model.mongomodel
+
     def __init__(self, model):
         """ Create MongoSql from a model
 

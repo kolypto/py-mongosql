@@ -53,10 +53,7 @@ class _PropertiesBag(object):
 
 
 class ColumnsBag(_PropertiesBag):
-    """ Columns bag with additional capabilities:
-
-        - For JSON fields: field.prop.prop -- dot-notation access to sub-properties
-    """
+    """ Columns bag """
 
     def __init__(self, columns):
         """ Init columns
@@ -97,13 +94,26 @@ class ColumnsBag(_PropertiesBag):
         """
         return self._columns.items()
 
+    def __getitem__(self, column_name):
+        try:
+            return self._columns[column_name]
+        except KeyError:
+            raise AssertionError('Unknown column: `{}`'.format(column_name))
+
+
+class PrimaryKeyBag(ColumnsBag):
+    """ Primary Key Bag """
+
+
+class DotColumnsBag(ColumnsBag):
+    """ Columns bag with additional capabilities:
+
+        - For JSON fields: field.prop.prop -- dot-notation access to sub-properties
+    """
+
     def __getitem__(self, name):
         column_name, path = self._dot_notation(name)
-        # Column
-        try:
-            col = self._columns[column_name]
-        except KeyError:
-            raise AssertionError('Unknown column: `{}`'.format(name))
+        col = super(DotColumnsBag, self).__getitem__(column_name)
         # JSON path
         if path and self.is_column_json(column_name):
             col = col[path].astext
@@ -149,5 +159,15 @@ class ModelPropertyBags(object):
 
     def __init__(self, model):
         ins = inspect(model)
-        self.columns   =       ColumnsBag({name: getattr(model, name) for name, c in ins.column_attrs .items()})
-        self.relations = RelationshipsBag({name: getattr(model, name) for name, c in ins.relationships.items()})
+
+        #: Column properties
+        self.columns   =    DotColumnsBag({name:   getattr(model, name)   for name, c in ins.column_attrs .items()})
+
+        #: Relationship properties
+        self.relations = RelationshipsBag({name:   getattr(model, name)   for name, c in ins.relationships.items()})
+
+        #: Primary key properties
+        self.pk        =    PrimaryKeyBag({c.name: self.columns[c.name]   for       c in ins.primary_key})
+
+        #: Nullable properties
+        self.nullable  =       ColumnsBag({name: c for name, c in self.columns.items() if c.nullable})

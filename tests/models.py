@@ -101,21 +101,4 @@ if __name__ == '__main__':
     from sqlalchemy import inspect
     from sqlalchemy.orm import noload, load_only, defaultload, lazyload, aliased, contains_eager, contains_alias
 
-    q = ssn.query(User)
-
-    rel = User.articles
-    target = rel.property.mapper.class_
-
-    q = q.\
-        options(lazyload(User.comments)).\
-        join(rel).\
-        options(contains_eager(rel)).\
-        filter(User.id == 1).\
-        filter(target.id == 10)
-
-    users = q.all()
-    u = users[0]
-    print u.id, [a.id for a in u.articles]
-    print inspect(u).unloaded
-
-    #from IPython import embed ; embed()
+    from IPython import embed ; embed()

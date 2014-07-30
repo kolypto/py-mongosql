@@ -8,8 +8,8 @@ class MongoQuery(object):
     """ MongoDB-style queries """
 
     @classmethod
-    def get_model_mongoquery(cls, model, *args, **kwargs):
-        """ Get MongoQuery partial for a model.
+    def get_for(cls, model, *args, **kwargs):
+        """ Get MongoQuery for a model.
 
         Attempts to use `mongoquery` property of the model
 
@@ -20,7 +20,7 @@ class MongoQuery(object):
         try:
             return model.mongoquery(*args, **kwargs)
         except AttributeError:
-            return cls(MongoModel(model), *args, **kwargs)
+            return cls(MongoModel.get_for(model), *args, **kwargs)
 
     def __init__(self, model, query, _as_relation=None):
         """ Init a MongoDB-style query
@@ -89,7 +89,7 @@ class MongoQuery(object):
         for mjp in self._model.join(relnames, as_relation=self._as_relation):
             # Complex joins
             if mjp.query:
-                self._query = self.get_model_mongoquery(
+                self._query = self.get_for(
                         mjp.target_model,
                         self._query.join(mjp.relationship),
                         _as_relation=mjp.relationship
