@@ -1,11 +1,11 @@
 import unittest
 
-from mongosql import CrudViewMixin, StrictCrudHelper
+from flask import Flask, g
+from flask.ext.jsontools import FlaskJsonClient, DynamicJSONEncoder
+from sqlalchemy.orm.exc import NoResultFound
 
 from . import models
-from flask import Flask, request, g
-from flask.ext.jsontools import jsonapi, RestfulView, FlaskJsonClient, DynamicJSONEncoder
-from sqlalchemy.orm.exc import NoResultFound
+from .crud_view import ArticlesView
 
 
 class CrudTest(unittest.TestCase):
@@ -257,82 +257,3 @@ class CrudTest(unittest.TestCase):
 
     def test_404(self):
         """ Try accessing entities that do not exist """
-
-
-class ArticlesView(RestfulView, CrudViewMixin):
-    """ Full-featured CRUD view """
-
-    crudhelper = StrictCrudHelper(models.Article,
-        ro_fields=('id', 'uid',),
-        allow_relations=('user', 'user.comments'),
-        query_defaults={
-            'sort': ['id-'],
-        },
-        maxitems=2,
-    )
-    primary_key = ('id',)
-    entity_name = 'article'
-    decorators = (jsonapi,)
-
-    @staticmethod
-    def _getQueryObject():
-        """ Get Query Object from request
-
-        :rtype: dict | None
-        """
-        return (request.get_json() or {}).get('query', None)
-
-    @staticmethod
-    def _getDbSession():
-        """ Get database Session
-
-        :rtype: sqlalchemy.orm.Session
-        """
-        return g.db
-
-    def _query(self):
-        return self._getDbSession().query(self.crudhelper.model)
-
-    def list(self):
-        return { self.entity_name+'s': self._method_list(self._getQueryObject()) }
-
-    def create(self):
-        entity = self._method_create(request.get_json()[self.entity_name])
-        entity.uid = 3  # Manually set ro field value
-
-        ssn = self._getDbSession()
-        ssn.add(entity)
-        ssn.commit()
-
-        return {self.entity_name: entity}
-
-    def get(self, id):
-        return { self.entity_name: self._method_get(self._getQueryObject(), id=id) }
-
-    def replace(self, id):
-        entity, prev_entity = self._method_replace(request.get_json()[self.entity_name], id=id)
-
-        ssn = self._getDbSession()
-        ssn.expunge(prev_entity)  # Remove so it does not cause 'conflicts with persistent instance' errors
-        ssn.merge(entity)
-        ssn.commit()
-
-        return {self.entity_name: entity}
-
-    def update(self, id):
-        entity = self._method_update(request.get_json()[self.entity_name], id=id)
-
-        ssn = self._getDbSession()
-        ssn.add(entity)
-        ssn.commit()
-
-        return {self.entity_name: entity}
-
-    def delete(self, id):
-        entity = self._method_delete(id=id)
-
-        ssn = self._getDbSession()
-        ssn.delete(entity)
-        ssn.commit()
-
-        return {self.entity_name: entity}
