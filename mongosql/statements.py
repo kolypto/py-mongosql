@@ -1,6 +1,6 @@
 from collections import OrderedDict
 
-from sqlalchemy import Integer
+from sqlalchemy import Integer, Float
 from sqlalchemy.orm import load_only, defaultload, lazyload, contains_eager, aliased
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
@@ -9,12 +9,7 @@ from sqlalchemy.sql.functions import func
 from sqlalchemy.dialects import postgresql as pg
 
 
-class _MongoStatement(object):
-    def __call__(self, model):
-        raise NotImplementedError()
-
-
-class MongoProjection(_MongoStatement):
+class MongoProjection(object):
     """ MongoDB projection operator
 
         * { a: 1, b: 1 } - include only the given fields
@@ -25,7 +20,7 @@ class MongoProjection(_MongoStatement):
     def __init__(self, projection):
         """ Create a projection
 
-            :type projection: None | str | list | tuple | dict
+            :type projection: None | Sequence | dict
             :raises AssertionError: invalid input
         """
 
@@ -63,34 +58,34 @@ class MongoProjection(_MongoStatement):
             :return: Options to include columns
             :raises AssertionError: unknown column name
         """
+        # Check columns
+        projection_keys = set(projection.keys())
+        assert projection_keys <= bag.columns.names, 'Invalid column specified in projection'
+
         if inclusion_mode:
-            # Columns
-            return (bag.columns[name] for name, inc in projection.items())
+            return (bag.columns[name] for name in projection.keys())
         else:
-            # Check columns
-            projection_keys = set(projection.keys())
-            assert projection_keys <= bag.columns.names, 'Invalid column specified in projection'
-            # Columns
             return (col for name, col in bag.columns.items() if name not in projection_keys)
 
     @classmethod
-    def options(cls, bag, projection, inclusion_mode):
+    def options(cls, bag, projection, inclusion_mode, as_relation):
         """ Get query options for the columns """
-        return map(load_only,
-                   cls.columns(bag, projection, inclusion_mode))
+        return [as_relation.load_only(c) for c in cls.columns(bag, projection, inclusion_mode)]
 
-    def __call__(self, model):
+    def __call__(self, model, as_relation):
         """ Build the statement
 
             :type model: MongoModel
+            :param as_relation: Load interface to chain the loader options from
+            :type as_relation: sqlalchemy.orm.Load
             :rtype: list[sqlalchemy.sql.schema.Column]
             :return: The list of columns to include
             :raises AssertionError: unknown column name
         """
-        return self.options(model.model_bag, self.projection, self.inclusion_mode)
+        return self.options(model.model_bag, self.projection, self.inclusion_mode, as_relation)
 
 
-class MongoSort(_MongoStatement):
+class MongoSort(object):
     """ MongoDB sorting
 
         * OrderedDict({ a: +1, b: -1 })
@@ -100,7 +95,7 @@ class MongoSort(_MongoStatement):
     def __init__(self, sort_spec):
         """ Create the sorter
 
-            :type sort_spec: string | list | tuple | OrderedDict
+            :type sort_spec: string | Sequence | OrderedDict
         """
 
         #: Normalized sort: { field: +1 | -1 }
@@ -168,7 +163,7 @@ class MongoGroup(MongoSort):
     def __init__(self, group_spec):
         """ Create the grouper
 
-            :type group_spec: string | list | tuple | OrderedDict
+            :type group_spec: string | Sequence | OrderedDict
         """
         super(MongoGroup, self).__init__(group_spec)
 
@@ -184,7 +179,7 @@ class MongoGroup(MongoSort):
         return self.columns(model.model_bag, self.sort)
 
 
-class MongoCriteria(_MongoStatement):
+class MongoCriteria(object):
     """ MongoDB criteria
 
         Supports the following MongoDB operators:
@@ -212,6 +207,11 @@ class MongoCriteria(_MongoStatement):
     """
 
     def __init__(self, criteria):
+        """ Init a criteria
+
+        :param criteria: Criteria
+        :type criteria: None | dict
+        """
         if not criteria:
             criteria = {}
         assert isinstance(criteria, dict), 'Criteria must be one of: None, dict'
@@ -349,11 +349,11 @@ class _MongoJoinParams(object):
     def __init__(self, options, relationship=None, target_model=None, query=None):
         """ Values for joins
         :param options: Additional query options
-        :type options: list[sqlalchemy.orm.Load]
+        :type options: Sequence[sqlalchemy.orm.Load]
         :param relationship: Relationship
         :type relationship: sqlalchemy.orm.attributes.InstrumentedAttribute
         :param target_model: Target model
-        :type target_model: sqlalchemy.ext.declarative.api.DeclarativeMeta
+        :type target_model: sqlalchemy.ext.declarative.DeclarativeMeta
         :param query: Query dict for :meth:MongoQuery.query()
         :type query: dict
         """
@@ -363,20 +363,18 @@ class _MongoJoinParams(object):
         self.query = query
 
 
-class MongoJoin(_MongoStatement):
+class MongoJoin(object):
     """ Joining relations (eager load)
 
         - List of relation names
         - Dict: { relation-name: query-dict } for :meth:MongoQuery.query
     """
 
-    def __init__(self, relnames, as_relation):
+    def __init__(self, relnames):
         """ Create the joiner
 
         :param relnames: List of relation names to load eagerly
-        :type relnames: list[str]
-        :param as_relation: Load interface to chain the loader options from
-        :type as_relation: sqlalchemy.orm.Load
+        :type relnames: Sequence[str]
         """
 
         if not relnames:
@@ -386,9 +384,7 @@ class MongoJoin(_MongoStatement):
         elif isinstance(relnames, dict):
             self.rels = relnames
         else:
-            raise AssertionError('Join must be one of: None, list, tuple, dict')
-
-        self.as_relation = as_relation
+            raise AssertionError('Join must be one of: None, list, dict')
 
     @classmethod
     def options(cls, bag, rels, as_relation):
@@ -404,10 +400,13 @@ class MongoJoin(_MongoStatement):
         # Complex joins
         mjp_list = []
         for relname, query in rels.items():
+            rel = bag.relations[relname]
             if query is None:
-                pass
+                # No query specified: don't load further relations
+                as_relation.defaultload(rel).lazyload('*')
             else:
-                rel = bag.relations[relname]
+                # Query is present: prepare join information for further queries
+
                 rel_a = aliased(rel)
                 target_model = rel.property.mapper.class_
 
@@ -425,18 +424,20 @@ class MongoJoin(_MongoStatement):
         # Finish
         return mjp_list
 
-    def __call__(self, model):
+    def __call__(self, model, as_relation):
         """ Build the statement
 
             :type model: MongoModel
+            :param as_relation: Load interface to chain the loader options from
+            :type as_relation: sqlalchemy.orm.Load
             :return: List of join params
             :rtype: list[_MongoJoinParams]
             :raises AssertionError: unknown column name
         """
-        return self.options(model.model_bag, self.rels, self.as_relation)
+        return self.options(model.model_bag, self.rels, as_relation)
 
 
-class MongoAggregate(_MongoStatement):
+class MongoAggregate(object):
     """ Aggregation statements
 
         { computed_field_name: aggregation-expression }
@@ -469,6 +470,7 @@ class MongoAggregate(_MongoStatement):
     @classmethod
     def selectables(cls, bag, agg_spec):
         """ Create a list of statements from spec
+
         :type bag: mongosql.bag.ModelPropertyBags
         :rtype: list[sqlalchemy.sql.elements.ColumnElement]
         """
@@ -492,6 +494,10 @@ class MongoAggregate(_MongoStatement):
             elif isinstance(expression, basestring):
                 # Column name
                 expression_stmt = bag.columns[expression]
+                # Json column?
+                if bag.columns.is_column_json(expression):
+                    # PostgreSQL always returns text values from it, and for aggregation we usually need numbers :)
+                    expression_stmt = cast(expression_stmt, Float)
             elif isinstance(expression, dict):
                 # Boolean expression
                 expression_stmt = MongoCriteria.statement(bag, expression)

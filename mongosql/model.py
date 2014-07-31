@@ -14,7 +14,7 @@ class MongoModel(object):
         Attempts to use `mongomodel` property of the model
 
         :param model: Model
-        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.api.DeclarativeMeta
+        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.DeclarativeMeta
         :rtype: MongoModel
         """
         try:
@@ -51,11 +51,13 @@ class MongoModel(object):
 
     #region Wrappers
 
-    def project(self, projection):
+    def project(self, projection, as_relation):
         """ Build projection for a Query
 
-        :type projection: None | str | dict | list | tuple
+        :type projection: None | dict | Iterable
         :param projection: Projection spec
+        :param as_relation: Load interface to chain the loader options from
+        :type as_relation: sqlalchemy.orm.Load
         :returns: Query options to load specific columns
             Usage:
                 p = MongoModel(User).project(['login', 'email'])
@@ -64,12 +66,12 @@ class MongoModel(object):
         :raises AssertionError: invalid input
         :raises AssertionError: unknown column name
         """
-        return MongoProjection(projection)(self)
+        return MongoProjection(projection)(self, as_relation)
 
     def sort(self, sort_spec):
         """ Build sorting for a Query
 
-            :type sort_spec: None | str | list | tuple | OrderedDict
+            :type sort_spec: None | OrderedDict | Iterable
             :param sort_spec: Sort spec
             :returns: List of columns, with ordering modifiers applied.
                 Usage:
@@ -99,7 +101,7 @@ class MongoModel(object):
     def filter(self, criteria):
         """ Build filtering condition for a Query
 
-            :type criteria: None, dict
+            :type criteria: None | dict
             :param criteria: The criteria to filter with
             :rtype: sqlalchemy.sql.elements.BooleanClauseList
             :returns: Filtering conditions.
@@ -146,24 +148,26 @@ class MongoModel(object):
             self.skip(skip)
         )
 
-    def join(self, relnames, as_relation=None):
+    def join(self, relnames, as_relation):
         """ Build eager loader for the relations
 
-            :type relnames: list[str]
+            :type relnames: None | Iterable[str] | dict
             :param relnames: List of relations to load eagerly
+            :param as_relation: Load interface to chain the loader options from
+            :type as_relation: sqlalchemy.orm.Load
             :returns: Join params list
                 Usage: don't ask :)
             :returns: (list[query-options], list[(join, query-dict)])
             :rtype: list[mongosql.statements._MongoJoinParams]
             :raises AssertionError: invalid input
         """
-        return MongoJoin(relnames, as_relation)(self)
+        return MongoJoin(relnames)(self, as_relation)
 
     def aggregate(self, agg_spec):
         """ Select aggregated results
 
         :param agg_spec: Aggregation spec
-        :type agg_spec: dict
+        :type agg_spec: None | dict
         :return: List of selectables.
                 Usage:
                     a = MongoModel(User).aggregate({ oldest: { $max: 'age' } })

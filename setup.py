@@ -23,7 +23,7 @@ setup(
         'sqlalchemy >= 0.9.0',
     ],
     extras_require={
-        '_tests': ['nose', 'psycopg2',],
+        '_tests': ['nose', 'psycopg2', 'flask-jsontools'],
     },
     include_package_data=True,
     test_suite='nose.collector',

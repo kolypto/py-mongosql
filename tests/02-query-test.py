@@ -33,7 +33,8 @@ class QueryTest(unittest.TestCase):
         logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
     def tearDown(self):
-        pass#models.drop_all(self.engine)  # FIXME: test hangs when dropping tables for the second time!
+        self.db.close()  # Need to close the session: otherwise, drop_all() hangs forever
+        models.drop_all(self.engine)
 
     def test_projection(self):
         """ Test project() """
@@ -89,13 +90,14 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(user.id, 1)
         self.assertEqual(inspect(user).unloaded, {'articles'})
 
-        ssn = self.Session()  # need to reset it: session caches entities
+        ssn.close() # need to reset the session: it caches entities and gives bad results
 
         # Test: join() with filtered articles
         user = models.User.mongoquery(ssn) \
             .filter({'id': 1}) \
             .join({
                 'articles': {
+                    'project': ['id', 'title'],
                     'filter': {'id': 10},
                     'limit': 1
                 }
@@ -104,7 +106,7 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(user.id, 1)
         self.assertEqual(inspect(user).unloaded, {'comments'})
         self.assertEqual([10], [a.id for a in user.articles])  # Only one article! :)
-        self.assertEqual(inspect(user.articles[0]).unloaded, {'user', 'comments'})  # No relationships loaded
+        self.assertEqual(inspect(user.articles[0]).unloaded, {'user', 'comments',  'uid', 'data'})  # No relationships loaded, and projection worked
 
     def test_count(self):
         """ Test count() """
@@ -131,9 +133,9 @@ class QueryTest(unittest.TestCase):
         row = models.User.mongoquery(ssn).aggregate({ 'n': {'$sum': 1} }).end().one()
         self.assertEqual(row.n, 3)
 
-        # Test: aggregate { $sum: 10 }
-        row = models.User.mongoquery(ssn).aggregate({'n': {'$sum': 10}}).end().one()
-        self.assertEqual(row.n, 30)
+        # Test: aggregate { $sum: 10 }, with filtering
+        row = models.User.mongoquery(ssn).filter({'id': 1}).aggregate({'n': {'$sum': 10}}).end().one()
+        self.assertEqual(row.n, 10)
 
         # Test: aggregate() & group()
         q = {
@@ -174,6 +176,6 @@ class QueryTest(unittest.TestCase):
             'a_is_none': {'$sum': { 'data.o.a': None } },
         }
         row = models.Article.mongoquery(ssn).aggregate(q).end().one()
-        self.assertEqual(row2dict(row), {'high': 3, 'max_rating': '6', 'a_is_none': 2})  # FIXME: it works with these as strings! See ColumnsBag.__getitem__(): .astext
+        self.assertEqual(row2dict(row), {'high': 3, 'max_rating': 6, 'a_is_none': 2})
 
         # Aggregate & Group

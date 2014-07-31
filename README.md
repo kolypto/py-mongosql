@@ -161,9 +161,12 @@ Allows to eagerly load specific relations by name.
         'skip': 0,
         'limit': 100,
         # ... see Query Object Syntax
-      }
+      },
+      'comments': None,  # No specific options, just load
     }
     ```
+    
+    Note that no relations are loaded implicitly: you need to specify them in a `'join'`.
 
 ### Aggregate Operation
 

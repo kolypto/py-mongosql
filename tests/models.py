@@ -9,8 +9,10 @@ from sqlalchemy.sql.schema import ForeignKey
 from sqlalchemy.dialects import postgresql as pg
 
 from mongosql import MongoSqlBase
+from flask.ext.jsontools import JsonSerializableBase
 
-Base = declarative_base(cls=(MongoSqlBase,))
+
+Base = declarative_base(cls=(MongoSqlBase, JsonSerializableBase))
 
 
 class User(Base):
@@ -98,7 +100,20 @@ if __name__ == '__main__':
     engine, Session = init_database()
     ssn = Session()
 
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, func
     from sqlalchemy.orm import noload, load_only, defaultload, lazyload, aliased, contains_eager, contains_alias
+
+    ssn.query(User).filter_by(id=999).delete()
+
+    u1 = User(id=999, name=999)
+    u2 = User(id=999, name=999) ; ssn.add(u2)
+    u3 = ssn.query(User).filter_by(id=1).one()
+    u4 = ssn.query(User).options(load_only(User.name)).filter_by(id=2).one() ; u4.tags = [1,2,3]
+
+    #ssn.begin()
+    #ssn.commit()
+
+
+    s1, s2, s3, s4 = map(inspect, (u1, u2, u3, u4))
 
     from IPython import embed ; embed()

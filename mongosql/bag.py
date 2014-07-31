@@ -161,7 +161,7 @@ class ModelPropertyBags(object):
         """ Init bags
 
         :param model: Model
-        :type model: sqlalchemy.ext.declarative.api.DeclarativeMeta
+        :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         """
         ins = inspect(model)
         self.model = model

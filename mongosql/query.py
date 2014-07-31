@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Query, Load, defaultload
+from sqlalchemy.orm.query import QueryContext
 from sqlalchemy.sql import func
 
 from .model import MongoModel
@@ -14,7 +15,7 @@ class MongoQuery(object):
         Attempts to use `mongoquery` property of the model
 
         :param model: Model
-        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.api.DeclarativeMeta
+        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.DeclarativeMeta
         :rtype: MongoQuery
         """
         try:
@@ -47,13 +48,20 @@ class MongoQuery(object):
         a = self._model.aggregate(agg_spec)
         if a:
             self._query = self._query.with_entities(*a)
-            self._query = self._query.select_from(self._model.model)
             self._no_joindefaults = True  # no relationships should be loaded
+
+            # When no model criteria is specified, like COUNT(*), SqlAlchemy won't set the FROM clause
+            # Thus, we need to explicitly set the `FROM` clause in these cases
+            if self._query.whereclause is None:
+                self._query = self._query.select_from(self._model.model)
+
         return self
 
     def project(self, projection):
         """ Apply a projection to the query """
-        p = self._model.project(projection)
+        p = self._model.project(projection, as_relation=self._as_relation)
+        if self._model.model.__name__ == 'User':
+            assert 1
         self._query = self._query.options(p)
         return self
 
