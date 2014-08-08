@@ -554,7 +554,7 @@ When subclassing `CrudViewMixin`, you need to do the following:
 1. Initialize the `crudhelper` attribute with a [`CrudHelper`](#crudhelper) or [`StrictCrudHelper`](#strictcrudhelper)
 2. Override the `_query()` method, so `CrudViewMixin` knows how to get the database session
 3. Implement CRUD methods using `_method_list|create|get|replace|update|delete()` helpers
-4. If required, implement `_update_hook()` to handle cases when an entity is updated or replaced
+4. If required, implement `_save_hook()` to handle cases when an entity is going to be saved (created, updated or replaced)
 
 A full-featured and tested example: [tests/crud_view.py](tests/crud_view.py).
 It's still quite verbose, so make sure you create another base view for your application :)

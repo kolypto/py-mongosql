@@ -286,17 +286,17 @@ class CrudViewMixin(object):
         """
         return self._mquery(query_obj, *filter, **filter_by).end().one()
 
-    def _update_hook(self, new, prev, updating):
-        """ Hook into replace() and update() after the previous version of the model is loaded.
+    def _save_hook(self, method, new, prev=None):
+        """ Hook into create(), replace(), update() methods.
 
         This allows to make some changes to the model before it's actually saved.
 
+        :param method: Method name: 'create', 'replace', 'update'
+        :type method: str
         :param new: New version of the model
         :type new: sqlalchemy.ext.declarative.DeclarativeMeta
-        :param prev: Persisted version of the model
+        :param prev: Previously persisted version of the model (only available for 'replace' and 'update')
         :type prev: sqlalchemy.ext.declarative.DeclarativeMeta
-        :param updating: `True` when update() is being called, `False` for replace().
-        :type updating: bool
         """
         pass
 
@@ -330,7 +330,9 @@ class CrudViewMixin(object):
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         :raises AssertionError: validation errors
         """
-        return self._getCrudHelper().create_model(entity)
+        model = self._getCrudHelper().create_model(entity)
+        self._save_hook('create', model)
+        return model
 
     def _method_get(self, query_obj=None, *filter, **filter_by):
         """ Fetch a single entity
@@ -361,9 +363,7 @@ class CrudViewMixin(object):
         prev_model = self._get_one(None, *filter, **filter_by)
         new_model = self._getCrudHelper().replace_model(entity, prev_model)
 
-        # Update hook
-        self._update_hook(new_model, prev_model, updating=False)
-
+        self._save_hook('replace', new_model, prev_model)
         return new_model, prev_model
 
     def _method_update(self, entity, *filter, **filter_by):
@@ -382,9 +382,7 @@ class CrudViewMixin(object):
         prev_model = self._get_one(None, *filter, **filter_by)
         new_model = self._getCrudHelper().update_model(prev_model, entity)
 
-        # Update hook
-        self._update_hook(new_model, prev_model, updating=True)
-
+        self._save_hook('update', new_model, prev_model)
         return new_model
 
     def _method_delete(self, *filter, **filter_by):

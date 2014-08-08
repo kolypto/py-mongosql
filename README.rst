@@ -610,8 +610,8 @@ When subclassing ``CrudViewMixin``, you need to do the following:
    get the database session
 3. Implement CRUD methods using
    ``_method_list|create|get|replace|update|delete()`` helpers
-4. If required, implement ``_update_hook()`` to handle cases when an
-   entity is updated or replaced
+4. If required, implement ``_save_hook()`` to handle cases when an
+   entity is going to be saved (created, updated or replaced)
 
 A full-featured and tested example:
 `tests/crud\_view.py <tests/crud_view.py>`__. It's still quite verbose,
