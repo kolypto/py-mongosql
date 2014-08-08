@@ -1,3 +1,4 @@
+from sqlalchemy import Column
 from sqlalchemy.orm import ColumnProperty, RelationshipProperty
 from sqlalchemy.util import KeyedTuple
 
@@ -146,7 +147,7 @@ class StrictCrudHelper(CrudHelper):
         :param model: The model to work with
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         :param ro_fields: List of read-only properties
-        :type ro_fields: Iterable[str|sqlalchemy.orm.properties.ColumnProperty]
+        :type ro_fields: Iterable[str|sqlalchemy.Column|sqlalchemy.orm.properties.ColumnProperty]
         :param allow_relations: List of relations allowed to join to.
             Specify relation names or relationship properties.
             To allow joining to second-level relations, use dot-notation.
@@ -158,10 +159,15 @@ class StrictCrudHelper(CrudHelper):
         """
         super(StrictCrudHelper, self).__init__(model)
 
-        self._ro_fields = set(c.key if isinstance(c, ColumnProperty) else c for c in ro_fields)
+        self._ro_fields = set(c.key if isinstance(c, (Column, ColumnProperty)) else c for c in ro_fields)
         self._allowed_relations = set(c.key if isinstance(c, RelationshipProperty) else c for c in allow_relations)
         self._query_defaults = query_defaults or {}
         self._maxitems = maxitems or None
+
+        assert all(map(lambda v: isinstance(v, str), self._ro_fields)), 'Some values in `ro_fields` were not converted to string'
+        assert all(map(lambda v: isinstance(v, str), self._allowed_relations)), 'Some values in `allowed_relations` were not converted to string'
+        assert isinstance(self._query_defaults, dict), '`query_defaults` was not a dict'
+        assert self._maxitems is None or isinstance(self._maxitems, int), '`maxitems` must be an integer'
 
     @classmethod
     def _check_relations(cls, allowed_relations, qo, _prefix=''):
