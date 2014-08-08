@@ -1,8 +1,30 @@
+from copy import copy
 from sqlalchemy import Column
 from sqlalchemy.orm import ColumnProperty, RelationshipProperty
+from sqlalchemy.orm import Session, exc
 from sqlalchemy.util import KeyedTuple
 
 from . import MongoModel, MongoQuery
+
+
+def expunge_instance(instance):
+    """ Expunge an instance from its session.
+
+    Sometimes we keep the previous version of an instance.
+    In order to avoid SqlAlchemy conflicts because of two instances existing at the same time,
+    we need to remove the previous version from the session.
+
+    :param instance: Instance
+    :type instance: sqlalchemy.ext.declarative.DeclarativeMeta|None
+    """
+    if not instance:
+        return
+    try:
+        session = Session.object_session(instance)
+        if session:
+            session.expunge(instance)
+    except exc.UnmappedInstanceError:
+        pass
 
 
 class CrudHelper(object):
@@ -64,13 +86,13 @@ class CrudHelper(object):
         return entity
 
     def create_model(self, entity):
-        """ Create a model from entity dict.
+        """ Create an instance from entity dict.
 
         This only allows to assign column properties and not relations.
 
         :param entity: Entity dict
         :type entity: dict
-        :return: Created model
+        :return: Created instance
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         :raises AssertionError: validation errors
         """
@@ -83,21 +105,25 @@ class CrudHelper(object):
         # Create
         return self.model(**entity)
 
-    def update_model(self, model, entity):
-        """ Update a model from entity dict by merging the fields
+    def update_model(self, entity, prev_instance):
+        """ Update an instance from entity dict by merging the fields
 
         - Properties are copied over
         - JSON dicts are shallowly merged
 
-        :param model: Initial model
-        :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         :param entity: Entity dict
         :type entity: dict
-        :return: Updated model
+        :param prev_instance: Previous version
+        :type prev_instance: sqlalchemy.ext.declarative.DeclarativeMeta
+        :return: New instance, updated
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         :raises AssertionError: validation errors
         """
         assert isinstance(entity, dict), 'Update model: entity should be a dict'
+
+        # Copy instance (so we still have the previous version intact)
+        expunge_instance(prev_instance)
+        new_instance = copy(prev_instance)
 
         # Check columns
         unk_cols = self.check_columns(entity.keys())
@@ -108,27 +134,29 @@ class CrudHelper(object):
             if isinstance(val, dict) and self.mongomodel.model_bag.columns.is_column_json(name):
                 # JSON column
                 # NOTE: the field is very capricious to change management!
-                p = dict(getattr(model, name)) or {}  # Defaults to empty dict
+                p = dict(getattr(new_instance, name)) or {}  # Defaults to empty dict
                 for k, v in val.items():
                     p[k] = v  # Can't use update(): psycopg then raises 'TypeError: can't escape unicode to binary' o_O
-                setattr(model, name, p)  # so SQLalchemy knows the field is updated
+                setattr(new_instance, name, p)  # so SQLalchemy knows the field is updated
             else:
                 # Other columns
-                setattr(model, name, val)
+                setattr(new_instance, name, val)
 
         # Finish
-        return model
+        return new_instance
     
-    def replace_model(self, entity, prev_model=None):
-        """ Replace a model with an entity dict
+    def replace_model(self, entity, prev_instance=None):
+        """ Replace an instance with an entity dict
 
         :param entity: New entity dict
         :type entity: dict
-        :param prev_model: Previous version of the same model, if any
-        :type prev_model: sqlalchemy.ext.declarative.DeclarativeMeta|None
-        :return: The new model
+        :param prev_instance: Previous version (if found)
+        :type prev_instance: sqlalchemy.ext.declarative.DeclarativeMeta|None
+        :return: The new instance
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         """
+        assert isinstance(entity, dict), 'Replace model: entity should be a dict'
+        expunge_instance(prev_instance)
         return self.create_model(entity)
 
 
@@ -221,23 +249,30 @@ class StrictCrudHelper(CrudHelper):
         # Remove ro fields
         for k in set(entity.keys()) & self._ro_fields:
             entity.pop(k)
+
+        # Super
         return super(StrictCrudHelper, self).create_model(entity)
 
-    def update_model(self, model, entity):
+    def update_model(self, entity, prev_instance):
         assert isinstance(entity, dict), 'Update model: entity should be a dict'
 
         # Remove ro fields
         for k in set(entity.keys()) & self._ro_fields:
             entity.pop(k)
-        return super(StrictCrudHelper, self).update_model(model, entity)
 
-    def replace_model(self, entity, prev_model=None):
-        model = super(StrictCrudHelper, self).replace_model(entity, prev_model)
+        # Super
+        return super(StrictCrudHelper, self).update_model(entity, prev_instance)
+
+    def replace_model(self, entity, prev_instance=None):
+        assert isinstance(entity, dict), 'Replace model: entity should be a dict'
+
+        # Super
+        model = super(StrictCrudHelper, self).replace_model(entity, prev_instance)
 
         # Copy ro fields over
-        if prev_model:
+        if prev_instance:
             for name in self._ro_fields:
-                setattr(model, name, getattr(prev_model, name))
+                setattr(model, name, getattr(prev_instance, name))
         return model
 
 
@@ -295,13 +330,13 @@ class CrudViewMixin(object):
     def _save_hook(self, method, new, prev=None):
         """ Hook into create(), replace(), update() methods.
 
-        This allows to make some changes to the model before it's actually saved.
+        This allows to make some changes to the instance before it's actually saved.
 
         :param method: Method name: 'create', 'replace', 'update'
         :type method: str
-        :param new: New version of the model
+        :param new: New version
         :type new: sqlalchemy.ext.declarative.DeclarativeMeta
-        :param prev: Previously persisted version of the model (only available for 'replace' and 'update')
+        :param prev: Previously persisted version (only available for 'replace' and 'update')
         :type prev: sqlalchemy.ext.declarative.DeclarativeMeta
         """
         pass
@@ -332,13 +367,13 @@ class CrudViewMixin(object):
 
         :param entity: Entity dict
         :type entity: dict
-        :return: The created model (to be saved)
+        :return: The created instance (to be saved)
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         :raises AssertionError: validation errors
         """
-        model = self._getCrudHelper().create_model(entity)
-        self._save_hook('create', model)
-        return model
+        instance = self._getCrudHelper().create_model(entity)
+        self._save_hook('create', instance)
+        return instance
 
     def _method_get(self, query_obj=None, *filter, **filter_by):
         """ Fetch a single entity
@@ -360,17 +395,17 @@ class CrudViewMixin(object):
         :type entity: dict
         :param filter: Criteria to find the previous entity
         :param filter_by: Criteria to find the previous entity
-        :return: (new model, prev model)
+        :return: (new instance, prev instance)
         :rtype: (sqlalchemy.ext.declarative.DeclarativeMeta, sqlalchemy.ext.declarative.DeclarativeMeta)
         :raises sqlalchemy.orm.exc.NoResultFound: Nothing found
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        prev_model = self._get_one(None, *filter, **filter_by)
-        new_model = self._getCrudHelper().replace_model(entity, prev_model)
+        prev_instance = self._get_one(None, *filter, **filter_by)
+        new_instance = self._getCrudHelper().replace_model(entity, prev_instance)
 
-        self._save_hook('replace', new_model, prev_model)
-        return new_model, prev_model
+        self._save_hook('replace', new_instance, prev_instance)
+        return new_instance, prev_instance
 
     def _method_update(self, entity, *filter, **filter_by):
         """ Update an existing entity by merging the fields
@@ -379,17 +414,17 @@ class CrudViewMixin(object):
         :type entity: dict
         :param filter: Criteria to find the previous entity
         :param filter_by: Criteria to find the previous entity
-        :return: The updated model (to be saved)
+        :return: The updated instance (to be saved)
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         :raises sqlalchemy.orm.exc.NoResultFound: Nothing found
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        prev_model = self._get_one(None, *filter, **filter_by)
-        new_model = self._getCrudHelper().update_model(prev_model, entity)
+        prev_instance = self._get_one(None, *filter, **filter_by)
+        new_instance = self._getCrudHelper().update_model(entity, prev_instance)
 
-        self._save_hook('update', new_model, prev_model)
-        return new_model
+        self._save_hook('update', new_instance, prev_instance)
+        return new_instance
 
     def _method_delete(self, *filter, **filter_by):
         """ Delete an existing entity
@@ -398,7 +433,7 @@ class CrudViewMixin(object):
 
         :param filter: Criteria to find the previous entity
         :param filter_by: Criteria to find the previous entity
-        :return: The model to be deleted
+        :return: The instance to be deleted
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         :raises sqlalchemy.orm.exc.NoResultFound: Nothing found
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found

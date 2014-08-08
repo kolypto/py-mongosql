@@ -25,73 +25,71 @@ class ArticlesView(RestfulView, CrudViewMixin):
     # DRY: store it once
     entity_name = 'article'
 
-    @staticmethod
-    def _getQueryObject():
+    @property
+    def _qo(self):
         """ Get Query Object from request
 
         :rtype: dict | None
         """
         return (request.get_json() or {}).get('query', None)
 
-    @staticmethod
-    def _getDbSession():
+    def _db(self):
         """ Get database Session
 
         :rtype: sqlalchemy.orm.Session
         """
         return g.db
 
-    def _query(self):
-        return self._getDbSession().query(self.crudhelper.model)
+    def _query(self):  # Implemented
+        return self._db().query(self.crudhelper.model)
 
     #region Collection methods
 
     def list(self):
-        return { self.entity_name+'s': self._method_list(self._getQueryObject()) }
+        return { self.entity_name+'s': self._method_list(self._qo) }
 
     def create(self):
-        entity = self._method_create(request.get_json()[self.entity_name])
-        entity.uid = 3  # Manually set ro field value
+        instance = self._method_create(request.get_json()[self.entity_name])
+        instance.uid = 3  # Manually set ro field value
 
-        ssn = self._getDbSession()
-        ssn.add(entity)
+        ssn = self._db()
+        ssn.add(instance)
         ssn.commit()
 
-        return {self.entity_name: entity}
+        return {self.entity_name: instance}
 
     #endregion
 
     #region Single entity methods
 
     def get(self, id):
-        return { self.entity_name: self._method_get(self._getQueryObject(), id=id) }
+        return { self.entity_name: self._method_get(self._qo, id=id) }
 
     def replace(self, id):
-        entity, prev_entity = self._method_replace(request.get_json()[self.entity_name], id=id)
+        instance, prev_instance = self._method_replace(request.get_json()[self.entity_name], id=id)
 
-        ssn = self._getDbSession()
-        ssn.expunge(prev_entity)  # Remove so it does not cause 'conflicts with persistent instance' errors
-        ssn.merge(entity)
+        ssn = self._db()
+        ssn.merge(instance)
         ssn.commit()
 
-        return {self.entity_name: entity}
+        return {self.entity_name: instance}
 
     def update(self, id):
-        entity = self._method_update(request.get_json()[self.entity_name], id=id)
+        instance = self._method_update(request.get_json()[self.entity_name], id=id)
 
-        ssn = self._getDbSession()
-        ssn.add(entity)
+        ssn = self._db()
+        ssn.add(instance)
         ssn.commit()
 
-        return {self.entity_name: entity}
+        return {self.entity_name: instance}
 
     def delete(self, id):
-        entity = self._method_delete(id=id)
+        instance = self._method_delete(id=id)
 
-        ssn = self._getDbSession()
-        ssn.delete(entity)
+        ssn = self._db()
+        ssn.delete(instance)
         ssn.commit()
 
-        return {self.entity_name: entity}
+        return {self.entity_name: instance}
 
     #endregion

@@ -497,18 +497,19 @@ and now the following methods are available:
    ```MongoQuery`` <#mongoquery>`__ for the model, using ``query`` as
    the intial Query. ``query_obj`` is the optional `Query
    Object <#query-object-syntax>`__.
--  ``create_model(entity)``: Create an SqlAlchemy model from ``entity``
+-  ``create_model(entity)``: Create an SqlAlchemy instance from
+   ``entity`` dictionary.
+-  ``update_model(entity, prev_instance)``: Update an existing
+   SqlAlchemy instance with some fields from the provided ``entity``
    dictionary.
--  ``update_model(model, entity)``: Update an existing SqlAlchemy model
-   with some fields from the provided ``entity`` dictionary.
 
    With PostgreSQL JSON fields, it has an additional feature:
    dictionaries are shallowly merged together. This way,
    ``update_model()`` allows you to add certain fields without loading
    the entity.
 
--  ``replace_model(entity, prev_model=None)``: Replace an entity
-   completely, using a model created from the ``entity`` dictionary.
+-  ``replace_model(entity, prev_instance=None)``: Replace an entity
+   completely, using an instance created from the ``entity`` dictionary.
 
 ``AssertionError`` is raised for validation errors, e.g. an unknown
 field is provided by the user.
@@ -616,8 +617,6 @@ When subclassing ``CrudViewMixin``, you need to do the following:
 A full-featured and tested example:
 `tests/crud\_view.py <tests/crud_view.py>`__. It's still quite verbose,
 so make sure you create another base view for your application :)
-
-\*[CRUD]: Create, Read, Update, Delete operations
 
 .. |Build Status| image:: https://api.travis-ci.org/kolypto/py-mongosql.png?branch=master
    :target: https://travis-ci.org/kolypto/py-mongosql
