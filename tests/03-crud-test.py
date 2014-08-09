@@ -228,14 +228,12 @@ class CrudTest(unittest.TestCase):
                     'data': {'?': ':)'}
                 }
             })
+            print rv['article']
             self.assertEqual(rv['article'], {
                 'id': 10,  # ro
                 'uid': 1,  # ro
                 'title': '10',  # Unchanged
                 'data': {'?': ':)', 'o': {'a': True}, 'rating': 5},  # merged
-
-
-                'comments': [], 'user': None,  # FIXME: for some reason, replaced entity is considered transient and contains unloaded relationships. Why? they shouldn't be here
             })
 
     def test_delete(self):

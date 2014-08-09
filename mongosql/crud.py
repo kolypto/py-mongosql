@@ -3,6 +3,7 @@ from sqlalchemy import Column
 from sqlalchemy.orm import ColumnProperty, RelationshipProperty
 from sqlalchemy.orm import Session, exc
 from sqlalchemy.util import KeyedTuple
+from sqlalchemy.orm.session import make_transient, make_transient_to_detached
 
 from . import MongoModel, MongoQuery
 
@@ -16,6 +17,7 @@ def expunge_instance(instance):
 
     :param instance: Instance
     :type instance: sqlalchemy.ext.declarative.DeclarativeMeta|None
+    :rtype: Session
     """
     if not instance:
         return
@@ -23,6 +25,7 @@ def expunge_instance(instance):
         session = Session.object_session(instance)
         if session:
             session.expunge(instance)
+        return session
     except exc.UnmappedInstanceError:
         pass
 
@@ -105,6 +108,29 @@ class CrudHelper(object):
         # Create
         return self.model(**entity)
 
+    def instance_for_update(self, prev_instance):
+        """ Based on `prev_instance`, create a new instance that will track updates.
+
+            To achieve that, we first create an instance based on `prev_instance`'s primary key, and then mark it as "Detached":
+            then SqlAlchemy thinks it was persisted previously, and therefore tracks property updates on it.
+
+            Also, `prev_instance` is expunge()d from its session, and a new instance takes its place.
+
+            :param prev_instance: Origin.
+            :type prev_instance: sqlalchemy.ext.declarative.DeclarativeMeta
+            :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
+        """
+        # Create from PK
+        pk_values = {c: getattr(prev_instance, c) for c in self.mongomodel.model_bag.pk.names}
+        new_instance = self.model(**pk_values)
+
+        # Make 'detached'
+        make_transient_to_detached(new_instance)
+
+        # Expunge previous, replace with new
+        ssn = expunge_instance(prev_instance).add(new_instance)
+        return new_instance
+
     def update_model(self, entity, prev_instance):
         """ Update an instance from entity dict by merging the fields
 
@@ -121,12 +147,10 @@ class CrudHelper(object):
         """
         assert isinstance(entity, dict), 'Update model: entity should be a dict'
 
-        # Copy instance (so we still have the previous version intact)
-        expunge_instance(prev_instance)
-        new_instance = self.model()
-        for name in self.mongomodel.model_bag.columns.names:
-            if name not in entity or self.mongomodel.model_bag.columns.is_column_json(name):
-                setattr(new_instance, name, getattr(prev_instance, name))
+        # Make a fresh instance
+        # We need this magic to preserve `prev_instance` intact so `update_hook` can deal with it.
+        # Also, this allows to use just Session.add() instead or Session.merge()
+        new_instance = self.instance_for_update(prev_instance)
 
         # Check columns
         unk_cols = self.check_columns(entity.keys())
