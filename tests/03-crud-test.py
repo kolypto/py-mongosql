@@ -111,7 +111,7 @@ class CrudTest(unittest.TestCase):
         # Create
         # 'ro' field should be set manually
         with self.app.test_client() as c:
-            rv = c.put('/article/', json={
+            rv = c.post('/article/', json={
                 'article': {
                     'id': 999, 'uid': 999,
                     'title': '999',
@@ -199,13 +199,12 @@ class CrudTest(unittest.TestCase):
         # `uid` should be copied over
         # JSON `data` should be merged
         with self.app.test_client() as c:
-            rv = c.patch('/article/10', json={
+            rv = c.post('/article/10', json={
                 'article': {
                     'id': 999, 'uid': 999, # 'ro': ignored
                     'data': {'?': ':)'}
                 }
             })
-            print rv['article']
             self.assertEqual(rv['article'], {
                 'id': 10,  # ro
                 'uid': 1,  # ro

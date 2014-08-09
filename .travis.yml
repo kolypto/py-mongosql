@@ -10,6 +10,6 @@ before_script:
   - psql -c 'CREATE DATABASE test_mongosql OWNER=postgres;' -U postgres
 
 install:
-  - "pip install -e '.[_tests]'"
+  - "pip install -e '.[_dev]'"
 
 script: make test
