@@ -177,8 +177,11 @@ class StrictCrudHelper(CrudHelper):
 
         :param model: The model to work with
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
-        :param ro_fields: List of read-only properties
-        :type ro_fields: Iterable[str|sqlalchemy.Column|sqlalchemy.orm.properties.ColumnProperty]
+        :param ro_fields: List of read-only properties.
+
+            Also can be a callable which decides on the read-only properties at runtime.
+
+        :type ro_fields: Iterable[str|sqlalchemy.Column|sqlalchemy.orm.properties.ColumnProperty]|Callable
         :param allow_relations: List of relations allowed to join to.
             Specify relation names or relationship properties.
             To allow joining to second-level relations, use dot-notation.
@@ -190,15 +193,23 @@ class StrictCrudHelper(CrudHelper):
         """
         super(StrictCrudHelper, self).__init__(model)
 
-        self._ro_fields = set(c.key if isinstance(c, (Column, ColumnProperty)) else c for c in ro_fields)
+        self._ro_fields = ro_fields if callable(ro_fields) else set(c.key if isinstance(c, (Column, ColumnProperty)) else c for c in ro_fields)
         self._allowed_relations = set(c.key if isinstance(c, RelationshipProperty) else c for c in allow_relations)
         self._query_defaults = query_defaults or {}
         self._maxitems = maxitems or None
 
-        assert all(map(lambda v: isinstance(v, str), self._ro_fields)), 'Some values in `ro_fields` were not converted to string'
+        assert callable(self._ro_fields) or all(map(lambda v: isinstance(v, str), self._ro_fields)), 'Some values in `ro_fields` were not converted to string'
         assert all(map(lambda v: isinstance(v, str), self._allowed_relations)), 'Some values in `allowed_relations` were not converted to string'
         assert isinstance(self._query_defaults, dict), '`query_defaults` was not a dict'
         assert self._maxitems is None or isinstance(self._maxitems, int), '`maxitems` must be an integer'
+
+    @property
+    def ro_fields(self):
+        """ Get the set of read-only properties
+
+        :rtype: set
+        """
+        return set(self._ro_fields()) if callable(self._ro_fields) else self._ro_fields
 
     @classmethod
     def _check_relations(cls, allowed_relations, qo, _prefix=''):
@@ -250,7 +261,7 @@ class StrictCrudHelper(CrudHelper):
         assert isinstance(entity, dict), 'Create model: entity should be a dict'
 
         # Remove ro fields
-        for k in set(entity.keys()) & self._ro_fields:
+        for k in set(entity.keys()) & self.ro_fields:
             entity.pop(k)
 
         # Super
@@ -260,7 +271,7 @@ class StrictCrudHelper(CrudHelper):
         assert isinstance(entity, dict), 'Update model: entity should be a dict'
 
         # Remove ro fields
-        for k in set(entity.keys()) & self._ro_fields:
+        for k in set(entity.keys()) & self.ro_fields:
             entity.pop(k)
 
         # Super
@@ -274,7 +285,7 @@ class StrictCrudHelper(CrudHelper):
 
         # Copy ro fields over
         if prev_instance:
-            for name in self._ro_fields:
+            for name in self.ro_fields:
                 setattr(model, name, getattr(prev_instance, name))
         return model
 

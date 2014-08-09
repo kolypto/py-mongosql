@@ -487,6 +487,9 @@ with your models.
 Its constructor accepts the following additional arguments:
 
 * `ro_fields=()`: List of read-only fields or field names. The user is not allowed to change or define these.
+
+    Alternatively, this can be a callable which returns the list of read-only fields at runtime (e.g. in case this depends on the current user permissions).
+
 * `allow_relations=()`: List of relations of relation names the user is allowed to [join](#join-operation).
     
     All [joins](#join-operation) in [Query Objects](#query-object-syntax) are then checked against the list, 
