@@ -34,7 +34,7 @@ class CrudHelper(object):
         """ Init CRUD helper
 
         :param model: The model to work with
-        :type model: sqlalchemy.ext.declarative.DeclarativeMeta
+        :type model: type
         """
         self.model = model
         self.mongomodel = MongoModel.get_for(self.model)
@@ -123,7 +123,10 @@ class CrudHelper(object):
 
         # Copy instance (so we still have the previous version intact)
         expunge_instance(prev_instance)
-        new_instance = copy(prev_instance)
+        new_instance = self.model()
+        for name in self.mongomodel.model_bag.columns.names:
+            if name not in entity or self.mongomodel.model_bag.columns.is_column_json(name):
+                setattr(new_instance, name, getattr(prev_instance, name))
 
         # Check columns
         unk_cols = self.check_columns(entity.keys())
@@ -134,7 +137,7 @@ class CrudHelper(object):
             if isinstance(val, dict) and self.mongomodel.model_bag.columns.is_column_json(name):
                 # JSON column
                 # NOTE: the field is very capricious to change management!
-                p = dict(getattr(new_instance, name)) or {}  # Defaults to empty dict
+                p = dict(getattr(new_instance, name) or ())  # Defaults to empty dict
                 for k, v in val.items():
                     p[k] = v  # Can't use update(): psycopg then raises 'TypeError: can't escape unicode to binary' o_O
                 setattr(new_instance, name, p)  # so SQLalchemy knows the field is updated

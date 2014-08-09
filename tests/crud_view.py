@@ -78,7 +78,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
         instance = self._method_update(request.get_json()[self.entity_name], id=id)
 
         ssn = self._db()
-        ssn.add(instance)
+        ssn.merge(instance)
         ssn.commit()
 
         return {self.entity_name: instance}
