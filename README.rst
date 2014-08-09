@@ -508,9 +508,6 @@ and now the following methods are available:
    ``update_model()`` allows you to add certain fields without loading
    the entity.
 
--  ``replace_model(entity, prev_instance=None)``: Replace an entity
-   completely, using an instance created from the ``entity`` dictionary.
-
 ``AssertionError`` is raised for validation errors, e.g. an unknown
 field is provided by the user.
 
@@ -615,9 +612,10 @@ When subclassing ``CrudViewMixin``, you need to do the following:
 2. Override the ``_query()`` method, so ``CrudViewMixin`` knows how to
    get the database session
 3. Implement CRUD methods using
-   ``_method_list|create|get|replace|update|delete()`` helpers
-4. If required, implement ``_save_hook()`` to handle cases when an
-   entity is going to be saved (created, updated or replaced)
+   ``_method_list|create|get|update|delete()`` helpers
+4. If required, implement
+   ``_save_hook(new_instance, prev_instance=None)`` to handle cases when
+   an entity is going to be saved (created or updated)
 
 A full-featured and tested example:
 `tests/crud\_view.py <tests/crud_view.py>`__. It's still quite verbose,

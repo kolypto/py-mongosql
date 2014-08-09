@@ -171,20 +171,6 @@ class CrudHelper(object):
 
         # Finish
         return new_instance
-    
-    def replace_model(self, entity, prev_instance=None):
-        """ Replace an instance with an entity dict
-
-        :param entity: New entity dict
-        :type entity: dict
-        :param prev_instance: Previous version (if found)
-        :type prev_instance: sqlalchemy.ext.declarative.DeclarativeMeta|None
-        :return: The new instance
-        :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
-        """
-        assert isinstance(entity, dict), 'Replace model: entity should be a dict'
-        expunge_instance(prev_instance)
-        return self.create_model(entity)
 
 
 class StrictCrudHelper(CrudHelper):
@@ -301,18 +287,6 @@ class StrictCrudHelper(CrudHelper):
         # Super
         return super(StrictCrudHelper, self).update_model(entity, prev_instance)
 
-    def replace_model(self, entity, prev_instance=None):
-        assert isinstance(entity, dict), 'Replace model: entity should be a dict'
-
-        # Super
-        model = super(StrictCrudHelper, self).replace_model(entity, prev_instance)
-
-        # Copy ro fields over
-        if prev_instance:
-            for name in self.ro_fields:
-                setattr(model, name, getattr(prev_instance, name))
-        return model
-
 
 class CrudViewMixin(object):
     """ Base class for CRUD implementations """
@@ -365,17 +339,15 @@ class CrudViewMixin(object):
         """
         return self._mquery(query_obj, *filter, **filter_by).end().one()
 
-    def _save_hook(self, method, new, prev=None):
-        """ Hook into create(), replace(), update() methods.
+    def _save_hook(self, new, prev=None):
+        """ Hook into create(), update() methods.
 
         This allows to make some changes to the instance before it's actually saved.
 
-        :param method: Method name: 'create', 'replace', 'update'
-        :type method: str
         :param new: New version
         :type new: sqlalchemy.ext.declarative.DeclarativeMeta
-        :param prev: Previously persisted version (only available for 'replace' and 'update')
-        :type prev: sqlalchemy.ext.declarative.DeclarativeMeta
+        :param prev: Previously persisted version (only available for 'update')
+        :type prev: sqlalchemy.ext.declarative.DeclarativeMeta|None
         """
         pass
 
@@ -410,7 +382,7 @@ class CrudViewMixin(object):
         :raises AssertionError: validation errors
         """
         instance = self._getCrudHelper().create_model(entity)
-        self._save_hook('create', instance)
+        self._save_hook(instance)
         return instance
 
     def _method_get(self, query_obj=None, *filter, **filter_by):
@@ -425,25 +397,6 @@ class CrudViewMixin(object):
         :raises AssertionError: validation errors
         """
         return self._get_one(query_obj, *filter, **filter_by)
-
-    def _method_replace(self, entity, *filter, **filter_by):
-        """ Replace an existing entity
-
-        :param entity: Entity dict
-        :type entity: dict
-        :param filter: Criteria to find the previous entity
-        :param filter_by: Criteria to find the previous entity
-        :return: (new instance, prev instance)
-        :rtype: (sqlalchemy.ext.declarative.DeclarativeMeta, sqlalchemy.ext.declarative.DeclarativeMeta)
-        :raises sqlalchemy.orm.exc.NoResultFound: Nothing found
-        :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
-        :raises AssertionError: validation errors
-        """
-        prev_instance = self._get_one(None, *filter, **filter_by)
-        new_instance = self._getCrudHelper().replace_model(entity, prev_instance)
-
-        self._save_hook('replace', new_instance, prev_instance)
-        return new_instance, prev_instance
 
     def _method_update(self, entity, *filter, **filter_by):
         """ Update an existing entity by merging the fields
@@ -461,7 +414,7 @@ class CrudViewMixin(object):
         prev_instance = self._get_one(None, *filter, **filter_by)
         new_instance = self._getCrudHelper().update_model(entity, prev_instance)
 
-        self._save_hook('update', new_instance, prev_instance)
+        self._save_hook(new_instance, prev_instance)
         return new_instance
 
     def _method_delete(self, *filter, **filter_by):

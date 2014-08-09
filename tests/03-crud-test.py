@@ -192,29 +192,6 @@ class CrudTest(unittest.TestCase):
                 }
             })
 
-    def test_replace(self):
-        """ Test replace() """
-
-        # Replace
-        # `uid` should be copied over
-        # JSON `data` should be replaced
-        with self.app.test_client() as c:
-            rv = c.post('/article/10', json={
-                'article': {
-                    'id': 999, 'uid': 999,
-                    'data': {'?': ':)'}
-                }
-                })
-            self.assertEqual(rv['article'], {
-                'id': 10,  # ro
-                'uid': 1,  # ro
-                'title': None,  # Changed to default upon save
-                'data': {'?': ':)'},  # replaced
-
-                'user': None, 'comments': [],  # FIXME: for some reason, replaced entity is considered transient and contains unloaded relationships. Why? they shouldn't be here
-            })
-
-
     def test_update(self):
         """ Test update() """
 

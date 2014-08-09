@@ -65,15 +65,6 @@ class ArticlesView(RestfulView, CrudViewMixin):
     def get(self, id):
         return { self.entity_name: self._method_get(self._qo, id=id) }
 
-    def replace(self, id):
-        instance, prev_instance = self._method_replace(request.get_json()[self.entity_name], id=id)
-
-        ssn = self._db()
-        ssn.merge(instance)
-        ssn.commit()
-
-        return {self.entity_name: instance}
-
     def update(self, id):
         instance = self._method_update(request.get_json()[self.entity_name], id=id)
 
