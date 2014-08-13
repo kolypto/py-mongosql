@@ -13,6 +13,26 @@ Tired of adding query parameters for pagination, filtering, sorting? Here is the
 Table of Contents
 =================
 
+* <a href="#mongosql">MongoSQL</a>
+* <a href="#table-of-contents">Table of Contents</a>
+* <a href="#querying">Querying</a>
+    * <a href="#query-object-syntax">Query Object Syntax</a>
+    * <a href="#operations">Operations</a>
+        * <a href="#projection-operation">Projection Operation</a>
+        * <a href="#sort-operation">Sort Operation</a>
+        * <a href="#group-operation">Group Operation</a>
+        * <a href="#filter-operation">Filter Operation</a>
+        * <a href="#join-operation">Join Operation</a>
+        * <a href="#aggregate-operation">Aggregate Operation</a>
+    * <a href="#json-column-support">JSON Column Support</a>
+* <a href="#mongoquery">MongoQuery</a>
+    * <a href="#starting-up">Starting Up</a>
+    * <a href="#querying-1">Querying</a>
+* <a href="#crud-helpers">CRUD Helpers</a>
+    * <a href="#crudhelper">CrudHelper</a>
+    * <a href="#strictcrudhelper">StrictCrudHelper</a>
+    * <a href="#crudviewmixin">CrudViewMixin</a> 
+
 
 
 
@@ -34,11 +54,11 @@ Query Object Syntax
 Querying is made with *Query Objects*: a dictionary which defines how to perform a query.
 
 * `project`: [Projection Operation](#projection-operation)
-* `sort`: [Sort Operation](#projection-operation)
-* `group`: [Group Operation](#projection-operation)
-* `filter`: [Filter Operation](#projection-operation)
-* `join`: [Join Operation](#projection-operation)
-* `aggregate`: [Aggregate Operation](#projection-operation)
+* `sort`: [Sort Operation](#sort-operation)
+* `group`: [Group Operation](#group-operation)
+* `filter`: [Filter Operation](#filter-operation)
+* `join`: [Join Operation](#join-operation)
+* `aggregate`: [Aggregate Operation](#aggregate-operation)
 * `skip`, `limit`: Rows slicing: skipping and limiting.
     `skip=10, limit=100` will result in `SELECT .. LIMIT 100 OFFSET 10`.
 * `count`: Instead of producing results, just count the number of rows.
