@@ -8,28 +8,6 @@ from sqlalchemy.orm.session import make_transient, make_transient_to_detached
 from . import MongoModel, MongoQuery
 
 
-def expunge_instance(instance):
-    """ Expunge an instance from its session.
-
-    Sometimes we keep the previous version of an instance.
-    In order to avoid SqlAlchemy conflicts because of two instances existing at the same time,
-    we need to remove the previous version from the session.
-
-    :param instance: Instance
-    :type instance: sqlalchemy.ext.declarative.DeclarativeMeta|None
-    :rtype: Session
-    """
-    if not instance:
-        return
-    try:
-        session = Session.object_session(instance)
-        if session:
-            session.expunge(instance)
-        return session
-    except exc.UnmappedInstanceError:
-        pass
-
-
 class CrudHelper(object):
     """ Crud helper functions """
 
@@ -114,21 +92,29 @@ class CrudHelper(object):
             To achieve that, we first create an instance based on `prev_instance`'s primary key, and then mark it as "Detached":
             then SqlAlchemy thinks it was persisted previously, and therefore tracks property updates on it.
 
-            Also, `prev_instance` is expunge()d from its session, and a new instance takes its place.
+            Also, `prev_instance` is expunge()d from its session, replaced with the new instance:
+            this is done to keep the previous instance intact while updates are made to the new instance.
+            In order to avoid SqlAlchemy conflicts because of two instances existing at the same time,
+            we need to remove the previous version from the session.
 
             :param prev_instance: Origin.
             :type prev_instance: sqlalchemy.ext.declarative.DeclarativeMeta
             :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
+            :raises sqlalchemy.orm.exc.UnmappedInstanceError: `prev_instance` was not bound to any Session
         """
         # Create from PK
         pk_values = {c: getattr(prev_instance, c) for c in self.mongomodel.model_bag.pk.names}
         new_instance = self.model(**pk_values)
 
-        # Make 'detached'
+        # Make the new instance 'detached'
         make_transient_to_detached(new_instance)
 
-        # Expunge previous, replace with new
-        ssn = expunge_instance(prev_instance).add(new_instance)
+        # Expunge the previous instance and replace it with new
+        ssn = Session.object_session(prev_instance)
+        ssn.expunge(prev_instance)
+        ssn.add(new_instance)
+
+        # Finish
         return new_instance
 
     def update_model(self, entity, prev_instance):
