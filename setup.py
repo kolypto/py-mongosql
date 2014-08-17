@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mongosql',
-    version='1.1.0-2',
+    version='1.1.1-0',
     author='Mark Vartanyan',
     author_email='kolypto@gmail.com',
 
@@ -15,7 +15,7 @@ setup(
     long_description=open('README.rst').read(),
     keywords=['sqlalchemy'],
 
-    packages=find_packages(),
+    packages=find_packages(exclude=('tests',)),
     scripts=[],
     entry_points={},
 

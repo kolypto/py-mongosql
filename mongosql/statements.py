@@ -402,11 +402,18 @@ class MongoJoin(object):
         for relname, query in rels.items():
             rel = bag.relations[relname]
             if query is None:
-                # No query specified: don't load further relations
-                as_relation.defaultload(rel).lazyload('*')
+                # No query specified
+                # Just load this relationship
+                if rel.property.lazy in (True, None, 'select'):
+                    # If `lazy` configured to lazyload -- override with `joinedload()`
+                    rel_load = as_relation.immediateload(rel)
+                else:
+                    # If `lazy` configured for eager loading -- just use `defaultload()` to trigger it
+                    rel_load = as_relation.defaultload(rel)
+                # No query specified: do not load sub-relations
+                rel_load.lazyload('*')
             else:
                 # Query is present: prepare join information for further queries
-
                 rel_a = aliased(rel)
                 target_model = rel.property.mapper.class_
 

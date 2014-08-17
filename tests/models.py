@@ -32,7 +32,7 @@ class Article(Base):
     title = Column(String)
     data = Column(pg.JSON)  # JSON field
 
-    user = relationship(User, lazy='joined', backref=backref('articles', lazy='joined',))
+    user = relationship(User, backref=backref('articles'))
 
 
 class Comment(Base):
@@ -45,8 +45,8 @@ class Comment(Base):
 
     text = Column(String)
 
-    article = relationship(Article, lazy='joined', backref=backref("comments", lazy='joined',))
-    user = relationship(User, lazy='joined', backref=backref("comments", lazy='joined',))
+    article = relationship(Article, backref=backref("comments"))
+    user = relationship(User, backref=backref("comments"))
 
 
 
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     ssn = Session()
 
     from sqlalchemy import inspect, func
-    from sqlalchemy.orm import noload, load_only, defaultload, lazyload, aliased, contains_eager, contains_alias
+    from sqlalchemy.orm import noload, load_only, defaultload, lazyload, immediateload, aliased, contains_eager, contains_alias
 
     ssn.query(User).filter_by(id=999).delete()
 

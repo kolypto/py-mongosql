@@ -218,13 +218,14 @@ class CrudTest(unittest.TestCase):
         # Delete
         with self.app.test_client() as c:
             rv = c.delete('/article/10', json=None)
+            from pprint import pprint
+            pprint(rv.get_json())
             self.assertEqual(rv['article'], {
                 'id': 10, 'uid': 1,
                 'title': '10',
                 'data': {'o': {'a': True}, 'rating': 5},
 
-                # FIXME: for some reason, deleted entity has ALL relationships loaded! Why? They shouldn't be here
-                'user': {'age': 18, 'id': 1, 'name': 'a', 'tags': ['1', 'a']},
+                # FIXME: for some reason, deleted entity has 'comments' relationships loaded! Why? They shouldn't be here
                 'comments': [{'aid': None, 'id': 1, 'text': '10-a', 'uid': 1},{'aid': None, 'id': 2, 'text': '10-b', 'uid': 2},{'aid': None, 'id': 3, 'text': '10-c', 'uid': 3}],
             })
 
