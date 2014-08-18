@@ -14,6 +14,33 @@ Here is the ultimate solution.
 Table of Contents
 =================
 
+-  MongoSQL
+-  Table of Contents
+-  Querying
+
+   -  Query Object Syntax
+   -  Operations
+
+      -  Projection Operation
+      -  Sort Operation
+      -  Group Operation
+      -  Filter Operation
+      -  Join Operation
+      -  Aggregate Operation
+
+   -  JSON Column Support
+
+-  MongoQuery
+
+   -  Starting Up
+   -  Querying
+
+-  CRUD Helpers
+
+   -  CrudHelper
+   -  StrictCrudHelper
+   -  CrudViewMixin
+
 Querying
 ========
 
@@ -31,11 +58,11 @@ Querying is made with *Query Objects*: a dictionary which defines how to
 perform a query.
 
 -  ``project``: `Projection Operation <#projection-operation>`__
--  ``sort``: `Sort Operation <#projection-operation>`__
--  ``group``: `Group Operation <#projection-operation>`__
--  ``filter``: `Filter Operation <#projection-operation>`__
--  ``join``: `Join Operation <#projection-operation>`__
--  ``aggregate``: `Aggregate Operation <#projection-operation>`__
+-  ``sort``: `Sort Operation <#sort-operation>`__
+-  ``group``: `Group Operation <#group-operation>`__
+-  ``filter``: `Filter Operation <#filter-operation>`__
+-  ``join``: `Join Operation <#join-operation>`__
+-  ``aggregate``: `Aggregate Operation <#aggregate-operation>`__
 -  ``skip``, ``limit``: Rows slicing: skipping and limiting.
    ``skip=10, limit=100`` will result in
    ``SELECT .. LIMIT 100 OFFSET 10``.
