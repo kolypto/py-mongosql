@@ -1,4 +1,5 @@
 from sqlalchemy import inspect
+from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql as pg
 
 
@@ -167,13 +168,19 @@ class ModelPropertyBags(object):
         self.model = model
 
         #: Column properties
-        self.columns   =    DotColumnsBag({name:   getattr(model, name)   for name, c in ins.column_attrs .items()})
+        self.columns   =    DotColumnsBag({name:   getattr(model, name)
+                                           for name, c in ins.column_attrs .items()
+                                           if isinstance(c.expression, Column)})  # ignore Labels and other stuff
 
         #: Relationship properties
-        self.relations = RelationshipsBag({name:   getattr(model, name)   for name, c in ins.relationships.items()})
+        self.relations = RelationshipsBag({name:   getattr(model, name)
+                                           for name, c in ins.relationships.items()})
 
         #: Primary key properties
-        self.pk        =    PrimaryKeyBag({c.name: self.columns[c.name]   for       c in ins.primary_key})
+        self.pk        =    PrimaryKeyBag({c.name: self.columns[c.name]
+                                           for c in ins.primary_key})
 
         #: Nullable properties
-        self.nullable  =       ColumnsBag({name: c for name, c in self.columns.items() if c.nullable})
+        self.nullable  =       ColumnsBag({name: c
+                                           for name, c in self.columns.items()
+                                           if c.nullable})
