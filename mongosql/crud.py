@@ -194,8 +194,8 @@ class StrictCrudHelper(CrudHelper):
         self._query_defaults = query_defaults or {}
         self._maxitems = maxitems or None
 
-        assert callable(self._ro_fields) or all(map(lambda v: isinstance(v, str), self._ro_fields)), 'Some values in `ro_fields` were not converted to string'
-        assert all(map(lambda v: isinstance(v, str), self._allowed_relations)), 'Some values in `allowed_relations` were not converted to string'
+        assert callable(self._ro_fields) or all(isinstance(x, basestring) for x in self._ro_fields), 'Some values in `ro_fields` were not converted to string'
+        assert all(isinstance(x, str) for x in self._allowed_relations), 'Some values in `allowed_relations` were not converted to string'
         assert isinstance(self._query_defaults, dict), '`query_defaults` was not a dict'
         assert self._maxitems is None or isinstance(self._maxitems, int), '`maxitems` must be an integer'
 
