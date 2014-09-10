@@ -1,3 +1,5 @@
+from sqlalchemy.orm.attributes import flag_modified
+
 from . import MongoModel, MongoQuery
 from .hist import ModelHistoryProxy
 
@@ -103,14 +105,12 @@ class CrudHelper(object):
         # Update
         for name, val in entity.items():
             if isinstance(val, dict) and self.mongomodel.model_bag.columns.is_column_json(name):
-                # JSON column
-                # NOTE: the field is very capricious to change management!
-                p = dict(getattr(instance, name) or ())  # Defaults to empty dict
-                for k, v in val.items():
-                    p[k] = v  # Can't use update(): psycopg then raises 'TypeError: can't escape unicode to binary' o_O
-                setattr(instance, name, p)  # so SQLalchemy knows the field is updated
+                # JSON column with a dict: do a shallow merge
+                getattr(instance, name).update(val)
+                # Tell SqlAlchemy that a mutable collection was updated
+                flag_modified(instance, name)
             else:
-                # Other columns
+                # Other columns: just assign
                 setattr(instance, name, val)
 
         # Finish

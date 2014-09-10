@@ -22,7 +22,7 @@ class _PropertiesBag(object):
         :type col: sqlalchemy.sql.schema.Column
         :rtype: bool
         """
-        return isinstance(col.type, pg.JSON)
+        return isinstance(col.type, (pg.JSON, pg.JSONB))
 
     @staticmethod
     def _dot_notation(name):
