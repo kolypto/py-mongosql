@@ -1,11 +1,5 @@
-from copy import copy
-from sqlalchemy import Column
-from sqlalchemy.orm import ColumnProperty, RelationshipProperty
-from sqlalchemy.orm import Session, exc
-from sqlalchemy.util import KeyedTuple
-from sqlalchemy.orm.session import make_transient, make_transient_to_detached
-
 from . import MongoModel, MongoQuery
+from .hist import ModelHistoryProxy
 
 
 class CrudHelper(object):
@@ -86,38 +80,7 @@ class CrudHelper(object):
         # Create
         return self.model(**entity)
 
-    def instance_for_update(self, prev_instance):
-        """ Based on `prev_instance`, create a new instance that will track updates.
-
-            To achieve that, we first create an instance based on `prev_instance`'s primary key, and then mark it as "Detached":
-            then SqlAlchemy thinks it was persisted previously, and therefore tracks property updates on it.
-
-            Also, `prev_instance` is expunge()d from its session, replaced with the new instance:
-            this is done to keep the previous instance intact while updates are made to the new instance.
-            In order to avoid SqlAlchemy conflicts because of two instances existing at the same time,
-            we need to remove the previous version from the session.
-
-            :param prev_instance: Origin.
-            :type prev_instance: sqlalchemy.ext.declarative.DeclarativeMeta
-            :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
-            :raises sqlalchemy.orm.exc.UnmappedInstanceError: `prev_instance` was not bound to any Session
-        """
-        # Create from PK
-        pk_values = {c: getattr(prev_instance, c) for c in self.mongomodel.model_bag.pk.names}
-        new_instance = self.model(**pk_values)
-
-        # Make the new instance 'detached'
-        make_transient_to_detached(new_instance)
-
-        # Expunge the previous instance and replace it with new
-        ssn = Session.object_session(prev_instance)
-        ssn.expunge(prev_instance)
-        ssn.add(new_instance)
-
-        # Finish
-        return new_instance
-
-    def update_model(self, entity, prev_instance):
+    def update_model(self, entity, instance):
         """ Update an instance from entity dict by merging the fields
 
         - Properties are copied over
@@ -125,18 +88,13 @@ class CrudHelper(object):
 
         :param entity: Entity dict
         :type entity: dict
-        :param prev_instance: Previous version
-        :type prev_instance: sqlalchemy.ext.declarative.DeclarativeMeta
+        :param instance: The instance to update
+        :type instance: sqlalchemy.ext.declarative.DeclarativeMeta
         :return: New instance, updated
         :rtype: sqlalchemy.ext.declarative.DeclarativeMeta
         :raises AssertionError: validation errors
         """
         assert isinstance(entity, dict), 'Update model: entity should be a dict'
-
-        # Make a fresh instance
-        # We need this magic to preserve `prev_instance` intact so `update_hook` can deal with it.
-        # Also, this allows to use just Session.add() instead or Session.merge()
-        new_instance = self.instance_for_update(prev_instance)
 
         # Check columns
         unk_cols = self.check_columns(entity.keys())
@@ -147,16 +105,16 @@ class CrudHelper(object):
             if isinstance(val, dict) and self.mongomodel.model_bag.columns.is_column_json(name):
                 # JSON column
                 # NOTE: the field is very capricious to change management!
-                p = dict(getattr(new_instance, name) or ())  # Defaults to empty dict
+                p = dict(getattr(instance, name) or ())  # Defaults to empty dict
                 for k, v in val.items():
                     p[k] = v  # Can't use update(): psycopg then raises 'TypeError: can't escape unicode to binary' o_O
-                setattr(new_instance, name, p)  # so SQLalchemy knows the field is updated
+                setattr(instance, name, p)  # so SQLalchemy knows the field is updated
             else:
                 # Other columns
-                setattr(new_instance, name, val)
+                setattr(instance, name, val)
 
         # Finish
-        return new_instance
+        return instance
 
 
 class StrictCrudHelper(CrudHelper):
@@ -189,8 +147,8 @@ class StrictCrudHelper(CrudHelper):
         """
         super(StrictCrudHelper, self).__init__(model)
 
-        self._ro_fields = ro_fields if callable(ro_fields) else set(c.key if isinstance(c, (Column, ColumnProperty)) else c for c in ro_fields)
-        self._allowed_relations = set(c.key if isinstance(c, RelationshipProperty) else c for c in allow_relations)
+        self._ro_fields = ro_fields if callable(ro_fields) else set(c if isinstance(c, basestring) else c.key for c in ro_fields)
+        self._allowed_relations = set(c if isinstance(c, basestring) else c.key for c in allow_relations)
         self._query_defaults = query_defaults or {}
         self._maxitems = maxitems or None
 
@@ -201,9 +159,9 @@ class StrictCrudHelper(CrudHelper):
 
     @property
     def ro_fields(self):
-        """ Get the set of read-only properties
+        """ Get the set of read-only property names
 
-        :rtype: set
+        :rtype: set[str]
         """
         return set(self._ro_fields()) if callable(self._ro_fields) else self._ro_fields
 
@@ -216,7 +174,7 @@ class StrictCrudHelper(CrudHelper):
         :param qo: Query Object
         :type qo: dict | None
         :returns: Banned relationships
-        :rtype: set
+        :rtype: set[str]
         """
         if not isinstance(qo, dict) or 'join' not in qo:
             return set()
@@ -263,7 +221,7 @@ class StrictCrudHelper(CrudHelper):
         # Super
         return super(StrictCrudHelper, self).create_model(entity)
 
-    def update_model(self, entity, prev_instance):
+    def update_model(self, entity, instance):
         assert isinstance(entity, dict), 'Update model: entity should be a dict'
 
         # Remove ro fields
@@ -271,7 +229,7 @@ class StrictCrudHelper(CrudHelper):
             entity.pop(k)
 
         # Super
-        return super(StrictCrudHelper, self).update_model(entity, prev_instance)
+        return super(StrictCrudHelper, self).update_model(entity, instance)
 
 
 class CrudViewMixin(object):
@@ -332,8 +290,8 @@ class CrudViewMixin(object):
 
         :param new: New version
         :type new: sqlalchemy.ext.declarative.DeclarativeMeta
-        :param prev: Previously persisted version (only available for 'update')
-        :type prev: sqlalchemy.ext.declarative.DeclarativeMeta|None
+        :param prev: Previously persisted version (only when updating).
+        :type prev: mongosql.hist.ModelHistoryProxy
         """
         pass
 
@@ -397,11 +355,13 @@ class CrudViewMixin(object):
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        prev_instance = self._get_one(None, *filter, **filter_by)
-        new_instance = self._getCrudHelper().update_model(entity, prev_instance)
-
-        self._save_hook(new_instance, prev_instance)
-        return new_instance
+        instance = self._get_one(None, *filter, **filter_by)
+        instance = self._getCrudHelper().update_model(entity, instance)
+        self._save_hook(
+            instance,
+            ModelHistoryProxy(instance)
+        )
+        return instance
 
     def _method_delete(self, *filter, **filter_by):
         """ Delete an existing entity
