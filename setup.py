@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mongosql',
-    version='1.1.1-1',
+    version='1.2.0-0',
     author='Mark Vartanyan',
     author_email='kolypto@gmail.com',
 
@@ -20,7 +20,7 @@ setup(
     entry_points={},
 
     install_requires=[
-        'sqlalchemy >= 0.9.0',
+        'sqlalchemy >= 0.9.7',
     ],
     extras_require={
         '_dev': ['wheel', 'nose', 'psycopg2', 'flask-jsontools'],
