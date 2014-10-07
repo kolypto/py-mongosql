@@ -324,8 +324,8 @@ Examples:
 JSON Column Support
 -------------------
 
-PostgreSQL 9.3 supports `JSON column
-type <http://www.postgresql.org/docs/9.3/static/functions-json.html>`__,
+PostgreSQL 9.3 supports `JSON & JSONB column
+types <http://www.postgresql.org/docs/9.3/static/functions-json.html>`__,
 and so does MongoSQL! :)
 
 To access sub-properties of a JSON field, use dot-notation.

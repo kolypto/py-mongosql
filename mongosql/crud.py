@@ -165,6 +165,14 @@ class StrictCrudHelper(CrudHelper):
         """
         return set(self._ro_fields()) if callable(self._ro_fields) else self._ro_fields
 
+    @property
+    def allowed_relations(self):
+        """ Get the set of relations that are allowed to join to
+
+        :rtype: set[str]
+        """
+        return set(self._allowed_relations)
+
     @classmethod
     def _check_relations(cls, allowed_relations, qo, _prefix=''):
         """ Test Query Object joins against `allowed_relations`, supporting dot-notation

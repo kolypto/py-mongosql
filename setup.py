@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mongosql',
-    version='1.2.0-0',
+    version='1.2.1-0',
     author='Mark Vartanyan',
     author_email='kolypto@gmail.com',
 
@@ -22,9 +22,7 @@ setup(
     install_requires=[
         'sqlalchemy >= 0.9.7',
     ],
-    extras_require={
-        '_dev': ['wheel', 'nose', 'psycopg2', 'flask-jsontools'],
-    },
+    extras_require={},
     include_package_data=True,
     test_suite='nose.collector',
 

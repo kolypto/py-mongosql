@@ -1,0 +1,4 @@
+wheel
+nose
+psycopg2
+flask-jsontools
