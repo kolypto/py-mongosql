@@ -18,7 +18,7 @@ class MongoModel(object):
         :rtype: MongoModel
         """
         try:
-            return model.mongomodel()
+            return model.mongomodel
         except AttributeError:
             model.mongomodel = MongoModel(model)
             return model.mongomodel
