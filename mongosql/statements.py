@@ -406,7 +406,7 @@ class MongoJoin(object):
                 # Just load this relationship
                 if rel.property.lazy in (True, None, 'select'):
                     # If `lazy` configured to lazyload -- override with `joinedload()`
-                    rel_load = as_relation.immediateload(rel)
+                    rel_load = as_relation.joinedload(rel)
                 else:
                     # If `lazy` configured for eager loading -- just use `defaultload()` to trigger it
                     rel_load = as_relation.defaultload(rel)
