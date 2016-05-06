@@ -1,4 +1,4 @@
-from sqlalchemy.orm.attributes import flag_modified
+from copy import deepcopy
 
 from . import MongoModel, MongoQuery
 from .hist import ModelHistoryProxy
@@ -105,13 +105,15 @@ class CrudHelper(object):
         # Update
         for name, val in entity.items():
             if isinstance(val, dict) and self.mongomodel.model_bag.columns.is_column_json(name):
-                # JSON column with a dict: do a shallow merge
-                getattr(instance, name).update(val)
-                # Tell SqlAlchemy that a mutable collection was updated
-                flag_modified(instance, name)
-            else:
-                # Other columns: just assign
-                setattr(instance, name, val)
+                # JSON column with a dict: Make a copy that can replace the original attribute,
+                # so SqlAlchemy history will notice the changes.
+                tmp = deepcopy(getattr(instance, name))
+
+                # Do a shallow merge.
+                tmp.update(val)
+                val = tmp
+
+            setattr(instance, name, val)
 
         # Finish
         return instance
