@@ -96,7 +96,7 @@ class MongoQuery(object):
         """ Eagerly load relations """
         for mjp in self._model.join(relnames, as_relation=self._as_relation):
             # Complex joins
-            if mjp.query:
+            if mjp.query is not None:
                 self._query = self.get_for(
                         mjp.target_model,
                         self._query.join(mjp.relationship),
