@@ -272,7 +272,7 @@ class MongoCriteria(object):
                     value = cast(pg.array(value), pg.ARRAY(col.type.item_type))
                 if col_json:
                     coerce_type = col.type.coerce_compared_value('=', value)  # HACKY: use sqlalchemy type coercion
-                    col = cast(col.astext, coerce_type)
+                    col = cast(col, coerce_type)
 
                 # Operators
                 if op == '$eq':

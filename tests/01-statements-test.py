@@ -223,12 +223,23 @@ class StatementsTest(unittest.TestCase):
 
         # Okay
         mq = m.mongoquery(Query([models.User]))
-        mq = mq.join(('articles', 'comments'))
+        mq = mq.query(join={'articles': {'project': ('title',)}, 'comments': {}})
         q = mq.end()
         qs = q2sql(q)
         self.assertIn('FROM u', qs)
-        #self.assertIn('LEFT OUTER JOIN a', qs)  # immediateload(), used in this case, does not add any JOIN clauses: a subquery is used for that
-        #self.assertIn('LEFT OUTER JOIN c', qs)
+        self.assertIn('JOIN a', qs)
+        self.assertIn('JOIN c', qs)
+        self.assertNotIn('LEFT OUTER JOIN a', qs)
+        self.assertNotIn('LEFT OUTER JOIN c', qs)
+
+        # Left outer join
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(outerjoin={'articles': {'project': ('title',)}, 'comments': {}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('FROM u', qs)
+        self.assertIn('LEFT OUTER JOIN a', qs)
+        self.assertIn('LEFT OUTER JOIN c', qs)
 
         # Unknown relation
         mq = m.mongoquery(Query([models.User]))
