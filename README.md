@@ -58,6 +58,7 @@ Querying is made with *Query Objects*: a dictionary which defines how to perform
 * `group`: [Group Operation](#group-operation)
 * `filter`: [Filter Operation](#filter-operation)
 * `join`: [Join Operation](#join-operation)
+* `outerjoin`: [Join Operation](#join-operation)
 * `aggregate`: [Aggregate Operation](#aggregate-operation)
 * `skip`, `limit`: Rows slicing: skipping and limiting.
     `skip=10, limit=100` will result in `SELECT .. LIMIT 100 OFFSET 10`.
@@ -234,6 +235,8 @@ Allows to eagerly load specific relations by name.
       'comments': None,  # No specific options, just load
     }
     ```
+
+    You should use 'outerjoin' instead of 'join' for LEFT OUTER JOIN's.
     
     Note that no relations are loaded implicitly: you need to specify them in a `'join'`.
 
