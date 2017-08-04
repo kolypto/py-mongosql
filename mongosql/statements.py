@@ -60,17 +60,24 @@ class MongoProjection(object):
         """
         # Check columns
         projection_keys = set(projection.keys())
-        assert projection_keys <= bag.columns.names, 'Invalid column specified in projection'
+        model_properties = {}
+        if not projection_keys <= bag.columns.names:
+            for key in projection_keys - bag.columns.names:
+                if not getattr(bag.model, key, False):
+                    raise AssertionError('Invalid column specified in projection')
+                model_properties[key] = projection[key]
+                projection.pop(key)
 
         if inclusion_mode:
-            return (bag.columns[name] for name in projection.keys())
+            return (bag.columns[name] for name in projection.keys()), model_properties
         else:
-            return (col for name, col in bag.columns.items() if name not in projection_keys)
+            return (col for name, col in bag.columns.items() if name not in projection_keys), model_properties
 
     @classmethod
     def options(cls, bag, projection, inclusion_mode, as_relation):
         """ Get query options for the columns """
-        return [as_relation.load_only(c) for c in cls.columns(bag, projection, inclusion_mode)]
+        sql_columns, model_properties = cls.columns(bag, projection, inclusion_mode)
+        return [as_relation.load_only(c) for c in sql_columns], model_properties
 
     def __call__(self, model, as_relation):
         """ Build the statement

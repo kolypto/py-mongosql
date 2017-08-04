@@ -59,10 +59,11 @@ class MongoQuery(object):
 
     def project(self, projection):
         """ Apply a projection to the query """
-        p = self._model.project(projection, as_relation=self._as_relation)
+        p, model_properties = self._model.project(projection, as_relation=self._as_relation)
         if self._model.model.__name__ == 'User':
             assert 1
         self._query = self._query.options(p)
+        self._query.mongo_project_properies = model_properties
         return self
 
     def sort(self, sort_spec):

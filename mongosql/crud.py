@@ -291,7 +291,12 @@ class CrudViewMixin(object):
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        return self._mquery(query_obj, *filter, **filter_by).end().one()
+        sql_query = self._mquery(query_obj, *filter, **filter_by).end()
+
+        instance = sql_query.one()
+        if getattr(sql_query, 'mongo_project_properies', None):
+            instance.mongo_project_properies = sql_query.mongo_project_properies
+        return instance
 
     def _save_hook(self, new, prev=None):
         """ Hook into create(), update() methods.
@@ -314,7 +319,8 @@ class CrudViewMixin(object):
         :rtype: list
         :raises AssertionError: validation errors
         """
-        res = self._mquery(query_obj, *filter, **filter_by).end().all()
+        sql_query = self._mquery(query_obj, *filter, **filter_by).end()
+        res = sql_query.all()
 
         # Count?
         if query_obj and query_obj.get('count', 0):
@@ -323,6 +329,12 @@ class CrudViewMixin(object):
         # Convert KeyedTuples to dicts (when aggregating)
         if query_obj and 'aggregate' in query_obj:
             return [dict(zip(row.keys(), row)) for row in res]
+        if getattr(sql_query, 'mongo_project_properies', None):
+            result = []
+            for instance in res:
+                instance.mongo_project_properies = sql_query.mongo_project_properies
+                result.append(instance)
+            return result
 
         return res
 

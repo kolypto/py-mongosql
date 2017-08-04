@@ -288,3 +288,13 @@ class StatementsTest(unittest.TestCase):
         self.assertRaises(AssertionError, test_aggregate, {'a': '???'}, '')
         self.assertRaises(AssertionError, test_aggregate, {'a': {'$max': '???'}}, '')
         self.assertRaises(AssertionError, test_aggregate, {'a': {'$sum': {'???': 1}}}, '')
+
+    def test_filter_on_join(self):
+        m = models.User
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(aggregate={'n': {'$sum': 1}}, group=('name',), join={'articles': {'filter': {'title': {'$exists': True}}}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT count(*) AS n', qs)
+        self.assertIn('FROM u JOIN a ON u.id = a.uid', qs)
+        self.assertIn('WHERE a.title IS NOT NULL GROUP BY u.name', qs)

@@ -8,11 +8,9 @@ from sqlalchemy.sql.schema import ForeignKey
 
 from sqlalchemy.dialects import postgresql as pg
 
-from mongosql import MongoSqlBase
-from flask.ext.jsontools import JsonSerializableBase
+from mongosql import MongoSqlBase, MongoJsonSerializableBase
 
-
-Base = declarative_base(cls=(MongoSqlBase, JsonSerializableBase))
+Base = declarative_base(cls=(MongoSqlBase, MongoJsonSerializableBase))
 
 
 class User(Base):
@@ -34,6 +32,9 @@ class Article(Base):
 
     user = relationship(User, backref=backref('articles'))
 
+    @property
+    def calculated(self):
+        return len(self.title) + self.uid
 
 class Comment(Base):
     __tablename__ = 'c'

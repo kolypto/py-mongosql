@@ -1,4 +1,4 @@
-from .model import MongoModel
+from .model import MongoModel, MongoJsonSerializableBase
 from .query import MongoQuery
 
 from .sa import MongoSqlBase

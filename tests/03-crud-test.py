@@ -235,3 +235,37 @@ class CrudTest(unittest.TestCase):
 
     def test_404(self):
         """ Try accessing entities that do not exist """
+
+    def test_property_project(self):
+        """ Test project of @property """
+
+        # Simple get
+        with self.app.test_client() as c:
+            rv = c.get('/article/30', json={
+                'query': {
+                    'project': ['uid', 'calculated'],
+                }
+            })
+            self.assertEqual(rv['article'], {
+                'id': 30, 'uid': 3, 'calculated': 5
+            })
+            rv = c.get('/article/', json={
+                'query': {
+                    'project': ['uid', 'calculated'],
+                }
+            })
+            self.assertEqual(rv['articles'], [
+                # 2 items
+                # sort: id-
+                {'id': 30, 'uid': 3, 'calculated': 5},
+                {'id': 21, 'uid': 2, 'calculated': 4}
+            ])
+            try:
+                rv = c.get('/article/', json={
+                    'query': {
+                        'project': ['uid', 'no_such_property'],
+                    }
+                })
+                assert False, 'Should throw an exception'
+            except:
+                pass
