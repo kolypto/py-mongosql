@@ -2,7 +2,6 @@ from sqlalchemy import inspect, event
 
 from .statements import MongoProjection, MongoSort, MongoGroup, MongoCriteria, MongoJoin, MongoAggregate
 from .bag import ModelPropertyBags
-from flask.ext.jsontools import JsonSerializableBase
 
 
 class MongoModel(object):
@@ -179,19 +178,3 @@ class MongoModel(object):
         return MongoAggregate(agg_spec)(self)
 
     #endregion
-
-
-class MongoJsonSerializableBase(JsonSerializableBase):
-    """ Declarative Base mixin to allow objects serialization
-
-        Defines interfaces utilized by :cls:ApiJSONEncoder
-    """
-    mongo_project_properies = None
-
-    def __json__(self, exluded_keys=set()):
-        data = super(MongoJsonSerializableBase, self).__json__(exluded_keys)
-        if self.mongo_project_properies:
-            for name, include in self.mongo_project_properies.items():
-                if include:
-                    data[name] = getattr(self, name)
-        return data

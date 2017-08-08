@@ -40,7 +40,8 @@ class MongoQuery(object):
         self._model = model
         self._query = query
         self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
-
+        self._query.mongo_project_properties = {}
+        self._query.join_project_properties = {}
         self._no_joindefaults = False
 
     def aggregate(self, agg_spec):
@@ -63,7 +64,7 @@ class MongoQuery(object):
         if self._model.model.__name__ == 'User':
             assert 1
         self._query = self._query.options(p)
-        self._query.mongo_project_properies = model_properties
+        self._query.mongo_project_properties = model_properties
         return self
 
     def sort(self, sort_spec):
@@ -108,6 +109,9 @@ class MongoQuery(object):
 
             # Options
             self._query = self._query.options(*mjp.options)
+            if mjp.relname and self._query.mongo_project_properties:
+                self._query.join_project_properties[mjp.relname] = self._query.mongo_project_properties
+                self._query.mongo_project_properties = {}
 
         self._query = self._query.with_labels()
         self._no_joindefaults = True
@@ -164,4 +168,5 @@ class MongoQuery(object):
         """
         if not self._no_joindefaults:
             self.join(())  # have to join with an empty list explicitly so all relations get noload()
+        self._query.mongo_project_properties.update(self._query.join_project_properties)
         return self._query

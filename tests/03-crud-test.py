@@ -184,14 +184,6 @@ class CrudTest(unittest.TestCase):
 
         self.db.close()  # Reset session and its cache
 
-        # Query get: try banned relation
-        with self.app.test_client() as c:
-            self.assertRaises(AssertionError, c.get, '/article/30', json={
-                'query': {
-                    'join': ['comments'],
-                }
-            })
-
     def test_update(self):
         """ Test update() """
 
@@ -260,6 +252,21 @@ class CrudTest(unittest.TestCase):
                 {'id': 30, 'uid': 3, 'calculated': 5},
                 {'id': 21, 'uid': 2, 'calculated': 4}
             ])
+            # Propjection for join
+            rv = c.get('/article/20', json={
+                'query': {
+                    'project': ['id'],
+                    'join': {'comments': {
+                        'project': ['id', 'comment_calc'],
+                    }}}
+            })
+            self.assertEqual(rv['article'], {
+                'id': 20,
+                'comments': [
+                    {'comment_calc': u'ONE', 'id': 7},
+                    {'comment_calc': u'TWO', 'id': 8}]
+            })
+
             try:
                 rv = c.get('/article/', json={
                     'query': {

@@ -353,7 +353,7 @@ class MongoCriteria(object):
 
 
 class _MongoJoinParams(object):
-    def __init__(self, options, relationship=None, target_model=None, query=None):
+    def __init__(self, options, relationship=None, target_model=None, query=None, relname=None):
         """ Values for joins
         :param options: Additional query options
         :type options: Sequence[sqlalchemy.orm.Load]
@@ -368,6 +368,7 @@ class _MongoJoinParams(object):
         self.relationship = relationship
         self.target_model = target_model
         self.query = query
+        self.relname = relname
 
 
 class MongoJoin(object):
@@ -428,7 +429,8 @@ class MongoJoin(object):
                     [as_relation.contains_eager(rel)],
                     rel,
                     target_model,
-                    query
+                    query,
+                    relname
                 ))
 
         # lazyload() on all other relations
