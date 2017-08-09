@@ -9,10 +9,47 @@ from sqlalchemy.sql.schema import ForeignKey
 from sqlalchemy.dialects import postgresql as pg
 
 from mongosql import MongoSqlBase
+
 from flask.ext.jsontools import JsonSerializableBase
+from flask import json
 
 
-Base = declarative_base(cls=(MongoSqlBase, JsonSerializableBase))
+class MongoJsonSerializableBase(JsonSerializableBase):
+    """ Declarative Base mixin to allow objects serialization
+
+        Defines interfaces utilized by :cls:ApiJSONEncoder
+    """
+    mongo_project_properties = None
+    join_project_properties = None
+
+    def _project_join(self, obj, project):
+        if getattr(obj, '__json__', None):
+            data = obj.__json__()
+        else:
+            data = json.loads(json.dumps(obj))
+        for name, include in project.items():
+            if include:
+                data[name] = getattr(obj, name)
+        return data
+
+    def __json__(self, exluded_keys=set()):
+        data = super(MongoJsonSerializableBase, self).__json__(exluded_keys)
+        if self.mongo_project_properties:
+            for name, include in self.mongo_project_properties.items():
+                if isinstance(include, dict):
+                    if name in data:
+                        obj = data[name]
+                        if isinstance(obj, list):
+                            data[name] = [self._project_join(i, include) for i in obj]
+                        else:
+                            data[name] = self._project_join(obj, include)
+                else:
+                    if include:
+                        data[name] = getattr(self, name)
+        return data
+
+
+Base = declarative_base(cls=(MongoSqlBase, MongoJsonSerializableBase))
 
 
 class User(Base):
@@ -22,6 +59,10 @@ class User(Base):
     name = Column(String)
     tags = Column(pg.ARRAY(String))  # ARRAY field
     age = Column(Integer)
+
+    @property
+    def user_calculated(self):
+        return self.age + 10
 
 
 class Article(Base):
@@ -34,6 +75,9 @@ class Article(Base):
 
     user = relationship(User, backref=backref('articles'))
 
+    @property
+    def calculated(self):
+        return len(self.title) + self.uid
 
 class Comment(Base):
     __tablename__ = 'c'
@@ -48,6 +92,9 @@ class Comment(Base):
     article = relationship(Article, backref=backref("comments"))
     user = relationship(User, backref=backref("comments"))
 
+    @property
+    def comment_calc(self):
+        return self.text[-3:]
 
 
 
@@ -55,7 +102,7 @@ def init_database():
     """ Init DB
     :rtype: (sqlalchemy.engine.Engine, sqlalchemy.orm.Session)
     """
-    engine = create_engine('postgresql://postgres:postgres@localhost/test_mongosql', convert_unicode=True)
+    engine = create_engine('postgresql://postgres:postgres@localhost/test_mongosql', convert_unicode=True, echo=False)
     Session = sessionmaker(autocommit=True, autoflush=True, bind=engine)
     return engine, Session
 

@@ -245,6 +245,15 @@ class StatementsTest(unittest.TestCase):
         mq = m.mongoquery(Query([models.User]))
         self.assertRaises(AssertionError, mq.join, ('???'))
 
+        # Join with limit, should use FROM (SELECT...)
+        mq = models.Article.mongoquery(Query([models.Article]))
+        mq = mq.query(project=['id'], outerjoin={'comments': {'project': ['id']}}, limit=2)
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, c.id AS c_id', qs)
+        self.assertIn('FROM (SELECT a.id AS a_id', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid', qs)
+
     def test_aggregate(self):
         """ Test aggregate() """
         m = models.User
@@ -288,3 +297,13 @@ class StatementsTest(unittest.TestCase):
         self.assertRaises(AssertionError, test_aggregate, {'a': '???'}, '')
         self.assertRaises(AssertionError, test_aggregate, {'a': {'$max': '???'}}, '')
         self.assertRaises(AssertionError, test_aggregate, {'a': {'$sum': {'???': 1}}}, '')
+
+    def test_filter_on_join(self):
+        m = models.User
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(aggregate={'n': {'$sum': 1}}, group=('name',), join={'articles': {'filter': {'title': {'$exists': True}}}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT count(*) AS n', qs)
+        self.assertIn('FROM u JOIN a ON u.id = a.uid', qs)
+        self.assertIn('WHERE a.title IS NOT NULL GROUP BY u.name', qs)
