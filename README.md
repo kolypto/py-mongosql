@@ -240,6 +240,8 @@ Allows to eagerly load specific relations by name.
     
     Note that no relations are loaded implicitly: you need to specify them in a `'join'`.
 
+    Important note: if you using join with query(dict syntax) and use projection for the main entity. It could be necessary to add forein key to the projection.
+
 ### Aggregate Operation
 
 Allows to fetch aggregated values with the help of aggregation functions.

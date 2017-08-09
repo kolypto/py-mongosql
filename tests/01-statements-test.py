@@ -245,6 +245,15 @@ class StatementsTest(unittest.TestCase):
         mq = m.mongoquery(Query([models.User]))
         self.assertRaises(AssertionError, mq.join, ('???'))
 
+        # Join with limit, should use FROM (SELECT...)
+        mq = models.Article.mongoquery(Query([models.Article]))
+        mq = mq.query(project=['id'], outerjoin={'comments': {'project': ['id']}}, limit=2)
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, c.id AS c_id', qs)
+        self.assertIn('FROM (SELECT a.id AS a_id', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid', qs)
+
     def test_aggregate(self):
         """ Test aggregate() """
         m = models.User

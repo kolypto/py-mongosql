@@ -43,6 +43,8 @@ class MongoQuery(object):
         self._query.mongo_project_properties = {}
         self._query.join_project_properties = {}
         self._no_joindefaults = False
+        self.join_queries = []
+        self.skip_or_limit = False
 
     def aggregate(self, agg_spec):
         """ Select aggregated results """
@@ -99,14 +101,11 @@ class MongoQuery(object):
         for mjp in self._model.join(relnames, as_relation=self._as_relation):
             # Complex joins
             if mjp.query is not None:
-                self._query = self.get_for(
-                        mjp.target_model,
-                        getattr(self._query, join_func)(mjp.relationship),
-                        _as_relation=mjp.relationship
-                    )\
-                    .query(**mjp.query)\
-                    .end()
-
+                if self.skip_or_limit:
+                    self.join_queries.append((mjp, join_func))
+                    continue
+                else:
+                    self._add_join_query(mjp, join_func)
             # Options
             self._query = self._query.options(*mjp.options)
             if mjp.relname and self._query.mongo_project_properties:
@@ -152,6 +151,7 @@ class MongoQuery(object):
         assert not __unk, 'Unknown Query Object operations: {}'.format(__unk.keys())
 
         q = self
+        self.skip_or_limit = skip or limit
         if join:            q = q.join(join)
         if outerjoin:       q = q.outerjoin(outerjoin)
         if project:         q = q.project(project)
@@ -162,6 +162,23 @@ class MongoQuery(object):
         if skip or limit:   q = q.limit(limit, skip)
         return q.count() if count else q
 
+    def _add_join_query(self, mjp, join_func):
+        mongo_project_properties = self._query.mongo_project_properties
+
+        self._query = self.get_for(
+            mjp.target_model,
+            getattr(self._query, join_func)(mjp.relationship),
+            _as_relation=mjp.relationship
+        )\
+        .query(**mjp.query)\
+        .end()
+        join_query = self._query.with_labels()
+        if mjp.relname and join_query.mongo_project_properties:
+            mongo_project_properties[mjp.relname] = join_query.mongo_project_properties.copy()
+            join_query.mongo_project_properties = mongo_project_properties
+        self._query = join_query
+        self._query = self._query.options(*mjp.options)
+
     def end(self):
         """ Get the Query object
         :rtype: sqlalchemy.orm.Query
@@ -169,4 +186,8 @@ class MongoQuery(object):
         if not self._no_joindefaults:
             self.join(())  # have to join with an empty list explicitly so all relations get noload()
         self._query.mongo_project_properties.update(self._query.join_project_properties)
+        if self.join_queries:
+            self._query = self._query.from_self()
+            for mjp, join_func in self.join_queries:
+                self._add_join_query(mjp, join_func)
         return self._query

@@ -164,7 +164,7 @@ class CrudTest(unittest.TestCase):
         with self.app.test_client() as c:
             rv = c.get('/article/30', json={
                 'query': {
-                    'project': ['id'],
+                    'project': ['id', 'uid'],
                     'join': {
                         'user': {
                             'project': ['name'],
@@ -176,6 +176,7 @@ class CrudTest(unittest.TestCase):
             })
             self.assertEqual(rv['article'], {
                 'id': 30,
+                'uid': 3,
                 'user': {
                     'id': 3, 'name': 'c',
                     'comments': [{'id': 3, 'uid': 3, 'aid': 10, 'text': '10-c', }]
