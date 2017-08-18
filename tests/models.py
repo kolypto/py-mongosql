@@ -79,6 +79,7 @@ class Article(Base):
     def calculated(self):
         return len(self.title) + self.uid
 
+
 class Comment(Base):
     __tablename__ = 'c'
 
@@ -96,6 +97,17 @@ class Comment(Base):
     def comment_calc(self):
         return self.text[-3:]
 
+
+class Role(Base):
+    __tablename__ = 'r'
+
+    id = Column(Integer, primary_key=True)
+
+    uid = Column(Integer, ForeignKey(User.id))
+    title = Column(String)
+    description = Column(String)
+
+    user = relationship(User, backref=backref("roles"))
 
 
 def init_database():

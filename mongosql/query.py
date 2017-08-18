@@ -23,7 +23,7 @@ class MongoQuery(object):
         except AttributeError:
             return cls(MongoModel.get_for(model), *args, **kwargs)
 
-    def __init__(self, model, query, _as_relation=None):
+    def __init__(self, model, query, _as_relation=None, join_path=None):
         """ Init a MongoDB-style query
         :param model: MongoModel
         :type model: mongosql.MongoModel
@@ -39,7 +39,12 @@ class MongoQuery(object):
 
         self._model = model
         self._query = query
-        self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
+        self.join_path = join_path or ()
+
+        if join_path:
+            self._as_relation = defaultload(*join_path)
+        else:
+            self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
         self._query.mongo_project_properties = {}
         self._query.join_project_properties = {}
         self._no_joindefaults = False
@@ -164,11 +169,11 @@ class MongoQuery(object):
 
     def _add_join_query(self, mjp, join_func):
         mongo_project_properties = self._query.mongo_project_properties
-
         self._query = self.get_for(
             mjp.target_model,
             getattr(self._query, join_func)(mjp.relationship),
-            _as_relation=mjp.relationship
+            _as_relation=mjp.relationship,
+            join_path=self.join_path + (mjp.relationship, )
         )\
         .query(**mjp.query)\
         .end()

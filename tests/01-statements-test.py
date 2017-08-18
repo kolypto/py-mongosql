@@ -219,6 +219,30 @@ class StatementsTest(unittest.TestCase):
 
     def test_join(self):
         """ Test join() """
+
+        # Two level join
+        mq = models.Article.mongoquery(Query([models.Article]))
+        mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],
+                                                    'join': {'user': {'project': ['name']}}}}, limit=2)
+        q = mq.end()
+        qs = q2sql(q)
+
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u.id AS u_id, u.name AS u_name, c.id AS c_id, c.aid AS c_aid', qs)
+        self.assertIn('FROM (SELECT a.id AS a_id', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid JOIN u ON u.id = c.uid', qs)
+
+        # Three level join
+        mq = models.Article.mongoquery(Query([models.Article]))
+        mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],
+                                                    'join': {'user': {'project': ['name'],
+                                                                      'join': {'roles': {'project': ['title']}}}
+                                                    }}}, limit=2)
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u.id AS u_id, u.name AS u_name, r.id AS r_id, r.title AS r_title, c.id AS c_id, c.aid AS c_aid', qs)
+        self.assertIn('FROM (SELECT a.id AS a_id', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid JOIN u ON u.id = c.uid JOIN r ON u.id = r.uid', qs)
+
         m = models.User
 
         # Okay
