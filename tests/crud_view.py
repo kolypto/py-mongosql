@@ -11,7 +11,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
     # We're strict, yeah
     crudhelper = StrictCrudHelper(models.Article,
         ro_fields=('id', 'uid',),
-        allow_relations=('user', 'user.comments'),
+        allow_relations=('user', 'user.comments', 'comments'),
         query_defaults={
             'sort': ['id-'],
         },

@@ -1,4 +1,4 @@
-from sqlalchemy import inspect
+from sqlalchemy import inspect, event
 
 from .statements import MongoProjection, MongoSort, MongoGroup, MongoCriteria, MongoJoin, MongoAggregate
 from .bag import ModelPropertyBags

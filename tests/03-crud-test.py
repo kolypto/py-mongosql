@@ -164,7 +164,7 @@ class CrudTest(unittest.TestCase):
         with self.app.test_client() as c:
             rv = c.get('/article/30', json={
                 'query': {
-                    'project': ['id'],
+                    'project': ['id', 'uid'],
                     'join': {
                         'user': {
                             'project': ['name'],
@@ -176,6 +176,7 @@ class CrudTest(unittest.TestCase):
             })
             self.assertEqual(rv['article'], {
                 'id': 30,
+                'uid': 3,
                 'user': {
                     'id': 3, 'name': 'c',
                     'comments': [{'id': 3, 'uid': 3, 'aid': 10, 'text': '10-c', }]
@@ -183,14 +184,6 @@ class CrudTest(unittest.TestCase):
             })
 
         self.db.close()  # Reset session and its cache
-
-        # Query get: try banned relation
-        with self.app.test_client() as c:
-            self.assertRaises(AssertionError, c.get, '/article/30', json={
-                'query': {
-                    'join': ['comments'],
-                }
-            })
 
     def test_update(self):
         """ Test update() """
@@ -235,3 +228,52 @@ class CrudTest(unittest.TestCase):
 
     def test_404(self):
         """ Try accessing entities that do not exist """
+
+    def test_property_project(self):
+        """ Test project of @property """
+
+        # Simple get
+        with self.app.test_client() as c:
+            rv = c.get('/article/30', json={
+                'query': {
+                    'project': ['uid', 'calculated'],
+                }
+            })
+            self.assertEqual(rv['article'], {
+                'id': 30, 'uid': 3, 'calculated': 5
+            })
+            rv = c.get('/article/', json={
+                'query': {
+                    'project': ['uid', 'calculated'],
+                }
+            })
+            self.assertEqual(rv['articles'], [
+                # 2 items
+                # sort: id-
+                {'id': 30, 'uid': 3, 'calculated': 5},
+                {'id': 21, 'uid': 2, 'calculated': 4}
+            ])
+            # Propjection for join
+            rv = c.get('/article/20', json={
+                'query': {
+                    'project': ['id'],
+                    'join': {'comments': {
+                        'project': ['id', 'comment_calc'],
+                    }}}
+            })
+            self.assertEqual(rv['article'], {
+                'id': 20,
+                'comments': [
+                    {'comment_calc': u'ONE', 'id': 7},
+                    {'comment_calc': u'TWO', 'id': 8}]
+            })
+
+            try:
+                rv = c.get('/article/', json={
+                    'query': {
+                        'project': ['uid', 'no_such_property'],
+                    }
+                })
+                assert False, 'Should throw an exception'
+            except:
+                pass

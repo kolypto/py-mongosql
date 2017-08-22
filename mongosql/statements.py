@@ -60,17 +60,24 @@ class MongoProjection(object):
         """
         # Check columns
         projection_keys = set(projection.keys())
-        assert projection_keys <= bag.columns.names, 'Invalid column specified in projection'
+        model_properties = {}
+        if not projection_keys <= bag.columns.names:
+            for key in projection_keys - bag.columns.names:
+                if not getattr(bag.model, key, False):
+                    raise AssertionError('Invalid column specified in projection')
+                model_properties[key] = projection[key]
+                projection.pop(key)
 
         if inclusion_mode:
-            return (bag.columns[name] for name in projection.keys())
+            return (bag.columns[name] for name in projection.keys()), model_properties
         else:
-            return (col for name, col in bag.columns.items() if name not in projection_keys)
+            return (col for name, col in bag.columns.items() if name not in projection_keys), model_properties
 
     @classmethod
     def options(cls, bag, projection, inclusion_mode, as_relation):
         """ Get query options for the columns """
-        return [as_relation.load_only(c) for c in cls.columns(bag, projection, inclusion_mode)]
+        sql_columns, model_properties = cls.columns(bag, projection, inclusion_mode)
+        return [as_relation.load_only(c) for c in sql_columns], model_properties
 
     def __call__(self, model, as_relation):
         """ Build the statement
@@ -179,6 +186,35 @@ class MongoGroup(MongoSort):
         return self.columns(model.model_bag, self.sort)
 
 
+class ColumnInfo(object):
+    def __init__(self, sql_col, is_array=False, is_json=False, is_relation=False, is_many=False):
+        self.is_array = is_array
+        self.is_json = is_json
+        self.sql_col = sql_col
+        self.is_relation = is_relation
+        self.is_many = is_many
+
+
+def is_array(value, message=None):
+    value_array = isinstance(value, (list, tuple))
+    if message:
+        assert value_array, message
+    return value_array
+
+
+def assert_true(value, message):
+    assert value, message
+    return True
+
+
+def relation_condition(cls, func, op, column, value):
+    def inner_(conditions, cls):
+        condition = func(cls.get_condition(op, column, value))
+        conditions.append(condition)
+        return conditions
+    return inner_
+
+
 class MongoCriteria(object):
     """ MongoDB criteria
 
@@ -205,7 +241,6 @@ class MongoCriteria(object):
         * { $nor: [ {..criteria..}, .. ] } - none is true
         * { $not: { ..criteria.. } } - negation
     """
-
     def __init__(self, criteria):
         """ Init a criteria
 
@@ -216,6 +251,85 @@ class MongoCriteria(object):
             criteria = {}
         assert isinstance(criteria, dict), 'Criteria must be one of: None, dict'
         self.criteria = criteria
+
+    # Supported operation. Operation name, function that checks params,
+    # function that returns condition or another function for call with on cls and conditions.
+    # Special operation is '*', which match all operations, used for relations.
+    __operations = (
+        ('$eq', lambda column, value: not column.is_relation and column.is_array and not is_array(value), lambda cls, sql_col, value: sql_col.any(value)),
+        ('$eq', lambda column, value: not column.is_relation and not column.is_array or is_array(value), lambda cls, sql_col, value: sql_col == value),
+        ('$ne', lambda column, value: not column.is_relation and column.is_array and not is_array(value), lambda cls, sql_col, value: sql_col.all(value, operators.ne)),
+        ('$ne', lambda column, value: not column.is_relation and not column.is_array or is_array(value), lambda cls, sql_col, value: sql_col != value),
+        ('$lt', lambda column, value: not column.is_relation, lambda cls, sql_col, value: sql_col < value),
+        ('$lte', lambda column, value: not column.is_relation, lambda cls, sql_col, value: sql_col <= value),
+        ('$gt', lambda column, value: not column.is_relation, lambda cls, sql_col, value: sql_col > value),
+        ('$gte', lambda column, value: not column.is_relation, lambda cls, sql_col, value: sql_col >= value),
+        ('$in', lambda column, value: not column.is_relation and is_array(value, 'Criteria: $in argument must be a list') and column.is_array,
+                   lambda cls, sql_col, value: sql_col.overlap(value)),
+        ('$in', lambda column, value: not column.is_relation and is_array(value, 'Criteria: $in argument must be a list') and not column.is_array,
+                   lambda cls, sql_col, value: sql_col.in_(value)),
+        ('$nin', lambda column, value: not column.is_relation and is_array(value, 'Criteria: $nin argument must be a list') and column.is_array,
+                   lambda cls, sql_col, value: ~ sql_col.overlap(value)),
+        ('$nin', lambda column, value: not column.is_relation and is_array(value, 'Criteria: $nin argument must be a list') and not column.is_array,
+                   lambda cls, sql_col, value: sql_col.notin_(value)),
+        ('$exists', lambda column, value: not column.is_relation, lambda cls, sql_col, value: sql_col != None if value else sql_col == None),
+        ('$all', lambda column, value: is_array(value, 'Criteria: $all argument must be a list') and assert_true(column.is_array, 'Criteria: $all can only be applied to an array column'),
+                   lambda cls, sql_col, value: sql_col.contains(value)),
+        ('$size', lambda column, value: not column.is_relation and value == 0 and assert_true(column.is_array, 'Criteria: $all can only be applied to an array column'),
+                   lambda cls, sql_col, value: func.array_length(sql_col, 1) == None),  # ARRAY_LENGTH(field, 1) IS NULL
+        ('$size', lambda column, value: not column.is_relation and value != 0 and assert_true(column.is_array, 'Criteria: $all can only be applied to an array column'),
+                   lambda cls, sql_col, value: func.array_length(sql_col, 1) == value),  # ARRAY_LENGTH(field, 1) == value
+
+        # Queries for relations
+        ('*', lambda column, value: column.is_relation and column.is_many, lambda cls, op, sql_col, value: relation_condition(cls, sql_col[0].any, op, sql_col[1], value)),
+        ('*', lambda column, value: column.is_relation and not column.is_many, lambda cls, op, sql_col, value: relation_condition(cls, sql_col[0].has, op, sql_col[1], value)),
+    )
+
+    @classmethod
+    def get_column(cls, bag, col_name):
+        rel_name = col_name.split('.')[0]
+        if rel_name in bag.relations:
+            attr = col_name.split('.')[1]
+            relation = bag.relations[rel_name]
+            if relation.property.uselist:
+                rel_col_sql = relation.property.argument.columns.get(attr)
+            else:
+                rel_col_sql = getattr(relation.property.argument, attr)
+            is_array = bag.columns._is_column_array(rel_col_sql)
+            is_json = bag.columns._is_column_json(rel_col_sql)
+            rel_col = ColumnInfo(rel_col_sql, is_array=is_array, is_json=is_json, is_relation=False)
+            col = (relation, rel_col)
+            return ColumnInfo(col, is_array=False, is_json=False, is_relation=True, is_many=relation.property.uselist)
+        col = bag.columns[col_name]
+        is_array = bag.columns.is_column_array(col_name)
+        is_json  = bag.columns.is_column_json(col_name)
+
+        return ColumnInfo(col, is_array, is_json)
+
+    @classmethod
+    def preprocess_value_and_column(cls, column, value):
+        value_array = is_array(value)
+
+        # Coerce operand
+        if column.is_array and value_array:
+            value = cast(pg.array(value), pg.ARRAY(column.sql_col.type.item_type))
+        if column.is_json:
+            coerce_type = column.sql_col.type.coerce_compared_value('=', value)  # HACKY: use sqlalchemy type coercion
+            column.sql_col = cast(column.sql_col, coerce_type)
+
+        return column, value
+
+    @classmethod
+    def get_condition(cls, op, column, value):
+        column, processed_value = cls.preprocess_value_and_column(column, value)
+        for operation, check, condition in cls.__operations:
+            if op == operation:
+                if check(column, value):
+                    return condition(cls, column.sql_col, processed_value)
+            if operation == '*':
+                if check(column, value):
+                    return condition(cls, op, column.sql_col, processed_value)
+        raise AssertionError('Criteria: unsupported operator "{}"'.format(op))
 
     # noinspection PyComparisonWithNone
     @classmethod
@@ -255,9 +369,7 @@ class MongoCriteria(object):
                 continue
 
             # Prepare
-            col = bag.columns[col_name]
-            col_array = bag.columns.is_column_array(col_name)
-            col_json  = bag.columns.is_column_json(col_name)
+            column = cls.get_column(bag, col_name)
 
             # Fake equality
             if not isinstance(criteria, dict):
@@ -265,69 +377,12 @@ class MongoCriteria(object):
 
             # Iterate over operators
             for op, value in criteria.items():
-                value_array = isinstance(value, (list, tuple))
-
-                # Coerce operand
-                if col_array and value_array:
-                    value = cast(pg.array(value), pg.ARRAY(col.type.item_type))
-                if col_json:
-                    coerce_type = col.type.coerce_compared_value('=', value)  # HACKY: use sqlalchemy type coercion
-                    col = cast(col.astext, coerce_type)
-
-                # Operators
-                if op == '$eq':
-                    if col_array:
-                        if value_array:
-                            conditions.append(col == value)  # Array equality
-                        else:
-                            conditions.append(col.any(value))  # ANY(array) = value, for scalar values
-                    else:
-                        conditions.append(col == value)  # array == value, for both scalars
-                elif op == '$ne':
-                    if col_array and not value_array:
-                        if value_array:
-                            conditions.append(col != value)  # Array inequality
-                        else:
-                            conditions.append(col.all(value, operators.ne))  # ALL(array) != value, for scalar values
-                    else:
-                        conditions.append(col != value)  # array != value, for both scalars
-                elif op == '$lt':
-                    conditions.append(col < value)
-                elif op == '$lte':
-                    conditions.append(col <= value)
-                elif op == '$gte':
-                    conditions.append(col >= value)
-                elif op == '$gt':
-                    conditions.append(col > value)
-                elif op == '$in':
-                    assert value_array, 'Criteria: $in argument must be a list'
-                    if col_array:
-                        conditions.append(col.overlap(value))  # field && ARRAY[values]
-                    else:
-                        conditions.append(col.in_(value))  # field IN(values)
-                elif op == '$nin':
-                    assert value_array, 'Criteria: $nin argument must be a list'
-                    if col_array:
-                        conditions.append(~ col.overlap(value))  # NOT( field && ARRAY[values] )
-                    else:
-                        conditions.append(col.notin_(value))  # field NOT IN(values)
-                elif op == '$exists':
-                    if value:
-                        conditions.append(col != None)  # IS NOT NULL
-                    else:
-                        conditions.append(col == None)  # IS NULL
-                elif op == '$all':
-                    assert col_array, 'Criteria: $all can only be applied to an array column'
-                    assert value_array, 'Criteria: $all argument must be a list'
-                    conditions.append(col.contains(value))
-                elif op == '$size':
-                    assert col_array, 'Criteria: $all can only be applied to an array column'
-                    if value == 0:
-                        conditions.append(func.array_length(col, 1) == None)  # ARRAY_LENGTH(field, 1) IS NULL
-                    else:
-                        conditions.append(func.array_length(col, 1) == value)  # ARRAY_LENGTH(field, 1) == value
+                condition = cls.get_condition(op, column, value)
+                if callable(condition):
+                    conditions = condition(conditions, cls)
                 else:
-                    raise AssertionError('Criteria: unsupported operator "{}"'.format(op))
+                    conditions.append(condition)
+
         if conditions:
             cc = and_(*conditions)
             return cc.self_group() if len(conditions) > 1 else cc
@@ -346,7 +401,7 @@ class MongoCriteria(object):
 
 
 class _MongoJoinParams(object):
-    def __init__(self, options, relationship=None, target_model=None, query=None):
+    def __init__(self, options, relationship=None, target_model=None, query=None, relname=None):
         """ Values for joins
         :param options: Additional query options
         :type options: Sequence[sqlalchemy.orm.Load]
@@ -361,6 +416,7 @@ class _MongoJoinParams(object):
         self.relationship = relationship
         self.target_model = target_model
         self.query = query
+        self.relname = relname
 
 
 class MongoJoin(object):
@@ -406,7 +462,7 @@ class MongoJoin(object):
                 # Just load this relationship
                 if rel.property.lazy in (True, None, 'select'):
                     # If `lazy` configured to lazyload -- override with `joinedload()`
-                    rel_load = as_relation.immediateload(rel)
+                    rel_load = as_relation.joinedload(rel)
                 else:
                     # If `lazy` configured for eager loading -- just use `defaultload()` to trigger it
                     rel_load = as_relation.defaultload(rel)
@@ -421,7 +477,8 @@ class MongoJoin(object):
                     [as_relation.contains_eager(rel)],
                     rel,
                     target_model,
-                    query
+                    query,
+                    relname
                 ))
 
         # lazyload() on all other relations

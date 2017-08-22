@@ -219,20 +219,64 @@ class StatementsTest(unittest.TestCase):
 
     def test_join(self):
         """ Test join() """
+
+        # Two level join
+        mq = models.Article.mongoquery(Query([models.Article]))
+        mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],
+                                                    'join': {'user': {'project': ['name']}}}}, limit=2)
+        q = mq.end()
+        qs = q2sql(q)
+
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u.id AS u_id, u.name AS u_name, c.id AS c_id, c.aid AS c_aid', qs)
+        self.assertIn('FROM (SELECT a.id AS a_id', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid JOIN u ON u.id = c.uid', qs)
+
+        # Three level join
+        mq = models.Article.mongoquery(Query([models.Article]))
+        mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],
+                                                    'join': {'user': {'project': ['name'],
+                                                                      'join': {'roles': {'project': ['title']}}}
+                                                    }}}, limit=2)
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u.id AS u_id, u.name AS u_name, r.id AS r_id, r.title AS r_title, c.id AS c_id, c.aid AS c_aid', qs)
+        self.assertIn('FROM (SELECT a.id AS a_id', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid JOIN u ON u.id = c.uid JOIN r ON u.id = r.uid', qs)
+
         m = models.User
 
         # Okay
         mq = m.mongoquery(Query([models.User]))
-        mq = mq.join(('articles', 'comments'))
+        mq = mq.query(join={'articles': {'project': ('title',)}, 'comments': {}})
         q = mq.end()
         qs = q2sql(q)
         self.assertIn('FROM u', qs)
-        #self.assertIn('LEFT OUTER JOIN a', qs)  # immediateload(), used in this case, does not add any JOIN clauses: a subquery is used for that
-        #self.assertIn('LEFT OUTER JOIN c', qs)
+        self.assertIn('JOIN a', qs)
+        self.assertIn('JOIN c', qs)
+        self.assertNotIn('LEFT OUTER JOIN a', qs)
+        self.assertNotIn('LEFT OUTER JOIN c', qs)
+
+        # Left outer join
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(outerjoin={'articles': {'project': ('title',)}, 'comments': {}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('FROM u', qs)
+        self.assertIn('LEFT OUTER JOIN a', qs)
+        self.assertIn('LEFT OUTER JOIN c', qs)
 
         # Unknown relation
         mq = m.mongoquery(Query([models.User]))
         self.assertRaises(AssertionError, mq.join, ('???'))
+
+        # Join with limit, should use FROM (SELECT...)
+        mq = models.Article.mongoquery(Query([models.Article]))
+        mq = mq.query(project=['id'], outerjoin={'comments': {'project': ['id']}}, limit=2)
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, c.id AS c_id', qs)
+        self.assertIn('FROM (SELECT a.id AS a_id', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid', qs)
 
     def test_aggregate(self):
         """ Test aggregate() """
@@ -277,3 +321,25 @@ class StatementsTest(unittest.TestCase):
         self.assertRaises(AssertionError, test_aggregate, {'a': '???'}, '')
         self.assertRaises(AssertionError, test_aggregate, {'a': {'$max': '???'}}, '')
         self.assertRaises(AssertionError, test_aggregate, {'a': {'$sum': {'???': 1}}}, '')
+
+    def test_filter_on_join(self):
+        m = models.User
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(aggregate={'n': {'$sum': 1}}, group=('name',), join={'articles': {'filter': {'title': {'$exists': True}}}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn('SELECT count(*) AS n', qs)
+        self.assertIn('FROM u JOIN a ON u.id = a.uid', qs)
+        self.assertIn('WHERE a.title IS NOT NULL GROUP BY u.name', qs)
+
+        # Dotted syntax
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(filter={'articles.id': 1})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM a \nWHERE u.id = a.uid AND a.id = 1)", qs)
+        mq = models.Comment.mongoquery(Query([models.Comment]))
+        mq = mq.query(filter={'user.id': {'$gt': 2}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u \nWHERE u.id = c.uid AND u.id > 2)", qs)

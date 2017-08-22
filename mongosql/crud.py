@@ -1,4 +1,4 @@
-from sqlalchemy.orm.attributes import flag_modified
+from copy import deepcopy
 
 from . import MongoModel, MongoQuery
 from .hist import ModelHistoryProxy
@@ -105,13 +105,15 @@ class CrudHelper(object):
         # Update
         for name, val in entity.items():
             if isinstance(val, dict) and self.mongomodel.model_bag.columns.is_column_json(name):
-                # JSON column with a dict: do a shallow merge
-                getattr(instance, name).update(val)
-                # Tell SqlAlchemy that a mutable collection was updated
-                flag_modified(instance, name)
-            else:
-                # Other columns: just assign
-                setattr(instance, name, val)
+                # JSON column with a dict: Make a copy that can replace the original attribute,
+                # so SqlAlchemy history will notice the changes.
+                tmp = deepcopy(getattr(instance, name))
+
+                # Do a shallow merge.
+                tmp.update(val)
+                val = tmp
+
+            setattr(instance, name, val)
 
         # Finish
         return instance
@@ -289,7 +291,11 @@ class CrudViewMixin(object):
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        return self._mquery(query_obj, *filter, **filter_by).end().one()
+        sql_query = self._mquery(query_obj, *filter, **filter_by).end()
+
+        instance = sql_query.one()
+        instance.mongo_project_properties = sql_query.mongo_project_properties
+        return instance
 
     def _save_hook(self, new, prev=None):
         """ Hook into create(), update() methods.
@@ -312,7 +318,8 @@ class CrudViewMixin(object):
         :rtype: list
         :raises AssertionError: validation errors
         """
-        res = self._mquery(query_obj, *filter, **filter_by).end().all()
+        sql_query = self._mquery(query_obj, *filter, **filter_by).end()
+        res = sql_query.all()
 
         # Count?
         if query_obj and query_obj.get('count', 0):
@@ -321,6 +328,12 @@ class CrudViewMixin(object):
         # Convert KeyedTuples to dicts (when aggregating)
         if query_obj and 'aggregate' in query_obj:
             return [dict(zip(row.keys(), row)) for row in res]
+        if getattr(sql_query, 'mongo_project_properties', None):
+            result = []
+            for instance in res:
+                instance.mongo_project_properties = sql_query.mongo_project_properties
+                result.append(instance)
+            return result
 
         return res
 

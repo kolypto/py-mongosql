@@ -58,6 +58,7 @@ Querying is made with *Query Objects*: a dictionary which defines how to perform
 * `group`: [Group Operation](#group-operation)
 * `filter`: [Filter Operation](#filter-operation)
 * `join`: [Join Operation](#join-operation)
+* `outerjoin`: [Join Operation](#join-operation)
 * `aggregate`: [Aggregate Operation](#aggregate-operation)
 * `skip`, `limit`: Rows slicing: skipping and limiting.
     `skip=10, limit=100` will result in `SELECT .. LIMIT 100 OFFSET 10`.
@@ -204,6 +205,13 @@ Supports the following boolean operators:
 * `{ $nor: [ {..criteria..}, .. ] }` - none is true
 * `{ $not: { ..criteria.. } }` - negation
 
+Filter by the relations fields.
+
+* `{filter: {address.zip: 1234}}` - filter by address relation zip field, but return all
+adresses if joined with address.
+
+*! Be carefull with multiple such excpressions ({address.zip: 1234}, {adress.house: 12}), it produce not abvious queries.!*
+
 ### Join Operation
 
 Allows to eagerly load specific relations by name.
@@ -234,8 +242,12 @@ Allows to eagerly load specific relations by name.
       'comments': None,  # No specific options, just load
     }
     ```
+
+    You should use 'outerjoin' instead of 'join' for LEFT OUTER JOIN's.
     
     Note that no relations are loaded implicitly: you need to specify them in a `'join'`.
+
+    Important note: if you using join with query(dict syntax) and use projection for the main entity. It could be necessary to add forein key to the projection.
 
 ### Aggregate Operation
 
