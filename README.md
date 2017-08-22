@@ -205,6 +205,13 @@ Supports the following boolean operators:
 * `{ $nor: [ {..criteria..}, .. ] }` - none is true
 * `{ $not: { ..criteria.. } }` - negation
 
+Filter by the relations fields.
+
+* `{filter: {address.zip: 1234}}` - filter by address relation zip field, but return all
+adresses if joined with address.
+
+*! Be carefull with multiple such excpressions ({address.zip: 1234}, {adress.house: 12}), it produce not abvious queries.!*
+
 ### Join Operation
 
 Allows to eagerly load specific relations by name.

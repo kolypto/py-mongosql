@@ -331,3 +331,15 @@ class StatementsTest(unittest.TestCase):
         self.assertIn('SELECT count(*) AS n', qs)
         self.assertIn('FROM u JOIN a ON u.id = a.uid', qs)
         self.assertIn('WHERE a.title IS NOT NULL GROUP BY u.name', qs)
+
+        # Dotted syntax
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(filter={'articles.id': 1})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM a \nWHERE u.id = a.uid AND a.id = 1)", qs)
+        mq = models.Comment.mongoquery(Query([models.Comment]))
+        mq = mq.query(filter={'user.id': {'$gt': 2}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u \nWHERE u.id = c.uid AND u.id > 2)", qs)
