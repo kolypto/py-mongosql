@@ -64,7 +64,7 @@ class MongoProjection(object):
         if not projection_keys <= bag.columns.names:
             for key in projection_keys - bag.columns.names:
                 if not getattr(bag.model, key, False):
-                    raise AssertionError('Invalid column specified in projection')
+                    raise AssertionError('Invalid column specified in projection: {}'.format(key))
                 model_properties[key] = projection[key]
                 projection.pop(key)
 

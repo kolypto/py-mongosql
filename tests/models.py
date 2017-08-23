@@ -114,7 +114,7 @@ def init_database():
     """ Init DB
     :rtype: (sqlalchemy.engine.Engine, sqlalchemy.orm.Session)
     """
-    engine = create_engine('postgresql://postgres:postgres@localhost/test_mongosql', convert_unicode=True, echo=False)
+    engine = create_engine('postgresql://di2:di2@localhost/test_mongosql', convert_unicode=True, echo=False)
     Session = sessionmaker(autocommit=True, autoflush=True, bind=engine)
     return engine, Session
 
@@ -140,15 +140,15 @@ def content_samples():
         Article(id=21, uid=2, title='21', data={'rating': 4  , 'o': {'z': True}}),
         Article(id=30, uid=3, title='30', data={               'o': {'z': False}}),
 
-        Comment(aid=10, uid=1, text='10-a'),
-        Comment(aid=10, uid=2, text='10-b'),
-        Comment(aid=10, uid=3, text='10-c'),
-        Comment(aid=11, uid=1, text='11-a'),
-        Comment(aid=11, uid=2, text='11-b'),
-        Comment(aid=12, uid=1, text='12-a'),
-        Comment(aid=20, uid=1, text='20-a-ONE'),
-        Comment(aid=20, uid=1, text='20-a-TWO'),
-        Comment(aid=21, uid=1, text='21-a'),
+        Comment(id=100, aid=10, uid=1, text='10-a'),
+        Comment(id=101, aid=10, uid=2, text='10-b'),
+        Comment(id=102, aid=10, uid=3, text='10-c'),
+        Comment(id=103, aid=11, uid=1, text='11-a'),
+        Comment(id=104, aid=11, uid=2, text='11-b'),
+        Comment(id=105, aid=12, uid=1, text='12-a'),
+        Comment(id=106, aid=20, uid=1, text='20-a-ONE'),
+        Comment(id=107, aid=20, uid=1, text='20-a-TWO'),
+        Comment(id=108, aid=21, uid=1, text='21-a'),
     ]
 
 if __name__ == '__main__':

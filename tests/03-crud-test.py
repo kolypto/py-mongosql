@@ -179,7 +179,7 @@ class CrudTest(unittest.TestCase):
                 'uid': 3,
                 'user': {
                     'id': 3, 'name': 'c',
-                    'comments': [{'id': 3, 'uid': 3, 'aid': 10, 'text': '10-c', }]
+                    'comments': [{'id': 102, 'uid': 3, 'aid': 10, 'text': '10-c', }]
                 }
             })
 
@@ -264,8 +264,8 @@ class CrudTest(unittest.TestCase):
             self.assertEqual(rv['article'], {
                 'id': 20,
                 'comments': [
-                    {'comment_calc': u'ONE', 'id': 7},
-                    {'comment_calc': u'TWO', 'id': 8}]
+                    {'comment_calc': u'ONE', 'id': 106},
+                    {'comment_calc': u'TWO', 'id': 107}]
             })
 
             try:
