@@ -168,8 +168,13 @@ class CrudTest(unittest.TestCase):
                     'join': {
                         'user': {
                             'project': ['name'],
-                            'filter': {'id': 3},
-                            'join': ['comments'],
+                            'join': {
+                                'comments': {
+                                    'filter': {
+                                        'uid': '3'
+                                    }
+                                }
+                            },
                         }
                     }
                 }
