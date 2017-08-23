@@ -42,11 +42,11 @@ class QueryTest(unittest.TestCase):
 
         # Test: load only 2 props
         user = models.User.mongoquery(ssn).project(['id', 'name']).end().first()
-        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments'})
+        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles'})
 
         # Test: load without 2 props
         user = models.User.mongoquery(ssn).project({'age': 0, 'tags': 0}).end().first()
-        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments'})
+        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles'})
 
     def test_sort(self):
         """ Test sort() """
@@ -70,11 +70,11 @@ class QueryTest(unittest.TestCase):
 
         # Test: no join(), relationships are unloaded
         user = models.User.mongoquery(ssn).end().first()
-        self.assertEqual(inspect(user).unloaded, {'articles', 'comments'})
+        self.assertEqual(inspect(user).unloaded, {'articles', 'comments', 'roles'})
 
         # Test:    join(), relationships are   loaded
         user = models.User.mongoquery(ssn).join(['articles']).end().first()
-        self.assertEqual(inspect(user).unloaded, {'comments'})
+        self.assertEqual(inspect(user).unloaded, {'comments', 'roles'})
 
     def test_join_query(self):
         """ Test join(dict) """
@@ -88,7 +88,7 @@ class QueryTest(unittest.TestCase):
             })\
             .end().one()
         self.assertEqual(user.id, 1)
-        self.assertEqual(inspect(user).unloaded, {'articles'})
+        self.assertEqual(inspect(user).unloaded, {'articles', 'roles'})
 
         ssn.close() # need to reset the session: it caches entities and gives bad results
 
@@ -104,9 +104,33 @@ class QueryTest(unittest.TestCase):
             }) \
             .end().one()
         self.assertEqual(user.id, 1)
-        self.assertEqual(inspect(user).unloaded, {'comments'})
+        self.assertEqual(inspect(user).unloaded, {'comments', 'roles'})
         self.assertEqual([10], [a.id for a in user.articles])  # Only one article! :)
         self.assertEqual(inspect(user.articles[0]).unloaded, {'user', 'comments',  'uid', 'data'})  # No relationships loaded, and projection worked
+
+        # Test: complex nested join
+        user = models.User.mongoquery(ssn) \
+            .join({
+                'articles': {
+                    'project': ['id', 'title'],
+                    'join': {
+                        'comments': {
+                            'project': ['id', 'text'],
+                            'filter': {
+                                'text': '20-a-ONE'
+                            }
+                        }
+                    }
+                }
+            }).end().one()
+        self.assertEqual(user.id, 2)
+        self.assertEqual(inspect(user).unloaded, {'comments', 'roles'})
+        self.assertEqual([20], [a.id for a in user.articles])  # Only one article that has comment with text "20-a-ONE"
+        article = user.articles[0]
+        self.assertEqual(inspect(article).unloaded, {'user','uid', 'data'})   # Only "comments" relationship is loaded
+        self.assertEqual([106], [c.id for c in article.comments]) # Only the matching comment is present in the result
+        comment = article.comments[0]
+        self.assertEqual(inspect(comment).unloaded, {'uid', 'aid', 'user', 'article'})  # Only fields specified in the 'project' are loaded
 
     def test_count(self):
         """ Test count() """
