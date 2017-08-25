@@ -187,12 +187,13 @@ class MongoGroup(MongoSort):
 
 
 class ColumnInfo(object):
-    def __init__(self, sql_col, is_array=False, is_json=False, is_relation=False, is_many=False):
+    def __init__(self, sql_col, is_array=False, is_json=False, is_relation=False, **kwargs):
         self.is_array = is_array
         self.is_json = is_json
         self.sql_col = sql_col
         self.is_relation = is_relation
-        self.is_many = is_many
+        for name, value in kwargs.items():
+            setattr(self, name, value)
 
 
 def is_array(value, message=None):
@@ -205,14 +206,6 @@ def is_array(value, message=None):
 def assert_true(value, message):
     assert value, message
     return True
-
-
-def relation_condition(cls, func, op, column, value):
-    def inner_(conditions, cls):
-        condition = func(cls.get_condition(op, column, value))
-        conditions.append(condition)
-        return conditions
-    return inner_
 
 
 class MongoCriteria(object):
@@ -279,10 +272,6 @@ class MongoCriteria(object):
                    lambda cls, sql_col, value: func.array_length(sql_col, 1) == None),  # ARRAY_LENGTH(field, 1) IS NULL
         ('$size', lambda column, value: not column.is_relation and value != 0 and assert_true(column.is_array, 'Criteria: $all can only be applied to an array column'),
                    lambda cls, sql_col, value: func.array_length(sql_col, 1) == value),  # ARRAY_LENGTH(field, 1) == value
-
-        # Queries for relations
-        ('*', lambda column, value: column.is_relation and column.is_many, lambda cls, op, sql_col, value: relation_condition(cls, sql_col[0].any, op, sql_col[1], value)),
-        ('*', lambda column, value: column.is_relation and not column.is_many, lambda cls, op, sql_col, value: relation_condition(cls, sql_col[0].has, op, sql_col[1], value)),
     )
 
     @classmethod
@@ -298,8 +287,10 @@ class MongoCriteria(object):
             is_array = bag.columns._is_column_array(rel_col_sql)
             is_json = bag.columns._is_column_json(rel_col_sql)
             rel_col = ColumnInfo(rel_col_sql, is_array=is_array, is_json=is_json, is_relation=False)
-            col = (relation, rel_col)
-            return ColumnInfo(col, is_array=False, is_json=False, is_relation=True, is_many=relation.property.uselist)
+            return ColumnInfo(relation, is_array=False, is_json=False, is_relation=True,
+                              rel_name=rel_name,
+                              is_many=relation.property.uselist,
+                              rel_col=rel_col)
         col = bag.columns[col_name]
         is_array = bag.columns.is_column_array(col_name)
         is_json  = bag.columns.is_column_json(col_name)
@@ -338,8 +329,7 @@ class MongoCriteria(object):
         :type bag: mongosql.bag.ModelPropertyBags
         :rtype: sqlalchemy.sql.elements.BooleanClauseList
         """
-        # Assuming a dict of { column: value } and { column: { $op: value } }
-
+        relation_conditions = {}
         conditions = []
         for col_name, criteria in criteria.items():
             # Boolean expressions?
@@ -374,7 +364,11 @@ class MongoCriteria(object):
             # Fake equality
             if not isinstance(criteria, dict):
                 criteria = {'$eq': criteria}  # fake the missing equality operator for simplicity
-
+            # We should collect all relation filters
+            if column.is_relation:
+                relation_conditions.setdefault(column.rel_name, [])
+                relation_conditions[column.rel_name].append({'column': column, 'criteria': criteria})
+                continue
             # Iterate over operators
             for op, value in criteria.items():
                 condition = cls.get_condition(op, column, value)
@@ -382,6 +376,25 @@ class MongoCriteria(object):
                     conditions = condition(conditions, cls)
                 else:
                     conditions.append(condition)
+
+        # Combine filters for relations
+        for rel_name, crits in relation_conditions.items():
+            # Queries for relations
+            relation_conditions = []
+            for crit in crits:
+                relation_info = crit['column']
+                for op, value in crit['criteria'].items():
+                    condition = cls.get_condition(op, relation_info.rel_col, value)
+                    if callable(condition):
+                        relation_conditions = condition(relation_conditions, cls)
+                    else:
+                        relation_conditions.append(condition)
+            if not relation_conditions:
+                continue
+            if relation_info.is_many:
+                conditions.append(relation_info.sql_col.any(and_(*relation_conditions)))
+            else:
+                conditions.append(relation_info.sql_col.has(and_(*relation_conditions)))
 
         if conditions:
             cc = and_(*conditions)

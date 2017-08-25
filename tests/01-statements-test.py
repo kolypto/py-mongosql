@@ -343,3 +343,10 @@ class StatementsTest(unittest.TestCase):
         q = mq.end()
         qs = q2sql(q)
         self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u \nWHERE u.id = c.uid AND u.id > 2)", qs)
+
+        # Dotted multiple filter for same relation
+        mq = models.Comment.mongoquery(Query([models.Comment]))
+        mq = mq.query(filter={'user.id': {'$gt': 2}, 'user.age': {'$gt': 18}})
+        q = mq.end()
+        qs = q2sql(q)
+        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u \nWHERE u.id = c.uid AND u.id > 2 AND u.age > 18)", qs)
