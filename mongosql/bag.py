@@ -1,7 +1,7 @@
 from sqlalchemy import inspect
 from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql as pg
-
+from sqlalchemy.orm.util import AliasedInsp
 
 class _PropertiesBag(object):
     # region Protected
@@ -165,6 +165,8 @@ class ModelPropertyBags(object):
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         """
         ins = inspect(model)
+        if isinstance(ins, AliasedInsp):
+            ins = ins.mapper
         self.model = model
 
         #: Column properties

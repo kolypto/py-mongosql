@@ -23,7 +23,7 @@ class MongoQuery(object):
         except AttributeError:
             return cls(MongoModel.get_for(model), *args, **kwargs)
 
-    def __init__(self, model, query, _as_relation=None, join_path=None):
+    def __init__(self, model, query, _as_relation=None, join_path=None, aliased=None):
         """ Init a MongoDB-style query
         :param model: MongoModel
         :type model: mongosql.MongoModel
@@ -38,6 +38,12 @@ class MongoQuery(object):
         assert isinstance(query, Query)
 
         self._model = model
+        # This magic is here because if we use alias as target_model it
+        # somehow override the Model class. So tests fails if run all tests,
+        # but if you run single test - it pass. So we create MongoModel for alias
+        # here instead of "get_for".
+        if aliased:
+            self._model = MongoModel(aliased)
         self._query = query
         self.join_path = join_path or ()
 
@@ -169,11 +175,13 @@ class MongoQuery(object):
 
     def _add_join_query(self, mjp, join_func):
         mongo_project_properties = self._query.mongo_project_properties
+        model_alias = mjp.rel_alias
         self._query = self.get_for(
             mjp.target_model,
-            getattr(self._query, join_func)(mjp.relationship),
+            getattr(self._query, join_func)(model_alias, mjp.relationship),
             _as_relation=mjp.relationship,
-            join_path=self.join_path + (mjp.relationship, )
+            join_path=self.join_path + (mjp.relationship, ),
+            aliased=model_alias
         )\
         .query(**mjp.query)\
         .end()

@@ -227,9 +227,9 @@ class StatementsTest(unittest.TestCase):
         q = mq.end()
         qs = q2sql(q)
 
-        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u.id AS u_id, u.name AS u_name, c.id AS c_id, c.aid AS c_aid', qs)
+        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u_1.id AS u_1_id, u_1.name AS u_1_name, c_1.id AS c_1_id, c_1.aid AS c_1_aid', qs)
         self.assertIn('FROM (SELECT a.id AS a_id', qs)
-        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid JOIN u ON u.id = c.uid', qs)
+        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid', qs)
 
         # Three level join
         mq = models.Article.mongoquery(Query([models.Article]))
@@ -239,9 +239,11 @@ class StatementsTest(unittest.TestCase):
                                                     }}}, limit=2)
         q = mq.end()
         qs = q2sql(q)
-        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u.id AS u_id, u.name AS u_name, r.id AS r_id, r.title AS r_title, c.id AS c_id, c.aid AS c_aid', qs)
-        self.assertIn('FROM (SELECT a.id AS a_id', qs)
-        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid JOIN u ON u.id = c.uid JOIN r ON u.id = r.uid', qs)
+        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u_1.id AS u_1_id, u_1.name AS u_1_name, r_1.id AS r_1_id, r_1.title AS r_1_title, c_1.id AS c_1_id, c_1.aid AS c_1_aid 
+                           FROM (SELECT a.id AS a_id, a.title AS a_title 
+                              FROM a 
+                           LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid JOIN r AS r_1 ON u_1.id = r_1.uid""",
+                       qs)
 
         m = models.User
 
@@ -274,9 +276,11 @@ class StatementsTest(unittest.TestCase):
         mq = mq.query(project=['id'], outerjoin={'comments': {'project': ['id']}}, limit=2)
         q = mq.end()
         qs = q2sql(q)
-        self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, c.id AS c_id', qs)
-        self.assertIn('FROM (SELECT a.id AS a_id', qs)
-        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c ON anon_1.a_id = c.aid', qs)
+        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, c_1.id AS c_1_id 
+                          FROM (SELECT a.id AS a_id 
+                          FROM a  
+                          LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid""",
+                       qs)
 
     def test_aggregate(self):
         """ Test aggregate() """
@@ -329,8 +333,8 @@ class StatementsTest(unittest.TestCase):
         q = mq.end()
         qs = q2sql(q)
         self.assertIn('SELECT count(*) AS n', qs)
-        self.assertIn('FROM u JOIN a ON u.id = a.uid', qs)
-        self.assertIn('WHERE a.title IS NOT NULL GROUP BY u.name', qs)
+        self.assertIn('FROM u JOIN a AS a_1 ON u.id = a_1.uid', qs)
+        self.assertIn('WHERE a_1.title IS NOT NULL GROUP BY u.name', qs)
 
         # Dotted syntax
         mq = m.mongoquery(Query([models.User]))
@@ -350,3 +354,21 @@ class StatementsTest(unittest.TestCase):
         q = mq.end()
         qs = q2sql(q)
         self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u \nWHERE u.id = c.uid AND u.id > 2 AND u.age > 18)", qs)
+
+    def test_join_multiple(self):
+        """ Test join() same table multiple times"""
+
+        mq = models.Edit.mongoquery(Query([models.Edit]))
+        mq = mq.query(project=['id'], outerjoin={'user': {'project': ['name']},
+                                                 'creator': {'project': ['id', 'tags'],
+                                                             'filter': {'id': {'$lt': 1}}}})
+        q = mq.end()
+
+        qs = q2sql(q)
+        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id 
+        FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid
+        WHERE u_2.id < 1""", qs)
+
+    def _check_qs(self, should, qs):
+        for line in should.splitlines():
+            self.assertIn(line.strip(), qs)

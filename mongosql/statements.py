@@ -1,7 +1,7 @@
 from collections import OrderedDict
 
 from sqlalchemy import Integer, Float
-from sqlalchemy.orm import load_only, defaultload, lazyload, contains_eager, aliased
+from sqlalchemy.orm import defaultload, lazyload, contains_eager, aliased
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func
@@ -414,7 +414,7 @@ class MongoCriteria(object):
 
 
 class _MongoJoinParams(object):
-    def __init__(self, options, relationship=None, target_model=None, query=None, relname=None):
+    def __init__(self, options, relationship=None, target_model=None, query=None, relname=None, rel_alias=None):
         """ Values for joins
         :param options: Additional query options
         :type options: Sequence[sqlalchemy.orm.Load]
@@ -430,6 +430,7 @@ class _MongoJoinParams(object):
         self.target_model = target_model
         self.query = query
         self.relname = relname
+        self.rel_alias = rel_alias
 
 
 class MongoJoin(object):
@@ -483,15 +484,16 @@ class MongoJoin(object):
                 rel_load.lazyload('*')
             else:
                 # Query is present: prepare join information for further queries
-                rel_a = aliased(rel)
                 target_model = rel.property.mapper.class_
+                rel_a = aliased(target_model)
 
                 mjp_list.append(_MongoJoinParams(
-                    [as_relation.contains_eager(rel)],
+                    [as_relation.contains_eager(rel, alias=rel_a)],
                     rel,
                     target_model,
                     query,
-                    relname
+                    relname,
+                    rel_a
                 ))
 
         # lazyload() on all other relations

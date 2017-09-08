@@ -110,6 +110,19 @@ class Role(Base):
     user = relationship(User, backref=backref("roles"))
 
 
+class Edit(Base):
+    __tablename__ = 'e'
+
+    id = Column(Integer, primary_key=True)
+
+    uid = Column(Integer, ForeignKey(User.id))
+    cuid = Column(Integer, ForeignKey(User.id))
+    description = Column(String)
+
+    user = relationship(User, foreign_keys=uid)
+    creator = relationship(User, foreign_keys=cuid)
+
+
 def init_database():
     """ Init DB
     :rtype: (sqlalchemy.engine.Engine, sqlalchemy.orm.Session)
