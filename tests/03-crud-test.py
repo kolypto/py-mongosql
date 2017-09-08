@@ -224,7 +224,7 @@ class CrudTest(unittest.TestCase):
                 'data': {'o': {'a': True}, 'rating': 5},
 
                 # FIXME: for some reason, deleted entity has 'comments' relationships loaded! Why? They shouldn't be here
-                'comments': [{'aid': None, 'id': 1, 'text': '10-a', 'uid': 1},{'aid': None, 'id': 2, 'text': '10-b', 'uid': 2},{'aid': None, 'id': 3, 'text': '10-c', 'uid': 3}],
+                'comments': [{'aid': None, 'id': 100, 'text': '10-a', 'uid': 1},{'aid': None, 'id': 101, 'text': '10-b', 'uid': 2},{'aid': None, 'id': 102, 'text': '10-c', 'uid': 3}],
             })
 
             self.db.close()

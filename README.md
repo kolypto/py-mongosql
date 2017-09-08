@@ -210,8 +210,6 @@ Filter by the relations fields.
 * `{filter: {address.zip: 1234}}` - filter by address relation zip field, but return all
 adresses if joined with address.
 
-*! Be careful with multiple such expressions (e.g. {address.zip: 1234, address.house: 12}) as this produce non-obvious queries!*
-
 ### Join Operation
 
 Allows to eagerly load specific relations by name.
