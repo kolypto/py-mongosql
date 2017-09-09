@@ -52,7 +52,6 @@ class MongoQuery(object):
         else:
             self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
         self._query.mongo_project_properties = {}
-        self._query.join_project_properties = {}
         self._no_joindefaults = False
         self.join_queries = []
         self.skip_or_limit = False
@@ -117,11 +116,9 @@ class MongoQuery(object):
                     continue
                 else:
                     self._add_join_query(mjp, join_func)
+                    continue
             # Options
             self._query = self._query.options(*mjp.options)
-            if mjp.relname and self._query.mongo_project_properties:
-                self._query.join_project_properties[mjp.relname] = self._query.mongo_project_properties
-                self._query.mongo_project_properties = {}
 
         self._query = self._query.with_labels()
         self._no_joindefaults = True
@@ -198,7 +195,6 @@ class MongoQuery(object):
         """
         if not self._no_joindefaults:
             self.join(())  # have to join with an empty list explicitly so all relations get noload()
-        self._query.mongo_project_properties.update(self._query.join_project_properties)
         if self.join_queries:
             self._query = self._query.from_self()
             for mjp, join_func in self.join_queries:
