@@ -293,8 +293,8 @@ class StatementsTest(unittest.TestCase):
             self.assertTrue(qs.startswith(expected_starts), '{!r} should start with {!r}'.format(qs, expected_starts))
 
         # Empty
-        test_aggregate(None, 'SELECT u.id AS u_id \nFROM')
-        test_aggregate({},   'SELECT u.id AS u_id \nFROM')
+        test_aggregate(None, 'SELECT u.id \nFROM')
+        test_aggregate({},   'SELECT u.id \nFROM')
 
         # $func(column)
         test_aggregate({ 'max_age': {'$max': 'age'} }, 'SELECT max(u.age) AS max_age \nFROM')

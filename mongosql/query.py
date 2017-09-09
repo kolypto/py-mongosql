@@ -52,7 +52,6 @@ class MongoQuery(object):
         else:
             self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
         self._query.mongo_project_properties = {}
-        self._no_joindefaults = False
         self.join_queries = []
         self.skip_or_limit = False
 
@@ -61,8 +60,6 @@ class MongoQuery(object):
         a = self._model.aggregate(agg_spec)
         if a:
             self._query = self._query.with_entities(*a)
-            self._no_joindefaults = True  # no relationships should be loaded
-
             # When no model criteria is specified, like COUNT(*), SqlAlchemy won't set the FROM clause
             # Thus, we need to explicitly set the `FROM` clause in these cases
             if self._query.whereclause is None:
@@ -121,7 +118,6 @@ class MongoQuery(object):
             self._query = self._query.options(*mjp.options)
 
         self._query = self._query.with_labels()
-        self._no_joindefaults = True
         return self
 
     def join(self, relnames):
@@ -138,7 +134,7 @@ class MongoQuery(object):
     def count(self):
         """ Count rows instead """
         self._query = self._query.from_self(func.count(1))
-        self._no_joindefaults = True  # no relationships should be loaded
+        self.join(())  # no relationships should be loaded
         return self
 
     def query(self, project=None, sort=None, group=None, filter=None, skip=None, limit=None, join=None, aggregate=None, count=False, outerjoin=None, **__unk):
@@ -193,8 +189,6 @@ class MongoQuery(object):
         """ Get the Query object
         :rtype: sqlalchemy.orm.Query
         """
-        if not self._no_joindefaults:
-            self.join(())  # have to join with an empty list explicitly so all relations get noload()
         if self.join_queries:
             self._query = self._query.from_self()
             for mjp, join_func in self.join_queries:
