@@ -223,14 +223,13 @@ class StatementsTest(unittest.TestCase):
         # Two level join
         mq = models.Article.mongoquery(Query([models.Article]))
         mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],
-                                                    'join': {'user': {'project': ['name']}}}}, limit=2)
+                                                                 'join': {'user': {'project': ['name']}}}}, limit=2, sort=['title-'])
         q = mq.end()
         qs = q2sql(q)
-
         self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u_1.id AS u_1_id, u_1.name AS u_1_name, c_1.id AS c_1_id, c_1.aid AS c_1_aid', qs)
         self.assertIn('FROM (SELECT a.id AS a_id', qs)
-        self.assertIn('LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid', qs)
-
+        self.assertIn('a ORDER BY a.title DESC \n LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid', qs)
+        self.assertTrue(qs.endswith('ORDER BY anon_1.a_title DESC'))
         # Three level join
         mq = models.Article.mongoquery(Query([models.Article]))
         mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],

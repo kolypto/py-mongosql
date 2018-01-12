@@ -54,6 +54,7 @@ class MongoQuery(object):
         self._query.mongo_project_properties = {}
         self.join_queries = []
         self.skip_or_limit = False
+        self._order_by = None
 
     def aggregate(self, agg_spec):
         """ Select aggregated results """
@@ -80,6 +81,7 @@ class MongoQuery(object):
         """ Apply sorting to the query """
         s = self._model.sort(sort_spec)
         self._query = self._query.order_by(*s)
+        self._order_by = s
         return self
 
     def group(self, group_spec):
@@ -193,4 +195,7 @@ class MongoQuery(object):
             self._query = self._query.from_self()
             for mjp, join_func in self.join_queries:
                 self._add_join_query(mjp, join_func)
+            # Apply order to the resulting query
+            if self._order_by is not None:
+                self._query = self._query.order_by(*self._order_by)
         return self._query
