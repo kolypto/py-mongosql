@@ -52,8 +52,8 @@ class CrudTest(unittest.TestCase):
             self.assertEqual(rv['articles'], [
                 # 2 items
                 # sort: id-
-                {'id': 30, 'uid': 3, 'title': '30', 'data': {'o': {'z': False}},},
-                {'id': 21, 'uid': 2, 'title': '21', 'data': {'rating': 4, 'o': {'z': True}},}
+                {'id': 30, 'uid': 3, 'theme': None, 'title': '30', 'data': {'o': {'z': False}},},
+                {'id': 21, 'uid': 2, 'theme': None, 'title': '21', 'data': {'rating': 4, 'o': {'z': True}},}
             ])
 
         # Query list
@@ -115,6 +115,7 @@ class CrudTest(unittest.TestCase):
                 'article': {
                     'id': 999, 'uid': 999,
                     'title': '999',
+                    'theme': None,
                     'data': {'wow': True}
                 }
                 })
@@ -122,7 +123,9 @@ class CrudTest(unittest.TestCase):
                 'id': 1,  # Auto-set
                 'uid': 3,  # Set manually
                 'title': '999',
-                'data': {'wow': True}
+                'theme': None,
+                'data': {'wow': True},
+                'theme': None,
             })
 
     def test_get(self):
@@ -207,6 +210,7 @@ class CrudTest(unittest.TestCase):
                 'id': 10,  # ro
                 'uid': 1,  # ro
                 'title': '10',  # Unchanged
+                'theme': None,
                 'data': {'?': ':)', 'o': {'a': True}, 'rating': 5},  # merged
             })
 
@@ -216,15 +220,11 @@ class CrudTest(unittest.TestCase):
         # Delete
         with self.app.test_client() as c:
             rv = c.delete('/article/10', json=None)
-            from pprint import pprint
-            pprint(rv.get_json())
             self.assertEqual(rv['article'], {
                 'id': 10, 'uid': 1,
                 'title': '10',
+                'theme': None,
                 'data': {'o': {'a': True}, 'rating': 5},
-
-                # FIXME: for some reason, deleted entity has 'comments' relationships loaded! Why? They shouldn't be here
-                'comments': [{'aid': None, 'id': 100, 'text': '10-a', 'uid': 1},{'aid': None, 'id': 101, 'text': '10-b', 'uid': 2},{'aid': None, 'id': 102, 'text': '10-c', 'uid': 3}],
             })
 
             self.db.close()

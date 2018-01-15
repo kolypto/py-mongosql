@@ -71,6 +71,7 @@ class Article(Base):
     id = Column(Integer, primary_key=True)
     uid = Column(Integer, ForeignKey(User.id))
     title = Column(String)
+    theme = Column(String)
     data = Column(pg.JSON)  # JSON field
 
     user = relationship(User, backref=backref('articles'))
