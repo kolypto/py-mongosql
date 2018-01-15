@@ -193,7 +193,7 @@ class MongoQuery(object):
         """
         if self.join_queries:
             if self._order_by:
-                self._query = self._query.options(*[undefer(x.element.key) for x in self._order_by])
+                self._query = self._query.options(*[undefer(x.key or x.element.key) for x in self._order_by])
             self._query = self._query.from_self()
             for mjp, join_func in self.join_queries:
                 self._add_join_query(mjp, join_func)
