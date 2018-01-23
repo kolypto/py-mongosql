@@ -220,6 +220,8 @@ class CrudTest(unittest.TestCase):
         # Delete
         with self.app.test_client() as c:
             rv = c.delete('/article/10', json=None)
+            art = rv['article']
+            art.pop('comments', None)
             self.assertEqual(rv['article'], {
                 'id': 10, 'uid': 1,
                 'title': '10',

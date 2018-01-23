@@ -467,14 +467,14 @@ class MongoJoin(object):
         relnames = set(rels.keys())
         assert relnames <= bag.relations.names, 'Invalid relation names: {}'.format(relnames - bag.relations.names)
 
-        # Complex joins
-        mjp_list = []
+        # lazyload() on all relations
+        mjp_list = [_MongoJoinParams([as_relation.lazyload('*')])]
         for relname, query in rels.items():
             rel = bag.relations[relname]
             if query is None:
                 # No query specified
                 # Just load this relationship
-                if rel.property.lazy in (True, None, 'select'):
+                if rel.property.lazy in (True, None, 'select', 'immediate'):
                     # If `lazy` configured to lazyload -- override with `joinedload()`
                     rel_load = as_relation.joinedload(rel)
                 else:
@@ -495,12 +495,6 @@ class MongoJoin(object):
                     relname,
                     rel_a
                 ))
-
-        # lazyload() on all other relations
-        opts = [as_relation.lazyload(bag.relations[relname]) for relname in bag.relations.names if relname not in relnames]  # FIXME: apply lazyload() to all attributes initially, then override these. How do I do it?  http://stackoverflow.com/questions/25000473/
-        mjp_list.append(_MongoJoinParams(opts))
-
-        # Finish
         return mjp_list
 
     def __call__(self, model, as_relation):
