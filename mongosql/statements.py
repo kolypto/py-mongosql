@@ -474,12 +474,10 @@ class MongoJoin(object):
             if query is None:
                 # No query specified
                 # Just load this relationship
-                if rel.property.lazy in (True, None, 'select', 'immediate'):
-                    # If `lazy` configured to lazyload -- override with `joinedload()`
-                    rel_load = as_relation.joinedload(rel)
+                if rel.property.lazy == 'subquery':
+                    rel_load = as_relation.subqueryload(rel)
                 else:
-                    # If `lazy` configured for eager loading -- just use `defaultload()` to trigger it
-                    rel_load = as_relation.defaultload(rel)
+                    rel_load = as_relation.joinedload(rel)
                 # No query specified: do not load sub-relations
                 rel_load.lazyload('*')
             else:
