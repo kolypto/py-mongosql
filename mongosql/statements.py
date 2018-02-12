@@ -60,18 +60,21 @@ class MongoProjection(object):
         """
         # Check columns
         projection_keys = set(projection.keys())
-        model_properties = {}
+        if inclusion_mode:
+            projected = projection_keys
+        else:
+            projected = [name for name, c in bag.columns.items() if name not in projection_keys]
+
         if not projection_keys <= bag.columns.names:
             for key in projection_keys - bag.columns.names:
                 if not getattr(bag.model, key, False):
                     raise AssertionError('Invalid column specified in projection: {}'.format(key))
-                model_properties[key] = projection[key]
                 projection.pop(key)
 
         if inclusion_mode:
-            return (bag.columns[name] for name in projection.keys()), model_properties
+            return (bag.columns[name] for name in projection.keys()), projected
         else:
-            return (col for name, col in bag.columns.items() if name not in projection_keys), model_properties
+            return (col for name, col in bag.columns.items() if name not in projection_keys), projected
 
     @classmethod
     def options(cls, bag, projection, inclusion_mode, as_relation):
@@ -414,7 +417,7 @@ class MongoCriteria(object):
 
 
 class _MongoJoinParams(object):
-    def __init__(self, options, relationship=None, target_model=None, query=None, relname=None, rel_alias=None):
+    def __init__(self, options, relationship=None, target_model=None, query=None, relname=None, rel_alias=None, additional_filter=None):
         """ Values for joins
         :param options: Additional query options
         :type options: Sequence[sqlalchemy.orm.Load]
@@ -431,6 +434,7 @@ class _MongoJoinParams(object):
         self.query = query
         self.relname = relname
         self.rel_alias = rel_alias
+        self.additional_filter = additional_filter
 
 
 class MongoJoin(object):
@@ -457,7 +461,7 @@ class MongoJoin(object):
             raise AssertionError('Join must be one of: None, list, dict')
 
     @classmethod
-    def options(cls, bag, rels, as_relation):
+    def options(cls, bag, rels, as_relation, callback):
         """ Prepare relationships loader
         :type bag: mongosql.bag.ModelPropertyBags
         :type as_relation: sqlalchemy.orm.Load
@@ -471,7 +475,17 @@ class MongoJoin(object):
         mjp_list = [_MongoJoinParams([as_relation.lazyload('*')])]
         for relname, query in rels.items():
             rel = bag.relations[relname]
+            target_model = rel.property.mapper.class_
+            rel_a = aliased(target_model)
+
+            additional_query = None
+            if callback:
+                additional_query = callback(relname, rel, alias=rel_a)
+                if additional_query:
+                    query = {}
             if query is None:
+                # For generate the output format from get_project
+                mjp_list.append(_MongoJoinParams(None, relname=relname, target_model=target_model))
                 # No query specified
                 # Just load this relationship
                 if rel.property.lazy == 'subquery':
@@ -482,8 +496,6 @@ class MongoJoin(object):
                 rel_load.lazyload('*')
             else:
                 # Query is present: prepare join information for further queries
-                target_model = rel.property.mapper.class_
-                rel_a = aliased(target_model)
 
                 mjp_list.append(_MongoJoinParams(
                     [as_relation.contains_eager(rel, alias=rel_a)],
@@ -491,11 +503,12 @@ class MongoJoin(object):
                     target_model,
                     query,
                     relname,
-                    rel_a
+                    rel_a,
+                    additional_query
                 ))
         return mjp_list
 
-    def __call__(self, model, as_relation):
+    def __call__(self, model, as_relation, callback):
         """ Build the statement
 
             :type model: MongoModel
@@ -505,7 +518,7 @@ class MongoJoin(object):
             :rtype: list[_MongoJoinParams]
             :raises AssertionError: unknown column name
         """
-        return self.options(model.model_bag, self.rels, as_relation)
+        return self.options(model.model_bag, self.rels, as_relation, callback)
 
 
 class MongoAggregate(object):

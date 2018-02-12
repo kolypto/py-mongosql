@@ -418,6 +418,9 @@ Querying
 Having a `MongoQuery`, you need just two methods:
 
 * `query(**query_object)`: Make queries with a [Query Object](#query-object-syntax) provided as keyword arguments.
+* `get_project()`: Return the requested columns, in form of list with joined entities to be dict.
+For example get_project for  this query - ```{'project': ['id', 'name'], 'join': ['roles']}```
+will return ```('id', 'name', {'roles': ('id', 'uid', 'title', 'description')}```.
 * `end()`: Get the resulting [Query](http://docs.sqlalchemy.org/en/latest/orm/query.html), ready for execution
 
 `AssertionError` is raised for validation errors, e.g. an unknown field is provided by the user.

@@ -294,7 +294,6 @@ class CrudViewMixin(object):
         sql_query = self._mquery(query_obj, *filter, **filter_by).end()
 
         instance = sql_query.one()
-        instance.mongo_project_properties = sql_query.mongo_project_properties
         return instance
 
     def _save_hook(self, new, prev=None):
@@ -328,13 +327,6 @@ class CrudViewMixin(object):
         # Convert KeyedTuples to dicts (when aggregating)
         if query_obj and 'aggregate' in query_obj:
             return [dict(zip(row.keys(), row)) for row in res]
-        if getattr(sql_query, 'mongo_project_properties', None):
-            result = []
-            for instance in res:
-                instance.mongo_project_properties = sql_query.mongo_project_properties
-                result.append(instance)
-            return result
-
         return res
 
     def _method_create(self, entity):

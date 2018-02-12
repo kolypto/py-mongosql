@@ -22,7 +22,7 @@ class MongoSqlBase(object):
         return cls.__mongomodel
 
     @classmethod
-    def mongoquery(cls, query, **kwargs):
+    def mongoquery(cls, query=None, **kwargs):
         """ Build a MongoQuery
         :param query: Query to start with, or a session object to initiate the query with
         :type query: sqlalchemy.orm.Query|sqlalchemy.orm.Session

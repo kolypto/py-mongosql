@@ -23,7 +23,7 @@ class MongoQuery(object):
         except AttributeError:
             return cls(MongoModel.get_for(model), *args, **kwargs)
 
-    def __init__(self, model, query, _as_relation=None, join_path=None, aliased=None):
+    def __init__(self, model, query=None, _as_relation=None, join_path=None, aliased=None):
         """ Init a MongoDB-style query
         :param model: MongoModel
         :type model: mongosql.MongoModel
@@ -34,9 +34,9 @@ class MongoQuery(object):
             is used as initial path for defaultload(_as_relation).lazyload(...).
         :type _as_relation: sqlalchemy.orm.relationships.RelationshipProperty
         """
-        assert isinstance(model, MongoModel)
-        assert isinstance(query, Query)
-
+        if query is None:
+            query = Query([model.model])
+        self.join_hook = None
         self._model = model
         # This magic is here because if we use alias as target_model it
         # somehow override the Model class. So tests fails if run all tests,
@@ -51,10 +51,23 @@ class MongoQuery(object):
             self._as_relation = defaultload(*join_path)
         else:
             self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
-        self._query.mongo_project_properties = {}
         self.join_queries = []
         self.skip_or_limit = False
         self._order_by = None
+        self._project = []
+        self._end_query = None
+
+    def on_join(self, on_join):
+        self.join_hook = on_join
+
+    def get_project(self):
+        self.end()
+        if not self._project:
+            self._project = [name for name, c in self._model.model_bag.columns.items()]
+        return self._project
+
+    def set_project(self, project):
+        self._project = project
 
     def aggregate(self, agg_spec):
         """ Select aggregated results """
@@ -70,11 +83,11 @@ class MongoQuery(object):
 
     def project(self, projection):
         """ Apply a projection to the query """
-        p, model_properties = self._model.project(projection, as_relation=self._as_relation)
+        p, projected_properties = self._model.project(projection, as_relation=self._as_relation)
         if self._model.model.__name__ == 'User':
             assert 1
         self._query = self._query.options(p)
-        self._query.mongo_project_properties = model_properties
+        self._project.extend(projected_properties)
         return self
 
     def sort(self, sort_spec):
@@ -107,7 +120,7 @@ class MongoQuery(object):
 
     def _join(self, relnames, join_func):
         """ Base for join and outerjoin """
-        for mjp in self._model.join(relnames, as_relation=self._as_relation):
+        for mjp in self._model.join(relnames, as_relation=self._as_relation, callback=self.join_hook):
             # Complex joins
             if mjp.query is not None:
                 if self.skip_or_limit:
@@ -116,8 +129,14 @@ class MongoQuery(object):
                 else:
                     self._add_join_query(mjp, join_func)
                     continue
-            # Options
-            self._query = self._query.options(*mjp.options)
+            # Options or projection
+            if mjp.options:
+                self._query = self._query.options(*mjp.options)
+            else:
+                joined = self.get_for(
+                    mjp.target_model
+                )
+                self._project.append({mjp.relname: joined.get_project()})
 
         self._query = self._query.with_labels()
         return self
@@ -155,7 +174,6 @@ class MongoQuery(object):
         :rtype: MongoQuery
         """
         assert not __unk, 'Unknown Query Object operations: {}'.format(__unk.keys())
-
         q = self
         self.skip_or_limit = skip or limit
         if join:            q = q.join(join)
@@ -169,21 +187,23 @@ class MongoQuery(object):
         return q.count() if count else q
 
     def _add_join_query(self, mjp, join_func):
-        mongo_project_properties = self._query.mongo_project_properties
         model_alias = mjp.rel_alias
-        self._query = self.get_for(
+        query_with_joined = getattr(self._query, join_func)(model_alias, mjp.relationship)
+        if mjp.additional_filter:
+            query_with_joined = mjp.additional_filter(query_with_joined)
+
+        for_join = self.get_for(
             mjp.target_model,
-            getattr(self._query, join_func)(model_alias, mjp.relationship),
+            query_with_joined,
             _as_relation=mjp.relationship,
             join_path=self.join_path + (mjp.relationship, ),
             aliased=model_alias
-        )\
-        .query(**mjp.query)\
-        .end()
+        )
+        for_join.on_join(self.join_hook)
+        for_join_query = for_join.query(**mjp.query)
+        self._project.append({mjp.relname: for_join_query.get_project()})
+        self._query = for_join_query.end()
         join_query = self._query.with_labels()
-        if mjp.relname and join_query.mongo_project_properties:
-            mongo_project_properties[mjp.relname] = join_query.mongo_project_properties.copy()
-            join_query.mongo_project_properties = mongo_project_properties
         self._query = join_query
         self._query = self._query.options(*mjp.options)
 
@@ -191,6 +211,9 @@ class MongoQuery(object):
         """ Get the Query object
         :rtype: sqlalchemy.orm.Query
         """
+        if self._end_query is not None:
+            return self._end_query
+
         if self.join_queries:
             if self._order_by:
                 self._query = self._query.options(*[undefer(x.key or x.element.key) for x in self._order_by])
@@ -200,4 +223,5 @@ class MongoQuery(object):
             # Apply order to the resulting query
             if self._order_by is not None:
                 self._query = self._query.order_by(*self._order_by)
-        return self._query
+        self._end_query = self._query
+        return self._end_query

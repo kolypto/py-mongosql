@@ -240,9 +240,9 @@ class StatementsTest(unittest.TestCase):
                                                     }}}, limit=2)
         q = mq.end()
         qs = q2sql(q)
-        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u_1.id AS u_1_id, u_1.name AS u_1_name, r_1.id AS r_1_id, r_1.title AS r_1_title, c_1.id AS c_1_id, c_1.aid AS c_1_aid 
-                           FROM (SELECT a.id AS a_id, a.title AS a_title 
-                              FROM a 
+        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u_1.id AS u_1_id, u_1.name AS u_1_name, r_1.id AS r_1_id, r_1.title AS r_1_title, c_1.id AS c_1_id, c_1.aid AS c_1_aid
+                           FROM (SELECT a.id AS a_id, a.title AS a_title
+                              FROM a
                            LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid JOIN r AS r_1 ON u_1.id = r_1.uid""",
                        qs)
 
@@ -277,9 +277,9 @@ class StatementsTest(unittest.TestCase):
         mq = mq.query(project=['id'], outerjoin={'comments': {'project': ['id']}}, limit=2)
         q = mq.end()
         qs = q2sql(q)
-        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, c_1.id AS c_1_id 
-                          FROM (SELECT a.id AS a_id 
-                          FROM a  
+        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, c_1.id AS c_1_id
+                          FROM (SELECT a.id AS a_id
+                          FROM a
                           LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid""",
                        qs)
 
@@ -366,10 +366,82 @@ class StatementsTest(unittest.TestCase):
         q = mq.end()
 
         qs = q2sql(q)
-        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id 
+        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id
         FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid
         WHERE u_2.id < 1""", qs)
 
     def _check_qs(self, should, qs):
         for line in should.splitlines():
             self.assertIn(line.strip(), qs)
+
+    def test_join_condition(self):
+        """ Add condition on join. Used in filter joined entities
+        For example for security reason."""
+
+        mq = models.Edit.mongoquery(Query([models.Edit]))
+
+        def join_hook(name, rel, alias):
+            if rel.property.mapper.class_  == models.User and name == 'user':
+                return lambda x: x.filter(alias.age > 18)
+            return
+
+        mq.on_join(join_hook)
+        mq = mq.query(project=['id'], outerjoin={'user': {'project': ['name']},
+                                                 'creator': {'project': ['id', 'tags']}})
+        q = mq.end()
+
+        qs = q2sql(q)
+        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id
+            FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid
+            WHERE u_1.age > 18""", qs)
+
+        # Without projections
+        mq = models.Edit.mongoquery(Query([models.Edit]))
+        mq.on_join(join_hook)
+        mq = mq.query(project=['id'], outerjoin=['user'])
+        q = mq.end()
+        qs = q2sql(q)
+        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, e.id AS e_id
+            FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid
+            WHERE u_1.age > 18""", qs)
+        mq = models.Edit.mongoquery(Query([models.Edit]))
+
+        def join_hook(name, rel, alias):
+            if rel.property.mapper.class_  == models.Role:
+                return lambda x: x.filter(alias.title.isnot(None))
+            return
+        mq.on_join(join_hook)
+        mq = mq.query(project=['id'], outerjoin={'user': {'join': ['roles']}})
+
+        q = mq.end()
+        qs = q2sql(q)
+        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, r_1.id AS r_1_id, r_1.uid AS r_1_uid, r_1.title AS r_1_title, r_1.description AS r_1_description, e.id AS e_id
+                   FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid JOIN r AS r_1 ON u_1.id = r_1.uid
+                   WHERE r_1.title IS NOT NULL""", qs)
+
+    def test_get_project(self):
+        m = models.User
+
+        def _get_project(query):
+            #return q2sql(m.mongoquery(Query([m])).query(**query).end())
+            return m.mongoquery(Query([m])).query(**query).get_project()
+
+        def _check_query(query, project):
+            def _sort(project):
+                for item in project:
+                    if isinstance(item, dict):
+                        for name, sub_project in item.items():
+                            item[name] = _sort(sub_project)
+                return sorted(project)
+            self.assertEqual(_sort(_get_project(query)), _sort(project))
+
+        _check_query({'project': ['id', 'name']}, ('id', 'name'))
+        _check_query({'project': {'id': 0, 'name': 0}}, ('tags', 'age'))
+        _check_query({'project': {}}, ('id', 'name', 'tags', 'age'))
+        _check_query({'project': ['id', 'name'], 'join': ['roles']}, ('id', 'name', {'roles': ('id', 'uid', 'title', 'description')}))
+        _check_query({'project': ['id', 'name'], 'join': {'roles':{'project': ['title', 'description']}}},
+                     ('id', 'name', {'roles': ('title', 'description')}))
+        _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': {'comments': {'project': ['uid', 'text']}}}}},
+                     ('id', 'name', {'articles': ('title', {'comments': ['uid', 'text']})}))
+        _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': ['comments']}}},
+                     ('id', 'name', {'articles': ('title', {'comments': ['aid', 'id', 'text', 'uid']})}))

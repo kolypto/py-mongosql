@@ -148,7 +148,7 @@ class MongoModel(object):
             self.skip(skip)
         )
 
-    def join(self, relnames, as_relation):
+    def join(self, relnames, as_relation, callback):
         """ Build eager loader for the relations
 
             :type relnames: None | Iterable[str] | dict
@@ -161,7 +161,7 @@ class MongoModel(object):
             :rtype: list[mongosql.statements._MongoJoinParams]
             :raises AssertionError: invalid input
         """
-        return MongoJoin(relnames)(self, as_relation)
+        return MongoJoin(relnames)(self, as_relation, callback)
 
     def aggregate(self, agg_spec):
         """ Select aggregated results
