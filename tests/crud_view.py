@@ -1,8 +1,22 @@
 from mongosql import CrudViewMixin, StrictCrudHelper
+import collections
 
 from . import models
 from flask import request, g
 from flask.ext.jsontools import jsonapi, RestfulView
+
+
+def project(item, projection):
+    result = {}
+    if isinstance(item, collections.Iterable):
+        return [project(i, projection) for i in item]
+    for key in projection:
+        if isinstance(key, dict):
+            for k, p in key.items():
+                result[k] = project(getattr(item, k, None), p)
+        else:
+            result[key] = getattr(item, key, None)
+    return result
 
 
 class ArticlesView(RestfulView, CrudViewMixin):
@@ -46,7 +60,10 @@ class ArticlesView(RestfulView, CrudViewMixin):
     #region Collection methods
 
     def list(self):
-        return { self.entity_name+'s': self._method_list(self._qo) }
+        data, projection = self._method_list(self._qo)
+        if projection:
+            data = project(data, projection)
+        return { self.entity_name+'s':  data}
 
     def create(self):
         instance = self._method_create(request.get_json()[self.entity_name])
@@ -63,7 +80,10 @@ class ArticlesView(RestfulView, CrudViewMixin):
     #region Single entity methods
 
     def get(self, id):
-        return { self.entity_name: self._method_get(self._qo, id=id) }
+        item, projection = self._method_get(self._qo, id=id)
+        if projection:
+            item = project(item, projection)
+        return { self.entity_name:  item }
 
     def update(self, id):
         instance = self._method_update(request.get_json()[self.entity_name], id=id)

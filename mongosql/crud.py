@@ -271,12 +271,13 @@ class CrudViewMixin(object):
         :type query_obj: dict|None
         :param filter: Additional filter() criteria
         :param filter_by: Additional filter_by() criteria
-        :rtype: mongosql.MongoQuery
+        :rtype: sqlalchemy.orm.Query, list of fields
         """
-        return self._getCrudHelper().mquery(
+        mongo_query =  self._getCrudHelper().mquery(
             self._query().filter(*filter).filter_by(**filter_by),
             query_obj
         )
+        return mongo_query.end(), mongo_query.get_project()
 
     def _get_one(self, query_obj, *filter, **filter_by):
         """ Utility method that fetches a single entity.
@@ -291,10 +292,10 @@ class CrudViewMixin(object):
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        sql_query = self._mquery(query_obj, *filter, **filter_by).end()
+        sql_query, projection = self._mquery(query_obj, *filter, **filter_by)
 
         instance = sql_query.one()
-        return instance
+        return instance, projection
 
     def _save_hook(self, new, prev=None):
         """ Hook into create(), update() methods.
@@ -317,17 +318,17 @@ class CrudViewMixin(object):
         :rtype: list
         :raises AssertionError: validation errors
         """
-        sql_query = self._mquery(query_obj, *filter, **filter_by).end()
+        sql_query, projection = self._mquery(query_obj, *filter, **filter_by)
         res = sql_query.all()
 
         # Count?
         if query_obj and query_obj.get('count', 0):
-            return res[0][0]  # Scalar count query
+            return res[0][0], None  # Scalar count query
 
         # Convert KeyedTuples to dicts (when aggregating)
         if query_obj and 'aggregate' in query_obj:
-            return [dict(zip(row.keys(), row)) for row in res]
-        return res
+            return [dict(zip(row.keys(), row)) for row in res], None
+        return res, projection
 
     def _method_create(self, entity):
         """ Create a new entity
@@ -368,7 +369,7 @@ class CrudViewMixin(object):
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        instance = self._get_one(None, *filter, **filter_by)
+        instance, _ = self._get_one(None, *filter, **filter_by)
         instance = self._getCrudHelper().update_model(entity, instance)
         self._save_hook(
             instance,
@@ -389,4 +390,5 @@ class CrudViewMixin(object):
         :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
         :raises AssertionError: validation errors
         """
-        return self._get_one(None, *filter, **filter_by)
+        item, _ = self._get_one(None, *filter, **filter_by)
+        return item

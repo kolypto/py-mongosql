@@ -135,7 +135,7 @@ class CrudTest(unittest.TestCase):
         with self.app.test_client() as c:
             rv = c.get('/article/30', json={
                 'query': {
-                    'project': ['uid'],
+                    'project': ['id', 'uid'],
                 }
             })
             self.assertEqual(rv['article'], {
@@ -148,7 +148,7 @@ class CrudTest(unittest.TestCase):
         with self.app.test_client() as c:
             rv = c.get('/article/30', json={
                 'query': {
-                    'project': ['uid'],
+                    'project': ['id', 'uid'],
                     'join': ['user',]
                 }
             })
@@ -186,7 +186,7 @@ class CrudTest(unittest.TestCase):
                 'id': 30,
                 'uid': 3,
                 'user': {
-                    'id': 3, 'name': 'c',
+                    'name': 'c',
                     'comments': [{'id': 102, 'uid': 3, 'aid': 10, 'text': '10-c', }]
                 }
             })
@@ -247,7 +247,7 @@ class CrudTest(unittest.TestCase):
                 }
             })
             self.assertEqual(rv['article'], {
-                'id': 30, 'uid': 3, 'calculated': 5
+                'uid': 3, 'calculated': 5
             })
             rv = c.get('/article/', json={
                 'query': {
@@ -257,8 +257,8 @@ class CrudTest(unittest.TestCase):
             self.assertEqual(rv['articles'], [
                 # 2 items
                 # sort: id-
-                {'id': 30, 'uid': 3, 'calculated': 5},
-                {'id': 21, 'uid': 2, 'calculated': 4}
+                {'uid': 3, 'calculated': 5},
+                {'uid': 2, 'calculated': 4}
             ])
             # Propjection for join
             rv = c.get('/article/20', json={
