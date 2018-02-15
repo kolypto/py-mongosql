@@ -24,33 +24,26 @@ class MongoProjection(object):
             :raises AssertionError: invalid input
         """
 
-        #: Inclusion mode or exclusion mode?
-        self.inclusion_mode = False
-
         #: Normalized projection: { field_name: 0|1 }
         self.projection = {}
 
         # Empty projection
         if not projection:
-            self.inclusion_mode = False
             self.projection = {}
             return
 
         # Array syntax
         if isinstance(projection, (list, tuple)):
-            self.inclusion_mode = True
             self.projection = {k: 1 for k in projection}
             return
 
         # Object syntax
         assert isinstance(projection, dict), 'Projection must be one of: None, list, dict'
-        assert sum(projection.values()) in [0, len(projection)], 'Dict projection values shall be all 0s or all 1s'
 
         self.projection = projection
-        self.inclusion_mode = any(projection.values())
 
     @classmethod
-    def columns(cls, bag, projection, inclusion_mode):
+    def columns(cls, bag, projection):
         """ Get the list of columns to be included
 
             :type bag: mongosql.bag.ModelPropertyBags
@@ -60,10 +53,13 @@ class MongoProjection(object):
         """
         # Check columns
         projection_keys = set(projection.keys())
-        if inclusion_mode:
-            projected = projection_keys
-        else:
-            projected = [name for name, c in bag.columns.items() if name not in projection_keys]
+        if projection == {}:
+            projection = {name: 1 for name, col in bag.columns.items()}
+
+        if sum(projection.values()) == 0:
+            projection.update({name: 1 for name, col in bag.columns.items() if name not in projection})
+
+        full_projection = projection.copy()
 
         if not projection_keys <= bag.columns.names:
             for key in projection_keys - bag.columns.names:
@@ -71,15 +67,12 @@ class MongoProjection(object):
                     raise AssertionError('Invalid column specified in projection: {}'.format(key))
                 projection.pop(key)
 
-        if inclusion_mode:
-            return (bag.columns[name] for name in projection.keys()), projected
-        else:
-            return (col for name, col in bag.columns.items() if name not in projection_keys), projected
+        return (col for name, col in bag.columns.items() if projection.get(name)), full_projection
 
     @classmethod
-    def options(cls, bag, projection, inclusion_mode, as_relation):
+    def options(cls, bag, projection, as_relation):
         """ Get query options for the columns """
-        sql_columns, model_properties = cls.columns(bag, projection, inclusion_mode)
+        sql_columns, model_properties = cls.columns(bag, projection)
         return [as_relation.load_only(c) for c in sql_columns], model_properties
 
     def __call__(self, model, as_relation):
@@ -92,7 +85,7 @@ class MongoProjection(object):
             :return: The list of columns to include
             :raises AssertionError: unknown column name
         """
-        return self.options(model.model_bag, self.projection, self.inclusion_mode, as_relation)
+        return self.options(model.model_bag, self.projection, as_relation)
 
 
 class MongoSort(object):

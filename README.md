@@ -104,7 +104,9 @@ Produces the following queries through SqlAlchemy:
 
     ```python
     { 'a': 1, 'b': 1 }  # Include specific fields. All other fields are excluded
-    { 'a': 0, 'b': 0 }  # Exclude specific fields. All other fields are included
+    { 'a': 0, 'b': 0 }  # If all is 0. Exclude specific fields. All other fields are included
+    { 'a': 1, 'b': 0 }  # Include 'a' and exclude 'b'. Useful for get_project, if there is some
+    default included some other place in the code.
     ```
 
 * List syntax.
@@ -418,9 +420,9 @@ Querying
 Having a `MongoQuery`, you need just two methods:
 
 * `query(**query_object)`: Make queries with a [Query Object](#query-object-syntax) provided as keyword arguments.
-* `get_project()`: Return the requested columns, in form of list with joined entities to be dict.
-For example get_project for  this query - ```{'project': ['id', 'name'], 'join': ['roles']}```
-will return ```('id', 'name', {'roles': ('id', 'uid', 'title', 'description')}```.
+* `get_project()`: Return the requested columns, as dict.
+For example get_project for  this query - ```{'project': {'id': 1, 'name': 0}, 'join': ['roles']}```
+will return ```{'id': 1, 'name': 0, 'roles': {'id': 1, 'uid': 1, 'title': 1, 'description': 1}}```.
 * `end()`: Get the resulting [Query](http://docs.sqlalchemy.org/en/latest/orm/query.html), ready for execution
 
 `AssertionError` is raised for validation errors, e.g. an unknown field is provided by the user.

@@ -10,11 +10,10 @@ def project(item, projection):
     result = {}
     if isinstance(item, collections.Iterable):
         return [project(i, projection) for i in item]
-    for key in projection:
-        if isinstance(key, dict):
-            for k, p in key.items():
-                result[k] = project(getattr(item, k, None), p)
-        else:
+    for key, value in projection.items():
+        if isinstance(value, dict):
+            result[key] = project(getattr(item, key, None), value)
+        if value == 1:
             result[key] = getattr(item, key, None)
     return result
 

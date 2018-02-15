@@ -58,7 +58,7 @@ class StatementsTest(unittest.TestCase):
         # Object: invalid
         self.assertRaises(AssertionError, project, {'id': 1, 'lol': 1})
         self.assertRaises(AssertionError, project, {'id': 0, 'lol': 0})
-        self.assertRaises(AssertionError, project, {'id': 1, 'name': 0})
+        test_projection({'id': 1, 'name': 0}, ('id',))
 
     def test_sort(self):
         """ Test sort() """
@@ -427,21 +427,19 @@ class StatementsTest(unittest.TestCase):
             return m.mongoquery(Query([m])).query(**query).get_project()
 
         def _check_query(query, project):
-            def _sort(project):
-                for item in project:
-                    if isinstance(item, dict):
-                        for name, sub_project in item.items():
-                            item[name] = _sort(sub_project)
-                return sorted(project)
-            self.assertEqual(_sort(_get_project(query)), _sort(project))
+            self.assertEqual(_get_project(query), project)
 
-        _check_query({'project': ['id', 'name']}, ('id', 'name'))
-        _check_query({'project': {'id': 0, 'name': 0}}, ('tags', 'age'))
-        _check_query({'project': {}}, ('id', 'name', 'tags', 'age'))
-        _check_query({'project': ['id', 'name'], 'join': ['roles']}, ('id', 'name', {'roles': ('id', 'uid', 'title', 'description')}))
+        _check_query({'project': ['id', 'name']}, {'id': 1, 'name': 1})
+        _check_query({'project': {'id': 0, 'name': 0}}, {'id': 0, 'tags': 1, 'age': 1, 'name': 0})
+        _check_query({'project': {}}, {'id': 1, 'tags': 1, 'age': 1, 'name': 1})
+
+        _check_query({'project': ['id', 'name'], 'join': ['roles']},
+                     {'id': 1, 'name': 1, 'roles': {'id': 1, 'uid': 1, 'title': 1, 'description': 1}})
         _check_query({'project': ['id', 'name'], 'join': {'roles':{'project': ['title', 'description']}}},
-                     ('id', 'name', {'roles': ('title', 'description')}))
+                     {'id': 1, 'name': 1, 'roles': {'title': 1, 'description': 1}})
         _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': {'comments': {'project': ['uid', 'text']}}}}},
-                     ('id', 'name', {'articles': ('title', {'comments': ['uid', 'text']})}))
+                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'uid': 1, 'text': 1}}})
         _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': ['comments']}}},
-                     ('id', 'name', {'articles': ('title', {'comments': ['aid', 'id', 'text', 'uid']})}))
+                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 1, 'text': 1}}})
+        _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': {'comments': {'project': {'uid': 0, 'text': 0}}}}}},
+                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 0, 'text': 0}}})

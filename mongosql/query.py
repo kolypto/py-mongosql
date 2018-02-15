@@ -54,7 +54,7 @@ class MongoQuery(object):
         self.join_queries = []
         self.skip_or_limit = False
         self._order_by = None
-        self._project = []
+        self._project = {}
         self._end_query = None
 
     def on_join(self, on_join):
@@ -63,7 +63,7 @@ class MongoQuery(object):
     def get_project(self):
         self.end()
         if not self._project:
-            self._project = [name for name, c in self._model.model_bag.columns.items()]
+            self._project = {name: 1 for name, c in self._model.model_bag.columns.items()}
         return self._project
 
     def set_project(self, project):
@@ -87,7 +87,7 @@ class MongoQuery(object):
         if self._model.model.__name__ == 'User':
             assert 1
         self._query = self._query.options(p)
-        self._project.extend(projected_properties)
+        self._project.update(projected_properties)
         return self
 
     def sort(self, sort_spec):
@@ -136,7 +136,7 @@ class MongoQuery(object):
                 joined = self.get_for(
                     mjp.target_model
                 )
-                self._project.append({mjp.relname: joined.get_project()})
+                self._project[mjp.relname] = joined.get_project()
 
         self._query = self._query.with_labels()
         return self
@@ -201,7 +201,7 @@ class MongoQuery(object):
         )
         for_join.on_join(self.join_hook)
         for_join_query = for_join.query(**mjp.query)
-        self._project.append({mjp.relname: for_join_query.get_project()})
+        self._project[mjp.relname] = for_join_query.get_project()
         self._query = for_join_query.end()
         join_query = self._query.with_labels()
         self._query = join_query
