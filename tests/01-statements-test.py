@@ -443,3 +443,5 @@ class StatementsTest(unittest.TestCase):
                      {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 1, 'text': 1}}})
         _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': {'comments': {'project': {'uid': 0, 'text': 0}}}}}},
                      {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 0, 'text': 0}}})
+        _check_query({'join': ['roles']},
+                     {'id': 1, 'tags': 1, 'age': 1, 'name': 1, 'roles': {'id': 1, 'uid': 1, 'title': 1, 'description': 1}})

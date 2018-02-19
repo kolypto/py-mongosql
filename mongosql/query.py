@@ -62,8 +62,8 @@ class MongoQuery(object):
 
     def get_project(self):
         self.end()
-        if not self._project:
-            self._project = {name: 1 for name, c in self._model.model_bag.columns.items()}
+        if all([isinstance(x, dict) for x in self._project.values()]):
+            self._project.update({name: 1 for name, c in self._model.model_bag.columns.items()})
         return self._project
 
     def set_project(self, project):
