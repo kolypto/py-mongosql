@@ -12,7 +12,7 @@ setup(
     url='https://github.com/kolypto/py-mongosql',
     license='BSD',
     description=__doc__,
-    long_description=open('README.rst').read(),
+    long_description=open('README.md').read(),
     keywords=['sqlalchemy'],
 
     packages=find_packages(exclude=('tests',)),
