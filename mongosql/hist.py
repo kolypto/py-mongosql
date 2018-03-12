@@ -13,7 +13,13 @@ class ModelHistoryProxy(object):
 
     def __getattr__(self, key):
         # Get the attr
-        attr = getattr(self.__inspect.attrs, key)
+        try:
+            attr = getattr(self.__inspect.attrs, key)
+        except AttributeError as e:
+            if isinstance(getattr(self.__instance.__class__, key, None), property):
+                return getattr(self.__instance.__class__, key).fget(self)
+            else:
+                raise e
 
         # Examine attribute history
         # If a value was deleted (e.g. replaced) -- we return it as the previous version.

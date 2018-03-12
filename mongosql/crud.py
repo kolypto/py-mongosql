@@ -45,7 +45,7 @@ class CrudHelper(object):
         """
         model_colnames = self.mongomodel.model_bag.columns.names
         names = set(names)
-        return names - model_colnames
+        return [n for n in names - model_colnames if not isinstance(getattr(self.mongomodel.model, n, None), property)]
 
     def nullify_empty_fields(self, entity):
         """ Walk through the entity dict and handle nullable fields:
