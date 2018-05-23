@@ -2,10 +2,14 @@ import unittest
 import re
 from collections import OrderedDict
 
+from mongosql.statements import MongoCriteria
+
 from sqlalchemy.orm import Query
 from sqlalchemy.dialects import postgresql as pg
 
 from . import models
+
+MongoCriteria.custom_op('$search', lambda col, value: col.ilike('%{}%'.format(value)))
 
 
 def q2sql(q):
@@ -184,6 +188,9 @@ class StatementsTest(unittest.TestCase):
         # Braces
         self.assertRaises(AssertionError, filter, {'$or': {}})
         test_filter({'$or': [{'id': 1, 'name': 'a'}, {'name': 'b'}]}, "((u.id = 1 AND u.name = a) OR u.name = b)")
+
+        # Custom filter
+        test_filter({'name': {'$search': 'quer'}}, 'u.name ILIKE %quer%')
 
     def test_limit(self):
         """ Test limit() """

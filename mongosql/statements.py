@@ -244,7 +244,7 @@ class MongoCriteria(object):
     # Supported operation. Operation name, function that checks params,
     # function that returns condition or another function for call with on cls and conditions.
     # Special operation is '*', which match all operations, used for relations.
-    __operations = (
+    __operations = [
         ('$eq', lambda column, value: not column.is_relation and column.is_array and not is_array(value), lambda cls, sql_col, value: sql_col.any(value)),
         ('$eq', lambda column, value: not column.is_relation and not column.is_array or is_array(value), lambda cls, sql_col, value: sql_col == value),
         ('$ne', lambda column, value: not column.is_relation and column.is_array and not is_array(value), lambda cls, sql_col, value: sql_col.all(value, operators.ne)),
@@ -268,7 +268,14 @@ class MongoCriteria(object):
                    lambda cls, sql_col, value: func.array_length(sql_col, 1) == None),  # ARRAY_LENGTH(field, 1) IS NULL
         ('$size', lambda column, value: not column.is_relation and value != 0 and assert_true(column.is_array, 'Criteria: $all can only be applied to an array column'),
                    lambda cls, sql_col, value: func.array_length(sql_col, 1) == value),  # ARRAY_LENGTH(field, 1) == value
-    )
+    ]
+
+    @classmethod
+    def custom_op(cls, name, func, condition=None):
+        if condition is None:
+            condition = lambda column, value: True
+        binded_func = lambda cls, sql_col, value: func(sql_col, value)
+        cls.__operations.append((name, condition, binded_func))
 
     @classmethod
     def get_column(cls, bag, col_name):
