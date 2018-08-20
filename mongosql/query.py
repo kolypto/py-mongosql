@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Query, Load, defaultload, undefer
-from sqlalchemy.orm.query import QueryContext
 from sqlalchemy.sql import func
 
 from .model import MongoModel
+from .utils import outer_with_filter
 
 
 class MongoQuery(object):
@@ -188,7 +188,12 @@ class MongoQuery(object):
 
     def _add_join_query(self, mjp, join_func):
         model_alias = mjp.rel_alias
-        query_with_joined = getattr(self._query, join_func)(model_alias, mjp.relationship)
+        if join_func == 'outerjoin' and mjp.query and mjp.query.get('filter'):
+            outer_filter = mjp.query.pop('filter')
+            c = MongoModel(model_alias).filter(outer_filter)
+            query_with_joined = outer_with_filter(self._query, model_alias, mjp.relationship, c)
+        else:
+            query_with_joined = getattr(self._query, join_func)(model_alias, mjp.relationship)
         if mjp.additional_filter:
             query_with_joined = mjp.additional_filter(query_with_joined)
 

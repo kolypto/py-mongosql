@@ -374,8 +374,7 @@ class StatementsTest(unittest.TestCase):
 
         qs = q2sql(q)
         self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id
-        FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid
-        WHERE u_2.id < 1""", qs)
+        FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid AND u_2.id < 1""", qs)
 
     def _check_qs(self, should, qs):
         for line in should.splitlines():
