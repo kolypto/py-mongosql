@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mongosql',
-    version='1.4.1-0',
+    version='1.4.2-0',
     author='Mark Vartanyan',
     author_email='kolypto@gmail.com',
 
