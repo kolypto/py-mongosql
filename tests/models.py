@@ -124,12 +124,12 @@ class Edit(Base):
     creator = relationship(User, foreign_keys=cuid)
 
 
-def init_database():
+def init_database(autoflush=True):
     """ Init DB
     :rtype: (sqlalchemy.engine.Engine, sqlalchemy.orm.Session)
     """
     engine = create_engine('postgresql://postgres:postgres@localhost/test_mongosql', convert_unicode=True, echo=False)
-    Session = sessionmaker(autocommit=True, autoflush=True, bind=engine)
+    Session = sessionmaker(autocommit=autoflush, autoflush=autoflush, bind=engine)
     return engine, Session
 
 def create_all(engine):
