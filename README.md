@@ -212,6 +212,8 @@ Filter by the relations fields.
 * `{filter: {address.zip: 1234}}` - filter by address relation zip field, but return all
 adresses if joined with address.
 
+From version 1.4.4 SQLAlchemy *hybrid_properties* could be used in filter expression.
+
 ### Join Operation
 
 Allows to eagerly load specific relations by name.
