@@ -1,16 +1,18 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 
+from sqlalchemy.sql.expression import and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, Integer
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql.schema import ForeignKey
 
 from sqlalchemy.dialects import postgresql as pg
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from mongosql import MongoSqlBase
 
-from flask.ext.jsontools import JsonSerializableBase
+from flask_jsontools import JsonSerializableBase
 from flask import json
 
 
@@ -79,6 +81,14 @@ class Article(Base):
     @property
     def calculated(self):
         return len(self.title) + self.uid
+
+    @hybrid_property
+    def hybrid(self):
+        return and_(self.id > 10, self.user.age > 18)
+
+    @hybrid.expression
+    def hybrid(cls):
+        return and_(cls.id > 10, cls.user.has(User.age > 18))
 
 
 class Comment(Base):

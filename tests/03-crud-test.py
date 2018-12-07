@@ -1,7 +1,7 @@
 import unittest
 
 from flask import Flask, g
-from flask.ext.jsontools import FlaskJsonClient, DynamicJSONEncoder
+from flask_jsontools import FlaskJsonClient, DynamicJSONEncoder
 from sqlalchemy.orm.exc import NoResultFound
 
 from . import models

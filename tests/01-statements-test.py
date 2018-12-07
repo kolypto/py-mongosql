@@ -451,3 +451,13 @@ class StatementsTest(unittest.TestCase):
                      {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 0, 'text': 0}}})
         _check_query({'join': ['roles']},
                      {'id': 1, 'tags': 1, 'age': 1, 'name': 1, 'roles': {'id': 1, 'uid': 1, 'title': 1, 'description': 1}})
+
+    def test_filter_hybrid(self):
+        mq = models.Article.mongoquery(Query([models.Article]))
+        query = mq.query(filter={'hybrid': True}).end()
+        qs = q2sql(query)
+        self._check_qs("""SELECT a.id, a.uid, a.title, a.theme, a.data
+        FROM a
+        WHERE (a.id > 10 AND (EXISTS (SELECT 1
+        FROM u
+        WHERE u.id = a.uid AND u.age > 18))) = true""", qs)

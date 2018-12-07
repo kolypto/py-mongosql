@@ -3,7 +3,7 @@ import collections
 
 from . import models
 from flask import request, g
-from flask.ext.jsontools import jsonapi, RestfulView
+from flask_jsontools import jsonapi, RestfulView
 
 
 def project(item, projection):

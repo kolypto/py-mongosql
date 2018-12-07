@@ -294,7 +294,12 @@ class MongoCriteria(object):
                               rel_name=rel_name,
                               is_many=relation.property.uselist,
                               rel_col=rel_col)
-        col = bag.columns[col_name]
+        try:
+            col = bag.columns[col_name]
+        except Exception as e:
+            if getattr(bag.model, col_name, None) is None:
+                raise e
+            return ColumnInfo(getattr(bag.model, col_name))
         is_array = bag.columns.is_column_array(col_name)
         is_json  = bag.columns.is_column_json(col_name)
 
