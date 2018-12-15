@@ -2,6 +2,8 @@ from collections import OrderedDict
 
 from sqlalchemy import Integer, Float
 from sqlalchemy.orm import defaultload, lazyload, contains_eager, aliased
+from sqlalchemy.orm.base import InspectionAttr
+
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func
@@ -299,7 +301,10 @@ class MongoCriteria(object):
         except Exception as e:
             if getattr(bag.model, col_name, None) is None:
                 raise e
-            return ColumnInfo(getattr(bag.model, col_name))
+            col = getattr(bag.model, col_name)
+            if not isinstance(col, InspectionAttr):
+                raise e
+            return ColumnInfo(col)
         is_array = bag.columns.is_column_array(col_name)
         is_json  = bag.columns.is_column_json(col_name)
 
@@ -477,7 +482,7 @@ class MongoJoin(object):
         assert relnames <= bag.relations.names, 'Invalid relation names: {}'.format(relnames - bag.relations.names)
 
         # lazyload() on all relations
-        mjp_list = [_MongoJoinParams([as_relation.lazyload('*')])]
+        mjp_list = []
         for relname, query in rels.items():
             rel = bag.relations[relname]
             target_model = rel.property.mapper.class_

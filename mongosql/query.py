@@ -5,6 +5,55 @@ from .model import MongoModel
 from .utils import outer_with_filter
 
 
+class JoinedQuery(object):
+    def __init__(self, mjp, join_func):
+        self.mjp = mjp
+        self.relname = mjp.relname
+        self.join_func = join_func
+        self.query = None
+        self.processed = False
+
+    @classmethod
+    def from_mjp(cls, mjp, join_func):
+        joined = cls(mjp, join_func)
+        if mjp.query is None:
+            joined.query = MongoQuery.get_for(mjp.target_model)
+            joined.processed = True
+        return joined
+
+    def apply(self, parent_query):
+        if self.processed:
+            return parent_query
+        mjp = self.mjp
+        join_func = self.join_func
+        model_alias = mjp.rel_alias
+        if join_func == 'outerjoin' and mjp.query and mjp.query.get('filter'):
+            outer_filter = mjp.query.pop('filter')
+            c = MongoModel(model_alias).filter(outer_filter)
+            query_with_joined = outer_with_filter(parent_query._query, model_alias, mjp.relationship, c)
+        else:
+            query_with_joined = getattr(parent_query._query, join_func)(model_alias, mjp.relationship)
+        if mjp.additional_filter:
+            query_with_joined = mjp.additional_filter(query_with_joined)
+
+        for_join = parent_query.get_for(
+            mjp.target_model,
+            query_with_joined,
+            _as_relation=mjp.relationship,
+            join_path=parent_query.join_path + (mjp.relationship, ),
+            aliased=model_alias
+        )
+        for_join.on_join(parent_query.join_hook)
+        for_join_query = for_join.query(**mjp.query)
+        self.query = for_join_query
+        parent_query._query = for_join_query.end()
+        join_query = parent_query._query.with_labels()
+        parent_query._query = join_query
+        parent_query._query = parent_query._query.options(*mjp.options)
+        self.processed = True
+        return parent_query
+
+
 class MongoQuery(object):
     """ MongoDB-style queries """
 
@@ -64,6 +113,8 @@ class MongoQuery(object):
         self.end()
         if all([isinstance(x, dict) for x in self._project.values()]):
             self._project.update({name: 1 for name, c in self._model.model_bag.columns.items()})
+        for joined in self.join_queries:
+            self._project[joined.relname] = joined.query.get_project()
         return self._project
 
     def set_project(self, project):
@@ -120,24 +171,10 @@ class MongoQuery(object):
 
     def _join(self, relnames, join_func):
         """ Base for join and outerjoin """
-        for mjp in self._model.join(relnames, as_relation=self._as_relation, callback=self.join_hook):
-            # Complex joins
-            if mjp.query is not None:
-                if self.skip_or_limit:
-                    self.join_queries.append((mjp, join_func))
-                    continue
-                else:
-                    self._add_join_query(mjp, join_func)
-                    continue
-            # Options or projection
-            if mjp.options:
-                self._query = self._query.options(*mjp.options)
-            else:
-                joined = self.get_for(
-                    mjp.target_model
-                )
-                self._project[mjp.relname] = joined.get_project()
 
+        for mjp in self._model.join(relnames, as_relation=self._as_relation, callback=self.join_hook):
+            self.join_queries.append(JoinedQuery.from_mjp(mjp, join_func))
+        self._query = self._query.options([self._as_relation.lazyload('*')])
         self._query = self._query.with_labels()
         return self
 
@@ -186,31 +223,8 @@ class MongoQuery(object):
         if skip or limit:   q = q.limit(limit, skip)
         return q.count() if count else q
 
-    def _add_join_query(self, mjp, join_func):
-        model_alias = mjp.rel_alias
-        if join_func == 'outerjoin' and mjp.query and mjp.query.get('filter'):
-            outer_filter = mjp.query.pop('filter')
-            c = MongoModel(model_alias).filter(outer_filter)
-            query_with_joined = outer_with_filter(self._query, model_alias, mjp.relationship, c)
-        else:
-            query_with_joined = getattr(self._query, join_func)(model_alias, mjp.relationship)
-        if mjp.additional_filter:
-            query_with_joined = mjp.additional_filter(query_with_joined)
-
-        for_join = self.get_for(
-            mjp.target_model,
-            query_with_joined,
-            _as_relation=mjp.relationship,
-            join_path=self.join_path + (mjp.relationship, ),
-            aliased=model_alias
-        )
-        for_join.on_join(self.join_hook)
-        for_join_query = for_join.query(**mjp.query)
-        self._project[mjp.relname] = for_join_query.get_project()
-        self._query = for_join_query.end()
-        join_query = self._query.with_labels()
-        self._query = join_query
-        self._query = self._query.options(*mjp.options)
+    def _add_join_query(self, joined_query):
+        self = joined_query.apply(self)
 
     def end(self):
         """ Get the Query object
@@ -222,9 +236,10 @@ class MongoQuery(object):
         if self.join_queries:
             if self._order_by:
                 self._query = self._query.options(*[undefer(x.key or x.element.key) for x in self._order_by])
-            self._query = self._query.from_self()
-            for mjp, join_func in self.join_queries:
-                self._add_join_query(mjp, join_func)
+            if self.skip_or_limit:
+                self._query = self._query.from_self()
+            for joined_query in self.join_queries:
+                self._add_join_query(joined_query)
             # Apply order to the resulting query
             if self._order_by is not None:
                 self._query = self._query.order_by(*self._order_by)

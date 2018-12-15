@@ -461,3 +461,5 @@ class StatementsTest(unittest.TestCase):
         WHERE (a.id > 10 AND (EXISTS (SELECT 1
         FROM u
         WHERE u.id = a.uid AND u.age > 18))) = true""", qs)
+        self.assertRaises(AssertionError, mq.query, filter={'no_such_property': 1})
+        self.assertRaises(AssertionError, mq.query, filter={'calculated': 10})
