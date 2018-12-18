@@ -1,4 +1,6 @@
 from copy import deepcopy
+import logging
+from sqlalchemy.dialects import postgresql as pg
 
 from . import MongoModel, MongoQuery
 from .hist import ModelHistoryProxy
@@ -248,6 +250,9 @@ class CrudViewMixin(object):
     #: Set the CRUD helper object
     crudhelper = None
 
+    def __init__(self):
+        self.sqlaclhemy_queries = []
+
     @classmethod
     def _getCrudHelper(cls):
         """ Get the CRUD helper assigned for this class
@@ -273,11 +278,19 @@ class CrudViewMixin(object):
         :param filter_by: Additional filter_by() criteria
         :rtype: sqlalchemy.orm.Query, list of fields
         """
-        mongo_query =  self._getCrudHelper().mquery(
+        mongo_query = self._getCrudHelper().mquery(
             self._query().filter(*filter).filter_by(**filter_by),
             query_obj
         )
-        return mongo_query.end(), mongo_query.get_project()
+        sqlalchemy_query = mongo_query.end()
+        try:
+            dialect = pg.dialect()
+            sql_query = sqlalchemy_query.statement.compile(dialect=dialect)
+            sql_str = (sql_query.string.encode(dialect.encoding) % sql_query.params).decode(dialect.encoding)
+            self.sqlaclhemy_queries.append(sql_str)
+        except Exception as e:
+            logging.error('Error generate SQL string %e', e)
+        return sqlalchemy_query, mongo_query.get_project()
 
     def _get_one(self, query_obj, *filter, **filter_by):
         """ Utility method that fetches a single entity.

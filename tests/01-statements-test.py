@@ -463,3 +463,18 @@ class StatementsTest(unittest.TestCase):
         WHERE u.id = a.uid AND u.age > 18))) = true""", qs)
         self.assertRaises(AssertionError, mq.query, filter={'no_such_property': 1})
         self.assertRaises(AssertionError, mq.query, filter={'calculated': 10})
+
+    def test_limit_with_filtered_join(self):
+        m = models.User
+        mq = m.mongoquery(Query([models.User]))
+        mq = mq.query(limit=10, join={'articles': {'filter': {'title': {'$exists': True}}}})
+        q = mq.end()
+        qs = q2sql(q)
+        self._check_qs("""SELECT anon_1.u_id AS anon_1_u_id, anon_1.u_name AS anon_1_u_name, anon_1.u_tags AS anon_1_u_tags, anon_1.u_age AS anon_1_u_age, a_1.id AS a_1_id, a_1.uid AS a_1_uid, a_1.title AS a_1_title, a_1.theme AS a_1_theme, a_1.data AS a_1_data
+FROM (SELECT u.id AS u_id, u.name AS u_name, u.tags AS u_tags, u.age AS u_age
+FROM u
+WHERE EXISTS (SELECT 1
+FROM a
+WHERE u.id = a.uid AND a.title IS NOT NULL)
+ LIMIT 10) AS anon_1 JOIN a AS a_1 ON anon_1.u_id = a_1.uid
+WHERE a_1.title IS NOT NULL""", qs)

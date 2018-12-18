@@ -13,6 +13,11 @@ class JoinedQuery(object):
         self.query = None
         self.processed = False
 
+    def has_filter(self):
+        if self.mjp.query is None:
+            return False
+        return bool(self.mjp.query.get('filter'))
+
     @classmethod
     def from_mjp(cls, mjp, join_func):
         joined = cls(mjp, join_func)
@@ -52,6 +57,14 @@ class JoinedQuery(object):
         parent_query._query = parent_query._query.options(*mjp.options)
         self.processed = True
         return parent_query
+
+    def apply_filter(self, parent):
+        if self.join_func == 'outerjoin':
+            return parent
+        mjp = self.mjp
+        filter_for_parent = {mjp.relname + '.' + key: val for key, val in mjp.query['filter'].items()}
+        parent = parent.filter(filter_for_parent)
+        return parent
 
 
 class MongoQuery(object):
@@ -114,7 +127,8 @@ class MongoQuery(object):
         if all([isinstance(x, dict) for x in self._project.values()]):
             self._project.update({name: 1 for name, c in self._model.model_bag.columns.items()})
         for joined in self.join_queries:
-            self._project[joined.relname] = joined.query.get_project()
+            if joined.query:
+                self._project[joined.relname] = joined.query.get_project()
         return self._project
 
     def set_project(self, project):
@@ -160,8 +174,11 @@ class MongoQuery(object):
         self._query = self._query.filter(c)
         return self
 
-    def limit(self, limit=None, skip=None):
+    def limit(self, limit=None, skip=None, force=False):
         """ Slice results """
+        if not force and any([j.has_filter() for j in self.join_queries]):
+            self.skip_or_limit = (skip, limit)
+            return self
         limit, skip = self._model.limit(limit, skip)
         if skip:
             self._query = self._query.offset(skip)
@@ -191,8 +208,9 @@ class MongoQuery(object):
 
     def count(self):
         """ Count rows instead """
-        self._query = self._query.from_self(func.count(1))
-        self.join(())  # no relationships should be loaded
+        self._query = self.end(count=True)
+        self._end_query = self._query.from_self(func.count(1))
+        self.join(())
         return self
 
     def query(self, project=None, sort=None, group=None, filter=None, skip=None, limit=None, join=None, aggregate=None, count=False, outerjoin=None, **__unk):
@@ -218,28 +236,35 @@ class MongoQuery(object):
         if project:         q = q.project(project)
         if aggregate:       q = q.aggregate(aggregate)
         if filter:          q = q.filter(filter)
-        if sort:            q = q.sort(sort)
+        if not count and sort:            q = q.sort(sort)
         if group:           q = q.group(group)
         if skip or limit:   q = q.limit(limit, skip)
         return q.count() if count else q
 
-    def _add_join_query(self, joined_query):
-        self = joined_query.apply(self)
-
-    def end(self):
+    def end(self, count=False):
         """ Get the Query object
         :rtype: sqlalchemy.orm.Query
         """
         if self._end_query is not None:
             return self._end_query
-
-        if self.join_queries:
+        if count and self.join_queries:
+            if any([j.has_filter() for j in self.join_queries]):
+                for joined_query in self.join_queries:
+                    if joined_query.has_filter():
+                        self = joined_query.apply_filter(self)
+        if self.join_queries and not count:
             if self._order_by:
                 self._query = self._query.options(*[undefer(x.key or x.element.key) for x in self._order_by])
             if self.skip_or_limit:
+                if any([j.has_filter() for j in self.join_queries]):
+                    for joined_query in self.join_queries:
+                        if joined_query.has_filter():
+                            self = joined_query.apply_filter(self)
+                    skip, limit = self.skip_or_limit
+                    self = self.limit(limit, skip, force=True)
                 self._query = self._query.from_self()
             for joined_query in self.join_queries:
-                self._add_join_query(joined_query)
+                self = joined_query.apply(self)
             # Apply order to the resulting query
             if self._order_by is not None:
                 self._query = self._query.order_by(*self._order_by)
