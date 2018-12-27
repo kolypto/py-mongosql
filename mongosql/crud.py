@@ -1,9 +1,17 @@
+from __future__ import absolute_import
+from builtins import object
+from builtins import zip
+from future.utils import string_types
+
 from copy import deepcopy
 import logging
 from sqlalchemy.dialects import postgresql as pg
 
 from . import MongoModel, MongoQuery
 from .hist import ModelHistoryProxy
+import sys
+
+PY2 = sys.version_info[0] == 2
 
 
 class CrudHelper(object):
@@ -151,12 +159,12 @@ class StrictCrudHelper(CrudHelper):
         """
         super(StrictCrudHelper, self).__init__(model)
 
-        self._ro_fields = ro_fields if callable(ro_fields) else set(c if isinstance(c, basestring) else c.key for c in ro_fields)
-        self._allowed_relations = set(c if isinstance(c, basestring) else c.key for c in allow_relations)
+        self._ro_fields = ro_fields if callable(ro_fields) else set(c if isinstance(c, string_types) else c.key for c in ro_fields)
+        self._allowed_relations = set(c if isinstance(c, string_types) else c.key for c in allow_relations)
         self._query_defaults = query_defaults or {}
         self._maxitems = maxitems or None
 
-        assert callable(self._ro_fields) or all(isinstance(x, basestring) for x in self._ro_fields), 'Some values in `ro_fields` were not converted to string'
+        assert callable(self._ro_fields) or all(isinstance(x, string_types) for x in self._ro_fields), 'Some values in `ro_fields` were not converted to string'
         assert all(isinstance(x, str) for x in self._allowed_relations), 'Some values in `allowed_relations` were not converted to string'
         assert isinstance(self._query_defaults, dict), '`query_defaults` was not a dict'
         assert self._maxitems is None or isinstance(self._maxitems, int), '`maxitems` must be an integer'
@@ -208,7 +216,7 @@ class StrictCrudHelper(CrudHelper):
 
         # Query defaults
         if self._query_defaults:
-            query_obj = dict(self._query_defaults.items() + (query_obj.items() if query_obj else []))
+            query_obj = dict(list(self._query_defaults.items()) + (list(query_obj.items()) if query_obj else []))
 
         # Max items
         if self._maxitems:
@@ -286,7 +294,10 @@ class CrudViewMixin(object):
         try:
             dialect = pg.dialect()
             sql_query = sqlalchemy_query.statement.compile(dialect=dialect)
-            sql_str = (sql_query.string.encode(dialect.encoding) % sql_query.params).decode(dialect.encoding)
+            if PY2:
+                sql_str = (sql_query.string.encode(dialect.encoding) % sql_query.params).decode(dialect.encoding)
+            else:
+                sql_str = sql_query.string % sql_query.params
             self.sqlaclhemy_queries.append(sql_str)
         except Exception as e:
             logging.error('Error generate SQL string %e', e)

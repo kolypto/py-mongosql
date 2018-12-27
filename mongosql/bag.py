@@ -1,3 +1,6 @@
+from __future__ import absolute_import
+from builtins import object
+
 from sqlalchemy import inspect
 from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql as pg

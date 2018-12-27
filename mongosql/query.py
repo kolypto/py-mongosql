@@ -1,3 +1,6 @@
+from __future__ import absolute_import
+from builtins import object
+
 from sqlalchemy.orm import Query, Load, defaultload, undefer
 from sqlalchemy.sql import func
 

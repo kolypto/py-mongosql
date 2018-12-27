@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from builtins import object
+from future.utils import string_types
+
 from collections import OrderedDict
 
 from sqlalchemy import Integer, Float
@@ -113,7 +117,7 @@ class MongoSort(object):
         # List
         if isinstance(sort_spec, (list, tuple)):
             # Strings
-            if all(isinstance(v, basestring) for v in sort_spec):
+            if all(isinstance(v, string_types) for v in sort_spec):
                 sort_spec = OrderedDict([
                     [v[:-1], -1 if v[-1] == '-' else +1]
                     if v[-1] in {'+', '-'}
@@ -351,7 +355,8 @@ class MongoCriteria(object):
                 if len(criteria) == 0:
                     continue  # skip empty
 
-                criteria = map(lambda s: cls.statement(bag, s), criteria)  # now a list of expressions
+                criteria = [cls.statement(bag, s) for s in criteria]
+
                 if col_name == '$or':
                     cc = or_(*criteria)
                 elif col_name == '$and':
@@ -572,7 +577,7 @@ class MongoAggregate(object):
         selectables = []
         for comp_field, comp_expression in agg_spec.items():
             # Column reference
-            if isinstance(comp_expression, basestring):
+            if isinstance(comp_expression, string_types):
                 selectables.append(bag.columns[comp_expression].label(comp_field))
                 continue
 
@@ -585,7 +590,7 @@ class MongoAggregate(object):
             if isinstance(expression, int) and operator == '$sum':
                 # Special case for count
                 expression_stmt = expression
-            elif isinstance(expression, basestring):
+            elif isinstance(expression, string_types):
                 # Column name
                 expression_stmt = bag.columns[expression]
                 # Json column?

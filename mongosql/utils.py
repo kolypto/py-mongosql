@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 from sqlalchemy import sql, inspection
 
 from sqlalchemy.orm.util import ORMAdapter

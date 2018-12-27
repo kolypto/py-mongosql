@@ -1,3 +1,6 @@
+from __future__ import absolute_import
+from builtins import object
+
 from sqlalchemy import inspect, event
 
 from .statements import MongoProjection, MongoSort, MongoGroup, MongoCriteria, MongoJoin, MongoAggregate

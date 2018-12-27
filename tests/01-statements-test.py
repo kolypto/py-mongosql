@@ -1,5 +1,6 @@
 import unittest
 import re
+import sys
 from collections import OrderedDict
 
 from mongosql.statements import MongoCriteria
@@ -12,6 +13,9 @@ from . import models
 MongoCriteria.custom_op('$search', lambda col, value: col.ilike('%{}%'.format(value)))
 
 
+PY2 = sys.version_info[0] == 2
+
+
 def q2sql(q):
     """ Convert an SqlAlchemy query to string """
     # See: http://stackoverflow.com/a/4617623/134904
@@ -19,7 +23,10 @@ def q2sql(q):
     stmt = q.statement
     dialect = pg.dialect()
     query = stmt.compile(dialect=dialect)
-    return (query.string.encode(dialect.encoding) % query.params).decode(dialect.encoding)
+    if PY2:
+        return (query.string.encode(dialect.encoding) % query.params).decode(dialect.encoding)
+    else:
+        return query.string % query.params
 
 
 class StatementsTest(unittest.TestCase):
@@ -234,7 +241,6 @@ class StatementsTest(unittest.TestCase):
                                                                      'join': {'user': {'project': ['name']}}}}, limit=2, sort=[sorting])
             q = mq.end()
             qs = q2sql(q)
-            print desc, qs
             self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, anon_1.a_theme AS anon_1_a_theme, u_1.id AS u_1_id, u_1.name AS u_1_name, c_1.id AS c_1_id, c_1.aid AS c_1_aid', qs)
             self.assertIn('FROM (SELECT a.id AS a_id', qs)
             self.assertIn('a ORDER BY a.theme{} \n LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid'.format(desc), qs)

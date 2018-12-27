@@ -167,7 +167,7 @@ class QueryTest(unittest.TestCase):
             'n': {'$sum': 1},
         }
         rows = models.User.mongoquery(ssn).aggregate(q).group(['age']).sort(['age-']).end().all()
-        self.assertEqual(map(row2dict, rows), [ {'age': 18, 'n': 2}, {'age': 16, 'n': 1} ])
+        self.assertEqual([row2dict(r) for r in rows], [{'age': 18, 'n': 2}, {'age': 16, 'n': 1}])
 
     def test_json(self):
         """ Test operations on a JSON column """
