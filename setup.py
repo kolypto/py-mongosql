@@ -13,6 +13,7 @@ setup(
     license='BSD',
     description=__doc__,
     long_description=open('README.md').read(),
+    long_description_content_type='text/markdown',
     keywords=['sqlalchemy'],
 
     packages=find_packages(exclude=('tests',)),

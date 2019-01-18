@@ -1,7 +1,6 @@
+os: linux
+sudo: false
 language: python
-python:
-  - "2.7"
-#  - "3.3"
 
 addons:
   postgresql: "9.3"
@@ -9,7 +8,26 @@ addons:
 before_script:
   - psql -c 'CREATE DATABASE test_mongosql OWNER=postgres;' -U postgres
 
-install:
-  - "pip install -r requirements.txt -e ."
+matrix:
+  include:
+    - python: 2.7
+      env: TOXENV=py
+    - python: 3.4
+      env: TOXENV=py
+    - python: 3.5
+      env: TOXENV=py
+    - python: 3.6
+      env: TOXENV=py
+    - python: 3.7-dev
+      env: TOXENV=py
+    - python: pypy
+      env: TOXENV=py
+    - python: pypy3
+      env: TOXENV=py
 
-script: make test
+install:
+  - pip install tox
+cache:
+  - pip
+script:
+  - tox
