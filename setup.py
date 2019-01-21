@@ -22,6 +22,7 @@ setup(
 
     install_requires=[
         'sqlalchemy >= 0.9.7',
+        'future',
     ],
     extras_require={},
     include_package_data=True,

@@ -3,7 +3,7 @@ sudo: false
 language: python
 
 addons:
-  postgresql: "9.3"
+  postgresql: "9.5"
 
 before_script:
   - psql -c 'CREATE DATABASE test_mongosql OWNER=postgres;' -U postgres
@@ -19,10 +19,6 @@ matrix:
     - python: 3.6
       env: TOXENV=py
     - python: 3.7-dev
-      env: TOXENV=py
-    - python: pypy
-      env: TOXENV=py
-    - python: pypy3
       env: TOXENV=py
 
 install:

@@ -127,7 +127,12 @@ class StatementsTest(unittest.TestCase):
 
         def test_filter(criteria, expected):
             qs = q2sql(filter(criteria))
-            self.assertEqual(qs.partition('\nWHERE ')[2], expected)
+            q_where = qs.partition('\nWHERE ')[2]
+            if isinstance(expected, tuple):
+                for _ in expected:
+                    self.assertIn(_, q_where)
+            else:  # string
+                self.assertEqual(q_where, expected)
 
         # Empty
         test_filter(None, 'true')
@@ -137,7 +142,7 @@ class StatementsTest(unittest.TestCase):
         self.assertRaises(AssertionError, test_filter, [1, 2], '')
 
         # Equality, multiple
-        test_filter({'id': 1, 'name': 'a'}, '(u.id = 1 AND u.name = a)')
+        test_filter({'id': 1, 'name': 'a'}, ('u.id = 1', 'u.name = a'))
         test_filter({'tags': 'a'}, 'a = ANY (u.tags)')
         test_filter({'tags': ['a', 'b', 'c']}, 'u.tags = CAST(ARRAY[a, b, c] AS VARCHAR[])')
 
@@ -194,7 +199,8 @@ class StatementsTest(unittest.TestCase):
 
         # Braces
         self.assertRaises(AssertionError, filter, {'$or': {}})
-        test_filter({'$or': [{'id': 1, 'name': 'a'}, {'name': 'b'}]}, "((u.id = 1 AND u.name = a) OR u.name = b)")
+        # "((u.id = 1 AND u.name = a) OR u.name = b)")
+        test_filter({'$or': [{'id': 1, 'name': 'a'}, {'name': 'b'}]}, ('u.id = 1', ' AND ', '.name = a', 'OR u.name = b'))
 
         # Custom filter
         test_filter({'name': {'$search': 'quer'}}, 'u.name ILIKE %quer%')
@@ -367,7 +373,10 @@ class StatementsTest(unittest.TestCase):
         mq = mq.query(filter={'user.id': {'$gt': 2}, 'user.age': {'$gt': 18}})
         q = mq.end()
         qs = q2sql(q)
-        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u \nWHERE u.id = c.uid AND u.id > 2 AND u.age > 18)", qs)
+        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u ", qs)
+        self.assertIn("u.id = c.uid", qs)
+        self.assertIn("u.id > 2", qs)
+        self.assertIn("u.age > 18", qs)
 
     def test_join_multiple(self):
         """ Test join() same table multiple times"""
@@ -403,9 +412,20 @@ class StatementsTest(unittest.TestCase):
         q = mq.end()
 
         qs = q2sql(q)
-        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id
-            FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid
-            WHERE u_1.age > 18""", qs)
+        # self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id
+        #     FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid
+        #     WHERE u_1.age > 18""", qs)
+        # NOTE: have to check piece by piece because ordering is not guaranteed
+        self.assertIn('SELECT u_1.', qs)
+        self.assertIn('u_1.id AS u_1_id', qs)
+        self.assertIn('u_1.name AS u_1_name', qs)
+        self.assertIn('u_1.tags AS u_1_tags', qs)
+        self.assertIn('u_1.age AS u_1_age', qs)
+        self.assertIn('u_2.id AS u_2_id', qs)
+        self.assertIn('u_2.tags AS u_2_tags', qs)
+        self.assertIn('e.id AS e_id', qs)
+        self.assertIn('FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid', qs)
+        self.assertIn('WHERE u_1.age > 18', qs)
 
         # Without projections
         mq = models.Edit.mongoquery(Query([models.Edit]))
@@ -413,9 +433,17 @@ class StatementsTest(unittest.TestCase):
         mq = mq.query(project=['id'], outerjoin=['user'])
         q = mq.end()
         qs = q2sql(q)
-        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, e.id AS e_id
-            FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid
-            WHERE u_1.age > 18""", qs)
+        # self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, e.id AS e_id
+        #     FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid
+        #     WHERE u_1.age > 18""", qs)
+        self.assertIn('SELECT u_1.', qs)
+        self.assertIn('u_1.id AS u_1_id', qs)
+        self.assertIn('u_1.name AS u_1_name', qs)
+        self.assertIn('u_1.tags AS u_1_tags', qs)
+        self.assertIn('u_1.age AS u_1_age', qs)
+        self.assertIn('e.id AS e_id', qs)
+        self.assertIn('FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid', qs)
+        self.assertIn('WHERE u_1.age > 18', qs)
         mq = models.Edit.mongoquery(Query([models.Edit]))
 
         def join_hook(name, rel, alias):

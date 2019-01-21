@@ -22,6 +22,7 @@ publish: README.rst
 
 .PHONY: test test-tox test-docker test-docker-2.6
 test:
+	@# Before testing, run: $ docker-compose up -d
 	@nosetests
 test-tox:
 	@tox
