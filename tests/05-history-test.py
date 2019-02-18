@@ -32,7 +32,9 @@ class HistoryTest(unittest.TestCase):
         old_text = comment.text
         comment.text = 'Changed text'
         hist = ModelHistoryProxy(comment)
-        user = comment.user  # noqa; This brokes old ModelHistoryProxy
+        # When you load a relationship, model history is dropped
+        # This happens because History is reset on flush(), which happens with a query
+        user = comment.user
         self.assertEqual(hist.text, old_text)
 
         # Test for json fields
@@ -65,13 +67,13 @@ class HistoryTest(unittest.TestCase):
         hist = ModelHistoryProxy(comment)
         new_user = self.db.query(models.User).filter(models.User.id != old_id).first()
         comment.user = new_user
-        article = comment.article
-        self.assertEqual(hist.user.id, old_id)
+        article = comment.article  # load a relationship; see that history is not reset
+        self.assertEqual(hist.user.id, old_id)  # look how we can access relationship's attrs through history!
 
         article = self.db.query(models.Article).get(10)
 
         old_commensts = set([c.id for c in article.comments])
         article.comments = article.comments[:1]
         hist = ModelHistoryProxy(article)
-        u = article.user
+        u = article.user  # load a relationship; see that history is not reset
         self.assertEqual(old_commensts, set([c.id for c in hist.comments]))

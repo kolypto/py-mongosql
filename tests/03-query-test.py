@@ -30,7 +30,7 @@ class QueryTest(unittest.TestCase):
         # Logging
         import logging
         logging.basicConfig(level=logging.DEBUG)
-        logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+        logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)  # TODO: change to INFO
 
     def tearDown(self):
         self.db.close()  # Need to close the session: otherwise, drop_all() hangs forever

@@ -1,13 +1,11 @@
 from __future__ import absolute_import
-from builtins import object
-from builtins import zip
 from future.utils import string_types
 
 from copy import deepcopy
 import logging
 from sqlalchemy.dialects import postgresql as pg
 
-from . import MongoModel, MongoQuery
+from . import MongoQuery, ModelPropertyBags
 from .hist import ModelHistoryProxy
 import sys
 
@@ -24,7 +22,7 @@ class CrudHelper(object):
         :type model: type
         """
         self.model = model
-        self.mongomodel = MongoModel.get_for(self.model)
+        self.bags = ModelPropertyBags.for_model(model)
 
     def mquery(self, query, query_obj=None):
         """ Construct a MongoQuery for the model.
@@ -40,7 +38,7 @@ class CrudHelper(object):
         """
         assert query_obj is None or isinstance(query_obj, dict), 'Query Object should be a dict or None'
 
-        mq = MongoQuery(self.mongomodel, query)
+        mq = MongoQuery(self.model, query)
         if query_obj:
             mq = mq.query(**query_obj)
         return mq
@@ -53,9 +51,9 @@ class CrudHelper(object):
         :return: Set of unknown names
         :rtype: set
         """
-        model_colnames = self.mongomodel.model_bag.columns.names
+        model_colnames = self.bags.columns.names
         names = set(names)
-        return [n for n in names - model_colnames if not isinstance(getattr(self.mongomodel.model, n, None), property)]
+        return [n for n in names - model_colnames if not isinstance(getattr(self.model, n, None), property)]
 
     def nullify_empty_fields(self, entity):
         """ Walk through the entity dict and handle nullable fields:
@@ -67,7 +65,7 @@ class CrudHelper(object):
         :return: Altered entity
         :rtype: dict
         """
-        for k in self.mongomodel.model_bag.nullable.keys():
+        for k in self.bags.nullable.keys():
             if k in entity and entity[k] == '':
                 entity[k] = None
         return entity
@@ -114,7 +112,7 @@ class CrudHelper(object):
 
         # Update
         for name, val in entity.items():
-            if isinstance(val, dict) and self.mongomodel.model_bag.columns.is_column_json(name):
+            if isinstance(val, dict) and self.bags.columns.is_column_json(name):
                 # JSON column with a dict: Make a copy that can replace the original attribute,
                 # so SqlAlchemy history will notice the changes.
                 tmp = deepcopy(getattr(instance, name))

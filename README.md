@@ -117,6 +117,12 @@ Produces the following queries through SqlAlchemy:
     ```python
     [ 'a', 'b' ]  # Include these fields only
     ```
+    
+Supported columns:
+
+* Columns
+* Hybrid properties
+* Python Propeties (`@property`)
 
 ### Sort Operation
 
@@ -208,7 +214,7 @@ Supports the following boolean operators:
 * `{ $nor: [ {..criteria..}, .. ] }` - none is true
 * `{ $not: { ..criteria.. } }` - negation
 
-Filter by the relations fields.
+Filter by the relations fields:
 
 * `{filter: {address.zip: 1234}}` - filter by address relation zip field, but return all
 adresses if joined with address.

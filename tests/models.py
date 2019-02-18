@@ -134,6 +134,51 @@ class Edit(Base):
     creator = relationship(User, foreign_keys=cuid)
 
 
+class ManyFieldsModel(Base):
+    # A model with many fields for testing huge filters
+    __tablename__ = 'm'
+    id = Column(Integer, primary_key=True)
+
+    # Integers
+    a = Column(Integer)
+    b = Column(Integer)
+    c = Column(Integer)
+    d = Column(Integer)
+    e = Column(Integer)
+    f = Column(Integer)
+    g = Column(Integer)
+    h = Column(Integer)
+    i = Column(Integer)
+    j = Column(Integer)
+    k = Column(Integer)
+
+    # Arrays
+    aa = Column(pg.ARRAY(String))
+    bb = Column(pg.ARRAY(String))
+    cc = Column(pg.ARRAY(String))
+    dd = Column(pg.ARRAY(String))
+    ee = Column(pg.ARRAY(String))
+    ff = Column(pg.ARRAY(String))
+    gg = Column(pg.ARRAY(String))
+    hh = Column(pg.ARRAY(String))
+    ii = Column(pg.ARRAY(String))
+    jj = Column(pg.ARRAY(String))
+    kk = Column(pg.ARRAY(String))
+
+    # JSONs
+    j_a = Column(pg.JSON)
+    j_b = Column(pg.JSON)
+    j_c = Column(pg.JSON)
+    j_d = Column(pg.JSON)
+    j_e = Column(pg.JSON)
+    j_f = Column(pg.JSON)
+    j_g = Column(pg.JSON)
+    j_h = Column(pg.JSON)
+    j_i = Column(pg.JSON)
+    j_j = Column(pg.JSON)
+    j_k = Column(pg.JSON)
+
+
 def init_database(autoflush=True):
     """ Init DB
     :rtype: (sqlalchemy.engine.Engine, sqlalchemy.orm.Session)

@@ -1,514 +1,493 @@
 import unittest
-import re
-import sys
 from collections import OrderedDict
 
-from mongosql.statements import MongoCriteria
-
-from sqlalchemy.orm import Query
-from sqlalchemy.dialects import postgresql as pg
-
-from . import models
-
-MongoCriteria.custom_op('$search', lambda col, value: col.ilike('%{}%'.format(value)))
-
-
-PY2 = sys.version_info[0] == 2
-
-
-def q2sql(q):
-    """ Convert an SqlAlchemy query to string """
-    # See: http://stackoverflow.com/a/4617623/134904
-    # This intentionally does not escape values!
-    stmt = q.statement
-    dialect = pg.dialect()
-    query = stmt.compile(dialect=dialect)
-    if PY2:
-        return (query.string.encode(dialect.encoding) % query.params).decode(dialect.encoding)
-    else:
-        return query.string % query.params
+from mongosql.statements import *
+from mongosql.exc import InvalidColumnError, InvalidQueryError, InvalidRelationError
+from .models import *
+from .util import stmt2sql
 
 
 class StatementsTest(unittest.TestCase):
-    """ Test statements as strings """
+    """ Test individual statements """
 
-    longMessage = True
+    maxDiff = None
 
     def test_projection(self):
-        """ Test project() """
-        m = models.User
+        def test_by_full_projection(p, **expected_full_projection):
+            """ Test:
+                * get_full_projection()
+                * __contains__() of a projection using its full projection
+                * compile_columns()
+            """
+            self.assertEqual(p.get_full_projection(), expected_full_projection)
 
-        project = lambda projection: m.mongoquery(Query([m])).project(projection).end()
+            # Test properties: __contains__()
+            for name, include in expected_full_projection.items():
+                self.assertEqual(name in p, True if include else False)
 
-        def test_projection(projection, expected_columns):
-            qs = q2sql(project(projection))
-            rex = re.compile('u\.(\w+)[, ]')
-            self.assertSetEqual(set(rex.findall(qs)), set(expected_columns), 'Expected {} in {}'.format(expected_columns, qs))
+            # Test: compile_columns() only returns column properties
+            columns = p.compile_columns()
+            self.assertEqual(
+                set(col.key for col in columns),
+                set(col_name
+                    for col_name in p.bags.columns.names
+                    if expected_full_projection.get(col_name, 0))
+            )
 
-        # Empty values
-        test_projection(None, ('id', 'name', 'tags', 'age'))
-        test_projection([], ('id', 'name', 'tags', 'age'))
-        test_projection({}, ('id', 'name', 'tags', 'age'))
+        # === Test: No input
+        p = MongoProjection(Article).input(None)
+        self.assertEqual(p.mode, p.MODE_EXCLUDE)
+        self.assertEqual(p.projection, dict())
 
-        # Array syntax
-        test_projection(['id'], ('id',))
-        test_projection(['id', 'name'], ('id', 'name'))
-        test_projection(['name'], ('id', 'name',))  # PK is always included :)
-        self.assertRaises(AssertionError, project, ['id', 'lol'])
+        # === Test: Valid projection, array
+        p = MongoProjection(Article).input(['id', 'uid', 'title'])
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
 
-        # Object: inclusion
-        test_projection({'id': 1}, ('id',))
-        test_projection({'id': 1, 'name': 1}, ('id', 'name'))
-        test_projection({'name': 1}, ('id', 'name',))
+        test_by_full_projection(p,
+                                # Explicitly included
+                                id=1, uid=1, title=1,
+                                # Implicitly excluded
+                                theme=0, data=0,
+                                # Properties excluded
+                                calculated=0, hybrid=0,
+                                )
 
-        # Object: exclusion
-        test_projection({'id': 0}, ('id', 'name', 'tags', 'age'))
-        test_projection({'id': 0, 'name': 0}, ('id', 'tags', 'age'))
-        test_projection({'name': 0}, ('id', 'tags', 'age'))
+        # === Test: Valid projection, dict, include mode
+        p = MongoProjection(Article).input(dict(id=1, uid=1, title=1))
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
 
-        # Object: invalid
-        self.assertRaises(AssertionError, project, {'id': 1, 'lol': 1})
-        self.assertRaises(AssertionError, project, {'id': 0, 'lol': 0})
-        test_projection({'id': 1, 'name': 0}, ('id',))
+        test_by_full_projection(p, # basically, the same thing
+                                id=1, uid=1, title=1,
+                                theme=0, data=0,
+                                calculated=0, hybrid=0,
+                                )
+
+        # === Test: Valid projection, dict, exclude mode
+        p = MongoProjection(Article).input(dict(theme=0, data=0))
+        self.assertEqual(p.mode, p.MODE_EXCLUDE)
+        self.assertEqual(p.projection, dict(theme=0, data=0))
+
+        test_by_full_projection(p,
+                                id=1, uid=1, title=1,
+                                theme=0, data=0,
+                                calculated=1, hybrid=1,
+                                )
+
+        # === Test: `default_exclude` in exclude mode
+        p = MongoProjection(Article, default_exclude=('calculated', 'hybrid'))\
+            .input(dict(theme=0, data=0))
+        self.assertEqual(p.mode, p.MODE_EXCLUDE)
+        self.assertEqual(p.projection, dict(theme=0, data=0,
+                                            # Extra stuff
+                                            calculated=0, hybrid=0))
+
+        test_by_full_projection(p,
+                                id=1, uid=1, title=1,
+                                theme=0, data=0,
+                                calculated=0, hybrid=0,  # now excluded
+                                )
+
+        # === Test: `default_exclude` in include mode (no effect)
+        p = MongoProjection(Article, default_exclude=('calculated', 'hybrid')) \
+            .input(dict(id=1, calculated=1))
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1, calculated=1))
+
+        test_by_full_projection(p,
+                                id=1, uid=0, title=0,
+                                theme=0, data=0,
+                                calculated=1, hybrid=0,  # one included, one excluded
+                                )
+
+        # === Test: default_projection
+        pr = Reusable(MongoProjection(Article, default_projection=dict(id=1, title=1)))
+
+        p = pr.input(None)
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1, title=1))
+
+        p = pr.input(None)
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1, title=1))
+
+        # === Test: force_include
+        pr = Reusable(MongoProjection(Article, force_include=('id',)))
+
+        # Include mode
+        p = pr.input(dict(title=1))
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1, title=1))  # id force included
+        # Exclude mode
+        p = pr.input(dict(data=0))
+        self.assertEqual(p.mode, p.MODE_MIXED)
+        self.assertEqual(p.projection, dict(id=1,  # force included
+                                            uid=1, title=1, theme=1,
+                                            data=0,  # excluded by request
+                                            calculated=1, hybrid=1))
+
+        # === Test: force_exclude
+        pr = Reusable(MongoProjection(Article, force_exclude=('data',)))
+        # Include mode
+        p = pr.input(dict(id=1))
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1))  # no `data`
+        # Include mode: same property
+        p = pr.input(dict(id=1, data=1))
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1))  # No more data, even though requested
+        # Exclude mode
+        p = pr.input(dict(theme=0))
+        self.assertEqual(p.mode, p.MODE_EXCLUDE)
+        self.assertEqual(p.projection, dict(theme=0,  # excluded by request
+                                            data=0,  # force excluded
+                                            ))
+
+        # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
+        with self.assertRaises(InvalidColumnError):
+            MongoProjection(Article, default_projection=dict(id=1, INVALID=1))
+        with self.assertRaises(InvalidQueryError):
+            MongoProjection(Article, default_projection=dict(id=1, title=0))
+
+        with self.assertRaises(InvalidColumnError):
+            MongoProjection(Article, default_exclude='id')
+        with self.assertRaises(InvalidColumnError):
+            MongoProjection(Article, default_exclude=('INVALID',))
+
+        with self.assertRaises(InvalidColumnError):
+            MongoProjection(Article, force_exclude='id')
+        with self.assertRaises(InvalidColumnError):
+            MongoProjection(Article, force_exclude=('INVALID',))
+
+        with self.assertRaises(InvalidColumnError):
+            MongoProjection(Article, force_include='id')
+        with self.assertRaises(InvalidColumnError):
+            MongoProjection(Article, force_include=('INVALID',))
+
+        # === Test: Invalid projection, dict, problem: 1s and 0s
+        pr = Reusable(MongoProjection(Article))
+
+        with self.assertRaises(InvalidQueryError):
+            pr.input(dict(id=1, title=0))
+
+        # === Test: Invalid projection, dict, problem: invalid column
+        with self.assertRaises(InvalidColumnError):
+            pr.input(dict(INVALID=1))
+
+        # === Test: A mixed object is only acceptable when it mentions EVERY column
+        # No error
+        MongoProjection(Article).input(dict(id=1, uid=1, title=1, theme=1, data=0,
+                                            calculated=1, hybrid=1))
 
     def test_sort(self):
-        """ Test sort() """
-        m = models.User
+        sr = Reusable(MongoSort(Article))
 
-        sort = lambda sort_spec: m.mongoquery(Query([m])).sort(sort_spec).end()
+        # === Test: no input
+        s = sr.input(None)
+        self.assertEqual(s.sort_spec, OrderedDict())
 
-        def test_sort(sort_spec, expected_ends):
-            qs = q2sql(sort(sort_spec))
-            self.assertTrue(qs.endswith(expected_ends), '{!r} should end with {!r}'.format(qs, expected_ends))
+        # === Test: list
+        s = sr.input(['id', 'uid+', 'title-'])
+        self.assertEqual(s.sort_spec, OrderedDict([('id',+1),('uid',+1),('title',-1)]))
 
-        # Empty
-        test_sort(None, u'FROM u')
-        test_sort([], u'FROM u')
-        test_sort(OrderedDict(), u'FROM u')
+        # === Test: OrderedDict
+        s = sr.input(OrderedDict([('id',+1),('uid',+1),('title',-1)]))
+        self.assertEqual(s.sort_spec, OrderedDict([('id',+1),('uid',+1),('title',-1)]))
 
-        # List
-        test_sort(['id-', 'age-'], 'ORDER BY u.id DESC, u.age DESC')
+        # === Test: dict
+        # One item allowed
+        s = sr.input(dict(id=-1))
+        # Two items disallowed
+        with self.assertRaises(InvalidQueryError):
+            s = sr.input(dict(id=-1, uid=+1))
 
-        # Dict
-        test_sort(OrderedDict([['id', -1], ['age', -1]]), 'ORDER BY u.id DESC, u.age DESC')
+        # === Test: invalid columns
+        with self.assertRaises(InvalidColumnError):
+            # Invalid column
+            sr.input(dict(INVALID=+1))
 
-        # Fail
-        self.assertRaises(AssertionError, test_sort, OrderedDict([['id', -2], ['age', -1]]), '')
+        with self.assertRaises(InvalidColumnError):
+            # Properties not supported
+            sr.input(dict(calculated=+1))
+
+        # Hybrid properties are ok
+        sr.input(dict(hybrid=+1))
+
+        # === Test: JSON column fields
+        sr.input({'data.rating': -1})
 
     def test_group(self):
-        """ Test group() """
-        m = models.User
-
-        group = lambda group_spec: m.mongoquery(Query([m])).group(group_spec).end()
-
-        def test_group(group_spec, expected_ends):
-            qs = q2sql(group(group_spec))
-            self.assertTrue(qs.endswith(expected_ends), '{!r} should end with {!r}'.format(qs, expected_ends))
-
-        # Empty
-        test_group(None, u'FROM u')
-        test_group([], u'FROM u')
-        test_group(OrderedDict(), u'FROM u')
-
-        # List
-        test_group(['id-', 'age-'], 'GROUP BY u.id DESC, u.age DESC')
-
-        # Dict
-        test_group(OrderedDict([['id', -1], ['age', -1]]), 'GROUP BY u.id DESC, u.age DESC')
-
-        # Fail
-        self.assertRaises(AssertionError, test_group, OrderedDict([['id', -2], ['age', -1]]), '')
+        # === Test: list
+        g = MongoGroup(Article).input(['uid'])
+        self.assertEqual(g.group_spec, OrderedDict(uid=+1))
 
     def test_filter(self):
-        """ Test filter() """
-        m = models.User
-
-        filter = lambda criteria: m.mongoquery(Query([m])).filter(criteria).end()
-
-        def test_filter(criteria, expected):
-            qs = q2sql(filter(criteria))
-            q_where = qs.partition('\nWHERE ')[2]
-            if isinstance(expected, tuple):
-                for _ in expected:
-                    self.assertIn(_, q_where)
-            else:  # string
-                self.assertEqual(q_where, expected)
-
-        # Empty
-        test_filter(None, 'true')
-        test_filter({}, 'true')
-
-        # Wrong
-        self.assertRaises(AssertionError, test_filter, [1, 2], '')
-
-        # Equality, multiple
-        test_filter({'id': 1, 'name': 'a'}, ('u.id = 1', 'u.name = a'))
-        test_filter({'tags': 'a'}, 'a = ANY (u.tags)')
-        test_filter({'tags': ['a', 'b', 'c']}, 'u.tags = CAST(ARRAY[a, b, c] AS VARCHAR[])')
-
-        # $ne
-        test_filter({'id': {'$ne': 1}}, 'u.id != 1')
-        test_filter({'tags': {'$ne': 'a'}}, 'a != ALL (u.tags)')
-        test_filter({'tags': {'$ne': ['a', 'b', 'c']}}, "u.tags != CAST(ARRAY[a, b, c] AS VARCHAR[])")
-
-        # $lt, $lte, $gte, $gt
-        test_filter({'id': {'$lt': 1}},  'u.id < 1')
-        test_filter({'id': {'$lte': 1}}, 'u.id <= 1')
-        test_filter({'id': {'$gte': 1}}, 'u.id >= 1')
-        test_filter({'id': {'$gt': 1}},  'u.id > 1')
-
-        # $in
-        self.assertRaises(AssertionError, filter, {'tags': {'$in': 1}})
-        test_filter({'name': {'$in': ['a', 'b', 'c']}}, 'u.name IN (a, b, c)')
-        test_filter({'tags': {'$in': ['a', 'b', 'c']}}, 'u.tags && CAST(ARRAY[a, b, c] AS VARCHAR[])')
-
-        # $nin
-        self.assertRaises(AssertionError, filter, {'tags': {'$nin': 1}})
-        test_filter({'name': {'$nin': ['a', 'b', 'c']}}, 'u.name NOT IN (a, b, c)')
-        test_filter({'tags': {'$nin': ['a', 'b', 'c']}}, 'NOT u.tags && CAST(ARRAY[a, b, c] AS VARCHAR[])')
-
-        # $exists
-        test_filter({'name': {'$exists': 0}}, 'u.name IS NULL')
-        test_filter({'name': {'$exists': 1}}, 'u.name IS NOT NULL')
-
-        # $all
-        self.assertRaises(AssertionError, filter, {'name': {'$all': ['a', 'b', 'c']}})
-        self.assertRaises(AssertionError, filter, {'tags': {'$all': 1}})
-        test_filter({'tags': {'$all': ['a', 'b', 'c']}}, "u.tags @> CAST(ARRAY[a, b, c] AS VARCHAR[])")
-
-        # $size
-        self.assertRaises(AssertionError, filter, {'name': {'$size': 0}})
-        test_filter({'tags': {'$size': 0}}, "array_length(u.tags, 1) IS NULL")
-        test_filter({'tags': {'$size': 1}}, "array_length(u.tags, 1) = 1")
-
-        # $or
-        self.assertRaises(AssertionError, filter, {'$or': {}})
-        test_filter({'$or': [{'id': 1}, {'name': 'a'}]}, "(u.id = 1 OR u.name = a)")
-
-        # $and
-        self.assertRaises(AssertionError, filter, {'$and': {}})
-        test_filter({'$and': [{'id': 1}, {'name': 'a'}]}, "(u.id = 1 AND u.name = a)")
-
-        # $nor
-        self.assertRaises(AssertionError, filter, {'$nor': {}})
-        test_filter({'$nor': [{'id': 1}, {'name': 'a'}]}, "NOT (u.id = 1 OR u.name = a)")
-
-        # $not
-        self.assertRaises(AssertionError, filter, {'$not': []})
-        test_filter({'$not': {'id': 1}}, "u.id != 1")
-
-        # Braces
-        self.assertRaises(AssertionError, filter, {'$or': {}})
-        # "((u.id = 1 AND u.name = a) OR u.name = b)")
-        test_filter({'$or': [{'id': 1, 'name': 'a'}, {'name': 'b'}]}, ('u.id = 1', ' AND ', '.name = a', 'OR u.name = b'))
-
-        # Custom filter
-        test_filter({'name': {'$search': 'quer'}}, 'u.name ILIKE %quer%')
-
-    def test_limit(self):
-        """ Test limit() """
-        m = models.User
-
-        limit = lambda limit=None, skip=None: m.mongoquery(Query([m])).limit(limit, skip).end()
-
-        def test_limit(lim, skip, expected_endswith):
-            qs = q2sql(limit(lim, skip))
-            self.assertTrue(qs.endswith(expected_endswith), '{!r} should end with {!r}'.format(qs, expected_endswith))
-
-        # Skip
-        test_limit(None, None, 'FROM u')
-        test_limit(None, -1, 'FROM u')
-        test_limit(None, 0, 'FROM u')
-        test_limit(None, 1, 'LIMIT ALL OFFSET 1')
-        test_limit(None, 9, 'LIMIT ALL OFFSET 9')
-
-        # Limit
-        test_limit(-1, None, 'FROM u')
-        test_limit(0, None, 'FROM u')
-        test_limit(1, None, 'LIMIT 1')
-        test_limit(9, None, 'LIMIT 9')
-
-        # Both
-        test_limit(5, 10, 'LIMIT 5 OFFSET 10')
-
-        # Twice
-        q = limit(limit=10)
-        q = m.mongoquery(q).limit(limit=15, skip=30).end()
-        qs = q2sql(q)
-        self.assertTrue(qs.endswith('LIMIT 15 OFFSET 30'), qs)
-
-    def test_join(self):
-        """ Test join() """
-
-        # Two level join
-        for sorting, desc in (('theme', ''), ('theme-', ' DESC'), ('theme+', '')):
-            mq = models.Article.mongoquery(Query([models.Article]))
-            mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],
-                                                                     'join': {'user': {'project': ['name']}}}}, limit=2, sort=[sorting])
-            q = mq.end()
-            qs = q2sql(q)
-            self.assertIn('SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, anon_1.a_theme AS anon_1_a_theme, u_1.id AS u_1_id, u_1.name AS u_1_name, c_1.id AS c_1_id, c_1.aid AS c_1_aid', qs)
-            self.assertIn('FROM (SELECT a.id AS a_id', qs)
-            self.assertIn('a ORDER BY a.theme{} \n LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid'.format(desc), qs)
-            self.assertTrue(qs.endswith('ORDER BY anon_1.a_theme{}'.format(desc)))
-        # Three level join
-        mq = models.Article.mongoquery(Query([models.Article]))
-        mq = mq.query(project=['title'], outerjoin={'comments': {'project': ['aid'],
-                                                    'join': {'user': {'project': ['name'],
-                                                                      'join': {'roles': {'project': ['title']}}}
-                                                    }}}, limit=2)
-        q = mq.end()
-        qs = q2sql(q)
-        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, anon_1.a_title AS anon_1_a_title, u_1.id AS u_1_id, u_1.name AS u_1_name, r_1.id AS r_1_id, r_1.title AS r_1_title, c_1.id AS c_1_id, c_1.aid AS c_1_aid
-                           FROM (SELECT a.id AS a_id, a.title AS a_title
-                              FROM a
-                           LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid JOIN u AS u_1 ON u_1.id = c_1.uid JOIN r AS r_1 ON u_1.id = r_1.uid""",
-                       qs)
-
-        m = models.User
-
-        # Okay
-        mq = m.mongoquery(Query([models.User]))
-        mq = mq.query(join={'articles': {'project': ('title',)}, 'comments': {}})
-        q = mq.end()
-        qs = q2sql(q)
-        self.assertIn('FROM u', qs)
-        self.assertIn('JOIN a', qs)
-        self.assertIn('JOIN c', qs)
-        self.assertNotIn('LEFT OUTER JOIN a', qs)
-        self.assertNotIn('LEFT OUTER JOIN c', qs)
-
-        # Left outer join
-        mq = m.mongoquery(Query([models.User]))
-        mq = mq.query(outerjoin={'articles': {'project': ('title',)}, 'comments': {}})
-        q = mq.end()
-        qs = q2sql(q)
-        self.assertIn('FROM u', qs)
-        self.assertIn('LEFT OUTER JOIN a', qs)
-        self.assertIn('LEFT OUTER JOIN c', qs)
-
-        # Unknown relation
-        mq = m.mongoquery(Query([models.User]))
-        self.assertRaises(AssertionError, mq.join, ('???'))
-
-        # Join with limit, should use FROM (SELECT...)
-        mq = models.Article.mongoquery(Query([models.Article]))
-        mq = mq.query(project=['id'], outerjoin={'comments': {'project': ['id']}}, limit=2)
-        q = mq.end()
-        qs = q2sql(q)
-        self._check_qs("""SELECT anon_1.a_id AS anon_1_a_id, c_1.id AS c_1_id
-                          FROM (SELECT a.id AS a_id
-                          FROM a
-                          LIMIT 2) AS anon_1 LEFT OUTER JOIN c AS c_1 ON anon_1.a_id = c_1.aid""",
-                       qs)
-
-    def test_aggregate(self):
-        """ Test aggregate() """
-        m = models.User
-
-        aggregate = lambda agg_spec: m.mongoquery(Query([m])).project(('id',)).aggregate(agg_spec).end()
-
-        def test_aggregate(agg_spec, expected_starts):
-            qs = q2sql(aggregate(agg_spec))
-            self.assertTrue(qs.startswith(expected_starts), '{!r} should start with {!r}'.format(qs, expected_starts))
-
-        # Empty
-        test_aggregate(None, 'SELECT u.id \nFROM')
-        test_aggregate({},   'SELECT u.id \nFROM')
-
-        # $func(column)
-        test_aggregate({ 'max_age': {'$max': 'age'} }, 'SELECT max(u.age) AS max_age \nFROM')
-        test_aggregate({ 'min_age': {'$min': 'age'} }, 'SELECT min(u.age) AS min_age \nFROM')
-        test_aggregate({ 'avg_age': {'$avg': 'age'} }, 'SELECT avg(u.age) AS avg_age \nFROM')
-        test_aggregate({ 'sum_age': {'$sum': 'age'} }, 'SELECT sum(u.age) AS sum_age \nFROM')
-
-        # $sum(1)
-        test_aggregate({'count': {'$sum': 1}}, 'SELECT count(*) AS count')
-        test_aggregate({'count': {'$sum': 10}}, 'SELECT count(*) * 10 AS count')
-
-        # $sum(id==1)
-        test_aggregate({'count': {'$sum': { 'id': 1 } }}, 'SELECT sum(CAST(u.id = 1 AS INTEGER)) AS count \nFROM')
-
-        # age, $sum(1)
-        q = OrderedDict()  # OrderedDict() to have predictable output
-        q['age'] = 'age'  # column
-        q['n'] = {'$sum': 1}
-        test_aggregate(q, 'SELECT u.age AS age, count(*) AS n \nFROM')
-
-        # $max(age), $sum(id=1 AND age >= 16)
-        q = OrderedDict()  # OrderedDict() to have predictable output
-        q['max_age'] = {'$max': 'age'}
-        q['count'] = {'$sum': OrderedDict([('id', 1), ('age', {'$gte': 16})])}
-        test_aggregate(q, 'SELECT max(u.age) AS max_age, sum(CAST((u.id = 1 AND u.age >= 16) AS INTEGER)) AS count \nFROM')
-
-        # Unknown column
-        self.assertRaises(AssertionError, test_aggregate, {'a': '???'}, '')
-        self.assertRaises(AssertionError, test_aggregate, {'a': {'$max': '???'}}, '')
-        self.assertRaises(AssertionError, test_aggregate, {'a': {'$sum': {'???': 1}}}, '')
-
-    def test_filter_on_join(self):
-        m = models.User
-        mq = m.mongoquery(Query([models.User]))
-        mq = mq.query(aggregate={'n': {'$sum': 1}}, group=('name',), join={'articles': {'filter': {'title': {'$exists': True}}}})
-        q = mq.end()
-        qs = q2sql(q)
-        self.assertIn('SELECT count(*) AS n', qs)
-        self.assertIn('FROM u JOIN a AS a_1 ON u.id = a_1.uid', qs)
-        self.assertIn('WHERE a_1.title IS NOT NULL GROUP BY u.name', qs)
-
-        # Dotted syntax
-        mq = m.mongoquery(Query([models.User]))
-        mq = mq.query(filter={'articles.id': 1})
-        q = mq.end()
-        qs = q2sql(q)
-        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM a \nWHERE u.id = a.uid AND a.id = 1)", qs)
-        mq = models.Comment.mongoquery(Query([models.Comment]))
-        mq = mq.query(filter={'user.id': {'$gt': 2}})
-        q = mq.end()
-        qs = q2sql(q)
-        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u \nWHERE u.id = c.uid AND u.id > 2)", qs)
-
-        # Dotted multiple filter for same relation
-        mq = models.Comment.mongoquery(Query([models.Comment]))
-        mq = mq.query(filter={'user.id': {'$gt': 2}, 'user.age': {'$gt': 18}})
-        q = mq.end()
-        qs = q2sql(q)
-        self.assertIn("WHERE EXISTS (SELECT 1 \nFROM u ", qs)
-        self.assertIn("u.id = c.uid", qs)
-        self.assertIn("u.id > 2", qs)
-        self.assertIn("u.age > 18", qs)
-
-    def test_join_multiple(self):
-        """ Test join() same table multiple times"""
-
-        mq = models.Edit.mongoquery(Query([models.Edit]))
-        mq = mq.query(project=['id'], outerjoin={'user': {'project': ['name']},
-                                                 'creator': {'project': ['id', 'tags'],
-                                                             'filter': {'id': {'$lt': 1}}}})
-        q = mq.end()
-
-        qs = q2sql(q)
-        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id
-        FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid AND u_2.id < 1""", qs)
-
-    def _check_qs(self, should, qs):
-        for line in should.splitlines():
-            self.assertIn(line.strip(), qs)
-
-    def test_join_condition(self):
-        """ Add condition on join. Used in filter joined entities
-        For example for security reason."""
-
-        mq = models.Edit.mongoquery(Query([models.Edit]))
-
-        def join_hook(name, rel, alias):
-            if rel.property.mapper.class_  == models.User and name == 'user':
-                return lambda x: x.filter(alias.age > 18)
-            return
-
-        mq.on_join(join_hook)
-        mq = mq.query(project=['id'], outerjoin={'user': {'project': ['name']},
-                                                 'creator': {'project': ['id', 'tags']}})
-        q = mq.end()
-
-        qs = q2sql(q)
-        # self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, u_2.id AS u_2_id, u_2.tags AS u_2_tags, e.id AS e_id
-        #     FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid
-        #     WHERE u_1.age > 18""", qs)
-        # NOTE: have to check piece by piece because ordering is not guaranteed
-        self.assertIn('SELECT u_1.', qs)
-        self.assertIn('u_1.id AS u_1_id', qs)
-        self.assertIn('u_1.name AS u_1_name', qs)
-        self.assertIn('u_1.tags AS u_1_tags', qs)
-        self.assertIn('u_1.age AS u_1_age', qs)
-        self.assertIn('u_2.id AS u_2_id', qs)
-        self.assertIn('u_2.tags AS u_2_tags', qs)
-        self.assertIn('e.id AS e_id', qs)
-        self.assertIn('FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid', qs)
-        self.assertIn('WHERE u_1.age > 18', qs)
-
-        # Without projections
-        mq = models.Edit.mongoquery(Query([models.Edit]))
-        mq.on_join(join_hook)
-        mq = mq.query(project=['id'], outerjoin=['user'])
-        q = mq.end()
-        qs = q2sql(q)
-        # self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, e.id AS e_id
-        #     FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid
-        #     WHERE u_1.age > 18""", qs)
-        self.assertIn('SELECT u_1.', qs)
-        self.assertIn('u_1.id AS u_1_id', qs)
-        self.assertIn('u_1.name AS u_1_name', qs)
-        self.assertIn('u_1.tags AS u_1_tags', qs)
-        self.assertIn('u_1.age AS u_1_age', qs)
-        self.assertIn('e.id AS e_id', qs)
-        self.assertIn('FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid', qs)
-        self.assertIn('WHERE u_1.age > 18', qs)
-        mq = models.Edit.mongoquery(Query([models.Edit]))
-
-        def join_hook(name, rel, alias):
-            if rel.property.mapper.class_  == models.Role:
-                return lambda x: x.filter(alias.title.isnot(None))
-            return
-        mq.on_join(join_hook)
-        mq = mq.query(project=['id'], outerjoin={'user': {'join': ['roles']}})
-
-        q = mq.end()
-        qs = q2sql(q)
-        self._check_qs("""SELECT u_1.id AS u_1_id, u_1.name AS u_1_name, u_1.tags AS u_1_tags, u_1.age AS u_1_age, r_1.id AS r_1_id, r_1.uid AS r_1_uid, r_1.title AS r_1_title, r_1.description AS r_1_description, e.id AS e_id
-                   FROM e LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid JOIN r AS r_1 ON u_1.id = r_1.uid
-                   WHERE r_1.title IS NOT NULL""", qs)
-
-    def test_get_project(self):
-        m = models.User
-
-        def _get_project(query):
-            #return q2sql(m.mongoquery(Query([m])).query(**query).end())
-            return m.mongoquery(Query([m])).query(**query).get_project()
-
-        def _check_query(query, project):
-            self.assertEqual(_get_project(query), project)
-
-        _check_query({'project': ['id', 'name']}, {'id': 1, 'name': 1})
-        _check_query({'project': {'id': 0, 'name': 0}}, {'id': 0, 'tags': 1, 'age': 1, 'name': 0})
-        _check_query({'project': {}}, {'id': 1, 'tags': 1, 'age': 1, 'name': 1})
-
-        _check_query({'project': ['id', 'name'], 'join': ['roles']},
-                     {'id': 1, 'name': 1, 'roles': {'id': 1, 'uid': 1, 'title': 1, 'description': 1}})
-        _check_query({'project': ['id', 'name'], 'join': {'roles':{'project': ['title', 'description']}}},
-                     {'id': 1, 'name': 1, 'roles': {'title': 1, 'description': 1}})
-        _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': {'comments': {'project': ['uid', 'text']}}}}},
-                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'uid': 1, 'text': 1}}})
-        _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': ['comments']}}},
-                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 1, 'text': 1}}})
-        _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': {'comments': {'project': {'uid': 0, 'text': 0}}}}}},
-                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 0, 'text': 0}}})
-        _check_query({'join': ['roles']},
-                     {'id': 1, 'tags': 1, 'age': 1, 'name': 1, 'roles': {'id': 1, 'uid': 1, 'title': 1, 'description': 1}})
-
-    def test_filter_hybrid(self):
-        mq = models.Article.mongoquery(Query([models.Article]))
-        query = mq.query(filter={'hybrid': True}).end()
-        qs = q2sql(query)
-        self._check_qs("""SELECT a.id, a.uid, a.title, a.theme, a.data
-        FROM a
-        WHERE (a.id > 10 AND (EXISTS (SELECT 1
-        FROM u
-        WHERE u.id = a.uid AND u.age > 18))) = true""", qs)
-        self.assertRaises(AssertionError, mq.query, filter={'no_such_property': 1})
-        self.assertRaises(AssertionError, mq.query, filter={'calculated': 10})
-
-    def test_limit_with_filtered_join(self):
-        m = models.User
-        mq = m.mongoquery(Query([models.User]))
-        mq = mq.query(limit=10, join={'articles': {'filter': {'title': {'$exists': True}}}})
-        q = mq.end()
-        qs = q2sql(q)
-        self._check_qs("""SELECT anon_1.u_id AS anon_1_u_id, anon_1.u_name AS anon_1_u_name, anon_1.u_tags AS anon_1_u_tags, anon_1.u_age AS anon_1_u_age, a_1.id AS a_1_id, a_1.uid AS a_1_uid, a_1.title AS a_1_title, a_1.theme AS a_1_theme, a_1.data AS a_1_data
-FROM (SELECT u.id AS u_id, u.name AS u_name, u.tags AS u_tags, u.age AS u_age
-FROM u
-WHERE EXISTS (SELECT 1
-FROM a
-WHERE u.id = a.uid AND a.title IS NOT NULL)
- LIMIT 10) AS anon_1 JOIN a AS a_1 ON anon_1.u_id = a_1.uid
-WHERE a_1.title IS NOT NULL""", qs)
+        # === Test: empty
+        f = MongoFilter(Article).input(None)  # no problem
+
+        # === Test: simple key=value object
+        f = MongoFilter(Article).input(OrderedDict([
+            ('id', 1),
+            ('hybrid', True),  # No error
+            ('data.rating', 10),  # Accessing JSON column
+        ]))
+        self.assertEqual(len(f.expressions), 3)
+
+        e = f.expressions[0]  # type e: FilterColumnExpression
+        self.assertIsInstance(e, FilterColumnExpression)
+        self.assertEqual(e.column_name, 'id')
+        self.assertEqual(e.column.key, 'id')
+        self.assertEqual(e.operator_str, '$eq')  # inserted
+        self.assertEqual(e.value, 1)
+        self.assertEqual(stmt2sql(e.compile_expression()), 'a.id = 1')
+
+        e = f.expressions[1]  # type e: FilterColumnExpression
+        self.assertEqual(e.column_name, 'hybrid')
+        self.assertEqual(e.column.key, 'hybrid')
+        self.assertEqual(e.operator_str, '$eq')  # inserted
+        self.assertEqual(e.value, True)
+        self.assertIn('(a.id > 10 AND (EXISTS (SELECT 1', stmt2sql(e.compile_expression()))
+
+        e = f.expressions[2]  # type e: FilterColumnExpression
+        self.assertIsInstance(e, FilterColumnExpression)
+        self.assertEqual(e.column_name, 'data.rating')
+        self.assertEqual(e.column.key, None)  # it's a JSON expressin
+        self.assertEqual(e.real_column.key, 'data')
+        self.assertEqual(e.operator_str, '$eq')  # inserted
+        self.assertEqual(e.value, 10)
+        self.assertEqual(stmt2sql(e.compile_expression()), "CAST((a.data #>> ['rating']) AS INTEGER) = 10")  # proper typecasting
+
+        # === Test: scalar operators
+        f = MongoFilter(ManyFieldsModel).input(OrderedDict([
+            ('a', {'$lt': 100}),
+            ('b', {'$lte': 100}),
+            ('c', {'$ne': 100}),
+            ('d', {'$gte': 100}),
+            ('e', {'$gt': 100}),
+            ('f', {'$in': [1, 2, 3]}),
+            ('g', {'$nin': [1, 2, 3]}),
+            ('h', {'$exists': 1}),
+            ('i', {'$exists': 0}),
+        ]))
+
+        self.assertEqual(len(f.expressions), 9)
+
+        e = f.expressions[0]
+        self.assertEqual(e.operator_str, '$lt')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.a < 100')
+
+        e = f.expressions[1]
+        self.assertEqual(e.operator_str, '$lte')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.b <= 100')
+
+        e = f.expressions[2]
+        self.assertEqual(e.operator_str, '$ne')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.c != 100')
+
+        e = f.expressions[3]
+        self.assertEqual(e.operator_str, '$gte')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.d >= 100')
+
+        e = f.expressions[4]
+        self.assertEqual(e.operator_str, '$gt')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.e > 100')
+
+        e = f.expressions[5]
+        self.assertEqual(e.operator_str, '$in')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.f IN (1, 2, 3)')
+
+        e = f.expressions[6]
+        self.assertEqual(e.operator_str, '$nin')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.g NOT IN (1, 2, 3)')
+
+        e = f.expressions[7]
+        self.assertEqual(e.operator_str, '$exists')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.h IS NOT NULL')
+
+        e = f.expressions[8]
+        self.assertEqual(e.operator_str, '$exists')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.i IS NULL')
+
+        # === Test: array operators
+        f = MongoFilter(ManyFieldsModel).input(OrderedDict([
+            ('aa', {'$eq': 1}),
+            ('bb', {'$eq': [1, 2, 3]}),
+            ('cc', {'$ne': 1}),
+            ('dd', {'$ne': [1, 2, 3]}),
+            ('ee', {'$in': [1, 2, 3]}),
+            ('ff', {'$nin': [1, 2, 3]}),
+            ('gg', {'$exists': 1}),
+            ('hh', {'$exists': 0}),
+            ('ii', {'$all': [1, 2, 3]}),
+            ('jj', {'$size': 0}),
+            ('kk', {'$size': 99}),
+        ]))
+
+        self.assertEqual(len(f.expressions), 11)
+
+        e = f.expressions[0]
+        self.assertEqual(e.operator_str, '$eq')
+        self.assertEqual(stmt2sql(e.compile_expression()), '1 = ANY (m.aa)')
+
+        e = f.expressions[1]
+        self.assertEqual(e.operator_str, '$eq')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.bb = CAST(ARRAY[1, 2, 3] AS VARCHAR[])')
+
+        e = f.expressions[2]
+        self.assertEqual(e.operator_str, '$ne')
+        self.assertEqual(stmt2sql(e.compile_expression()), '1 != ALL (m.cc)')
+
+        e = f.expressions[3]
+        self.assertEqual(e.operator_str, '$ne')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.dd != CAST(ARRAY[1, 2, 3] AS VARCHAR[])')
+
+        e = f.expressions[4]
+        self.assertEqual(e.operator_str, '$in')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.ee && CAST(ARRAY[1, 2, 3] AS VARCHAR[])')
+
+        e = f.expressions[5]
+        self.assertEqual(e.operator_str, '$nin')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'NOT m.ff && CAST(ARRAY[1, 2, 3] AS VARCHAR[])')
+
+        e = f.expressions[6]
+        self.assertEqual(e.operator_str, '$exists')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.gg IS NOT NULL')
+
+        e = f.expressions[7]
+        self.assertEqual(e.operator_str, '$exists')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.hh IS NULL')
+
+        e = f.expressions[8]
+        self.assertEqual(e.operator_str, '$all')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.ii @> CAST(ARRAY[1, 2, 3] AS VARCHAR[])')
+
+        e = f.expressions[9]
+        self.assertEqual(e.operator_str, '$size')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'array_length(m.jj, 1) IS NULL')
+
+        e = f.expressions[10]
+        self.assertEqual(e.operator_str, '$size')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'array_length(m.kk, 1) = 99')
+
+        # === Test: operators on JSON columns
+        f = MongoFilter(ManyFieldsModel).input(OrderedDict([
+            ('j_a.rating', {'$lt': 100}),
+            ('j_b.rating', {'$in': [1, 2, 3]}),
+        ]))
+
+        self.assertEqual(len(f.expressions), 2)
+
+        e = f.expressions[0]
+        self.assertEqual(e.operator_str, '$lt')
+        self.assertEqual(stmt2sql(e.compile_expression()), "CAST((m.j_a #>> ['rating']) AS INTEGER) < 100")
+
+        e = f.expressions[1]
+        self.assertEqual(e.operator_str, '$in')
+        self.assertEqual(stmt2sql(e.compile_expression()), "CAST((m.j_b #>> ['rating']) AS TEXT) IN (1, 2, 3)")
+
+        # === Test: boolean expression
+        f = MongoFilter(ManyFieldsModel).input({
+            '$and': [
+                OrderedDict([ ('a', 1), ('b', 2) ]),
+                {'c': 3},
+                {'g': {'$gt': 18}},
+            ]
+        })
+
+        self.assertEqual(len(f.expressions), 1)
+
+        e = f.expressions[0]
+        self.assertIsInstance(e, FilterBooleanExpression)
+        self.assertEqual(e.operator_str, '$and')
+
+        self.assertIsInstance(e.value, list)
+        self.assertIsInstance(e.value[0], list)
+        self.assertEqual(stmt2sql(e.value[0][0].compile_expression()), 'm.a = 1')
+        self.assertEqual(stmt2sql(e.value[0][1].compile_expression()), 'm.b = 2')
+        self.assertIsInstance(e.value[1], list)
+        self.assertEqual(stmt2sql(e.value[1][0].compile_expression()), 'm.c = 3')
+        self.assertIsInstance(e.value[2], list)
+        self.assertEqual(stmt2sql(e.value[2][0].compile_expression()), 'm.g > 18')
+        self.assertEqual(stmt2sql(e.compile_expression()),
+                         '((m.a = 1 AND m.b = 2) AND m.c = 3 AND m.g > 18)')
+
+        f = MongoFilter(ManyFieldsModel).input({
+            '$or': [
+                {'a': 1},
+                {'b': 1},
+            ],
+        })
+        self.assertEqual(stmt2sql(f.compile_statement()),
+                         '(m.a = 1 OR m.b = 1)')
+
+        f = MongoFilter(ManyFieldsModel).input({
+            '$nor': [
+                {'a': 1},
+                {'b': 1},
+            ],
+        })
+        self.assertEqual(stmt2sql(f.compile_statement()),
+                         'NOT (m.a = 1 OR m.b = 1)')
+
+        f = MongoFilter(ManyFieldsModel).input({
+            '$not': {
+                'c': {'$gt': 18},
+            }
+        })
+        self.assertEqual(stmt2sql(f.compile_statement()),
+                         'm.c <= 18')  # wow, clever sqlalchemy!
+
+        # === Test: nested boolean expression
+        f = MongoFilter(ManyFieldsModel).input({
+            '$not': OrderedDict([
+                ('a', 1),
+                ('$and', [
+                    {'a': 1},
+                    {'b': 1},
+                    {'$or': [
+                        {'a': {'$gt': 18}},
+                        {'b': 1},
+                    ]}
+                ]),
+            ])
+        })
+        self.assertEqual(stmt2sql(f.compile_statement()),
+                         'NOT (m.a = 1 AND (m.a = 1 AND m.b = 1 AND (m.a > 18 OR m.b = 1)))')
+
+        # === Test: related columns
+        f = MongoFilter(Article).input(OrderedDict([
+            # These two will be put together into a single subquery
+            ('comments.id', 1),
+            ('comments.uid', {'$gt': 18}),
+            # These two will also be grouped
+            ('user.id', 1),
+            ('user.name', {'$nin': ['a', 'b']}),
+        ]))
+
+        self.assertEqual(len(f.expressions), 4)
+
+        e = f.expressions[0]
+        self.assertEqual(stmt2sql(e.compile_expression()), "c.id = 1")
+
+        e = f.expressions[1]
+        self.assertEqual(stmt2sql(e.compile_expression()), "c.uid > 18")
+
+        e = f.expressions[2]
+        self.assertEqual(stmt2sql(e.compile_expression()), "u.id = 1")
+
+        e = f.expressions[3]
+        self.assertEqual(stmt2sql(e.compile_expression()), "u.name NOT IN (a, b)")
+
+        s = stmt2sql(f.compile_statement())
+        # We rely on OrderedDict, so the order of arguments should be perfect
+        self.assertIn(u"(EXISTS (SELECT 1 \n"
+                         "FROM a, c \n"
+                         "WHERE a.id = c.aid AND c.id = 1 AND c.uid > 18))", s)
+        self.assertIn(u"(EXISTS (SELECT 1 \n"
+                         "FROM u, a \n"
+                         "WHERE u.id = a.uid AND u.id = 1 AND u.name NOT IN (a, b)))", s)
+
+        # === Test: Hybrid Properties
+        f = MongoFilter(Article).input(dict(hybrid=1))
+        self.assertIn('(a.id > 10 AND (EXISTS (SELECT 1 \nFROM u', stmt2sql(f.compile_statement()))

@@ -1,58 +1,64 @@
 from __future__ import absolute_import
-from builtins import object
 
 from sqlalchemy.orm import Query, Load, defaultload, undefer
 from sqlalchemy.sql import func
 
-from .model import MongoModel
+from .bag import ModelPropertyBags
+from . import statements
 from .utils import outer_with_filter
 
 
 class JoinedQuery(object):
     def __init__(self, mjp, join_func):
+        """
+
+        :type mjp: mongosql.statements.MongoJoinParams
+        :param join_func:
+        """
         self.mjp = mjp
-        self.relname = mjp.relname
+        self.relname = mjp.relationship_name
         self.join_func = join_func
         self.query = None
         self.processed = False
 
     def has_filter(self):
-        if self.mjp.query is None:
+        if self.mjp.query_object is None:
             return False
-        return bool(self.mjp.query.get('filter'))
+        return bool('filter' in self.mjp.query_object)
 
     @classmethod
     def from_mjp(cls, mjp, join_func):
         joined = cls(mjp, join_func)
-        if mjp.query is None:
-            joined.query = MongoQuery.get_for(mjp.target_model)
+        if mjp.query_object is None:
+            joined.query = MongoQuery(mjp.target_model)
             joined.processed = True
         return joined
 
     def apply(self, parent_query):
+        """
+
+        :type parent_query: MongoQuery
+        """
         if self.processed:
             return parent_query
         mjp = self.mjp
         join_func = self.join_func
-        model_alias = mjp.rel_alias
-        if join_func == 'outerjoin' and mjp.query and mjp.query.get('filter'):
-            outer_filter = mjp.query.pop('filter')
-            c = MongoModel(model_alias).filter(outer_filter)
+        model_alias = mjp.target_model_aliased
+        if join_func == 'outerjoin' and mjp.query_object and 'filter' in mjp.query_object:
+            outer_filter = mjp.query_object.pop('filter')
+            c = statements.MongoFilter(model_alias).input(outer_filter).compile_statement()
             query_with_joined = outer_with_filter(parent_query._query, model_alias, mjp.relationship, c)
         else:
             query_with_joined = getattr(parent_query._query, join_func)(model_alias, mjp.relationship)
         if mjp.additional_filter:
             query_with_joined = mjp.additional_filter(query_with_joined)
 
-        for_join = parent_query.get_for(
-            mjp.target_model,
+        for_join = MongoQuery(
+            model_alias,  # Use an alias in the query
             query_with_joined,
-            _as_relation=mjp.relationship,
-            join_path=parent_query.join_path + (mjp.relationship, ),
-            aliased=model_alias
+            _join_path=parent_query._join_path + (mjp.relationship, )
         )
-        for_join.on_join(parent_query.join_hook)
-        for_join_query = for_join.query(**mjp.query)
+        for_join_query = for_join.query(**mjp.query_object)
         self.query = for_join_query
         parent_query._query = for_join_query.end()
         join_query = parent_query._query.with_labels()
@@ -65,7 +71,7 @@ class JoinedQuery(object):
         if self.join_func == 'outerjoin':
             return parent
         mjp = self.mjp
-        filter_for_parent = {mjp.relname + '.' + key: val for key, val in mjp.query['filter'].items()}
+        filter_for_parent = {mjp.relationship_name + '.' + key: val for key, val in mjp.query_object['filter'].items()}
         parent = parent.filter(filter_for_parent)
         return parent
 
@@ -73,62 +79,40 @@ class JoinedQuery(object):
 class MongoQuery(object):
     """ MongoDB-style queries """
 
-    @classmethod
-    def get_for(cls, model, *args, **kwargs):
-        """ Get MongoQuery for a model.
-
-        Attempts to use `mongoquery` property of the model
-
-        :param model: Model
-        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.DeclarativeMeta
-        :rtype: MongoQuery
-        """
-        try:
-            return model.mongoquery(*args, **kwargs)
-        except AttributeError:
-            return cls(MongoModel.get_for(model), *args, **kwargs)
-
-    def __init__(self, model, query=None, _as_relation=None, join_path=None, aliased=None):
+    def __init__(self, model, query=None, _join_path=()):
         """ Init a MongoDB-style query
-        :param model: MongoModel
-        :type model: mongosql.MongoModel
-        :param query: Query to work with
-        :type query: sqlalchemy.orm.Query
+
+        :param model: SqlAlchemy model to make a MongoSQL query for, or an alias
+        :type model: sqlalchemy.ext.declarative.DeclarativeMeta | sqlalchemy.orm.util.AliasedClass
+        :param query: Initial Query to work with
+        :type query: sqlalchemy.orm.Query | None
         :param _as_relation: Parent relationship.
             Internal argument used when working with deeper relations:
             is used as initial path for defaultload(_as_relation).lazyload(...).
-        :type _as_relation: sqlalchemy.orm.relationships.RelationshipProperty
+        :type _as_relation: sqlalchemy.orm.relationships.RelationshipProperty | None
+        :param join_path: A tuple of relationships leading to this query.
+            This internal argument is used when working with deeper relations, and is used as
+            initial path for defaultload(*_join_path).lazyload(...)
+        :type join_path: tuple[sqlalchemy.orm.relationships.RelationshipProperty]
         """
-        if query is None:
-            query = Query([model.model])
-        self.join_hook = None
         self._model = model
-        # This magic is here because if we use alias as target_model it
-        # somehow override the Model class. So tests fails if run all tests,
-        # but if you run single test - it pass. So we create MongoModel for alias
-        # here instead of "get_for".
-        if aliased:
-            self._model = MongoModel(aliased)
-        self._query = query
-        self.join_path = join_path or ()
+        self._model_bags = ModelPropertyBags.for_model(self._model)
+        self._query = query or Query([model])
 
-        if join_path:
-            self._as_relation = defaultload(*join_path)
-        else:
-            self._as_relation = defaultload(_as_relation) if _as_relation else Load(self._model.model)
-        self.join_queries = []
-        self.skip_or_limit = False
+        self._join_path = _join_path
+        self._as_relation = defaultload(*self._join_path) if self._join_path else Load(self._model)
+
+        # Initialize properties that will be used while processing a Query object
+        self.join_queries = []  # List of joined queries (processed in end())
+        self.skip_or_limit = False  # whether a `skip` or a `limit` is present
         self._order_by = None
         self._project = {}
-        self._end_query = None
-
-    def on_join(self, on_join):
-        self.join_hook = on_join
+        self._end_query = None  # The final query, to make sure that end() is only called once
 
     def get_project(self):
         self.end()
         if all([isinstance(x, dict) for x in self._project.values()]):
-            self._project.update({name: 1 for name, c in self._model.model_bag.columns.items()})
+            self._project.update({name: 1 for name, c in self._model_bags.columns})
         for joined in self.join_queries:
             if joined.query:
                 self._project[joined.relname] = joined.query.get_project()
@@ -139,50 +123,65 @@ class MongoQuery(object):
 
     def aggregate(self, agg_spec):
         """ Select aggregated results """
-        a = self._model.aggregate(agg_spec)
+        a = statements.MongoAggregateInsecure(
+            self._model,
+            statements.MongoFilter(self._model)
+        ).input(agg_spec).compile_statements()
         if a:
             self._query = self._query.with_entities(*a)
             # When no model criteria is specified, like COUNT(*), SqlAlchemy won't set the FROM clause
             # Thus, we need to explicitly set the `FROM` clause in these cases
             if self._query.whereclause is None:
-                self._query = self._query.select_from(self._model.model)
+                self._query = self._query.select_from(self._model)
 
         return self
 
     def project(self, projection):
         """ Apply a projection to the query """
-        p, projected_properties = self._model.project(projection, as_relation=self._as_relation)
-        if self._model.model.__name__ == 'User':
-            assert 1
+        mp = statements.MongoProjection(self._model).input(projection)
+        p = mp.compile_options(as_relation=self._as_relation)
+
+        # this code has weird requirements
+        # for now, I just make sure they're met
+        if mp.mode == mp.MODE_INCLUDE:
+            projected_properties = mp.projection.copy()
+        else:
+            projected_properties = mp.get_full_projection()
+
         self._query = self._query.options(p)
         self._project.update(projected_properties)
         return self
 
     def sort(self, sort_spec):
         """ Apply sorting to the query """
-        s = self._model.sort(sort_spec)
+        s = statements.MongoSort(self._model).input(sort_spec).compile_columns()
         self._query = self._query.order_by(*s)
         self._order_by = s
         return self
 
     def group(self, group_spec):
         """ Apply grouping to the query """
-        g = self._model.group(group_spec)
+        g = statements.MongoSort(self._model).input(group_spec).compile_columns()
         self._query = self._query.group_by(*g)
         return self
 
     def filter(self, criteria):
         """ Add criteria to the query """
-        c = self._model.filter(criteria)
+        c = statements.MongoFilter(self._model).input(criteria).compile_statement()
         self._query = self._query.filter(c)
         return self
 
     def limit(self, limit=None, skip=None, force=False):
         """ Slice results """
+        assert skip is None or isinstance(skip, int), 'Skip must be one of: None, int'
+        assert limit is None or isinstance(limit, int), 'Limit must be one of: None, int'
+        skip = None if skip is None or skip <= 0 else skip
+        limit = None if limit is None or limit <= 0 else limit
+
         if not force and any([j.has_filter() for j in self.join_queries]):
             self.skip_or_limit = (skip, limit)
             return self
-        limit, skip = self._model.limit(limit, skip)
+
         if skip:
             self._query = self._query.offset(skip)
         if limit:
@@ -191,8 +190,7 @@ class MongoQuery(object):
 
     def _join(self, relnames, join_func):
         """ Base for join and outerjoin """
-
-        for mjp in self._model.join(relnames, as_relation=self._as_relation, callback=self.join_hook):
+        for mjp in statements.MongoJoin(self._model).input(relnames).compile_options(as_relation=self._as_relation):
             self.join_queries.append(JoinedQuery.from_mjp(mjp, join_func))
         self._query = self._query.options([self._as_relation.lazyload('*')])
         self._query = self._query.with_labels()

@@ -20,13 +20,9 @@ publish: README.rst
 	@twine upload dist/*
 
 
-.PHONY: test test-tox test-docker test-docker-2.6
+.PHONY: test test-tox
 test:
 	@# Before testing, run: $ docker-compose up -d
 	@nosetests
 test-tox:
 	@tox
-test-docker:
-	@docker run --rm -it -v `pwd`:/src themattrix/tox
-test-docker-2.6: # temporary, since `themattrix/tox` has faulty 2.6
-	@docker run --rm -it -v $(realpath .):/app mrupgrade/deadsnakes:2.6 bash -c 'cd /app && pip install -e . && pip install nose argparse && nosetests'

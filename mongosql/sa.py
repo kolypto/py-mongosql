@@ -1,36 +1,24 @@
 from __future__ import absolute_import
-from builtins import object
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, Query
 
-from .model import MongoModel
 from .query import MongoQuery
 
 
 class MongoSqlBase(object):
-    """ Mixin for SqlAlchemy models
-
-        Provides methods for accessing :cls:MongoModel and :cls:MongoQuery
-    """
-
-    __mongomodel = None
+    """ Mixin for SqlAlchemy models that provides the .mongoquery() method for convenience """
 
     @classmethod
-    def mongomodel(cls):
-        """ Get MongoModel object
-        :rtype: mongosql.MongoModel
-        """
-        if cls.__mongomodel is None:
-            cls.__mongomodel = MongoModel(cls)
-        return cls.__mongomodel
-
-    @classmethod
-    def mongoquery(cls, query=None, **kwargs):
+    def mongoquery(cls, query_or_session=None, **kwargs):
         """ Build a MongoQuery
-        :param query: Query to start with, or a session object to initiate the query with
-        :type query: sqlalchemy.orm.Query|sqlalchemy.orm.Session
+        :param query_or_session: Query to start with, or a session object to initiate the query with
+        :type query_or_session: sqlalchemy.orm.Query | sqlalchemy.orm.Session
         :rtype: mongosql.MongoQuery
         """
-        if isinstance(query, Session):
-            query = query.query(cls)
-        return MongoQuery(cls.mongomodel(), query, **kwargs)
+        if isinstance(query_or_session, Session):
+            query = query_or_session.query(cls)
+        elif isinstance(query_or_session, Query):
+            query = query_or_session
+        else:
+            raise ValueError('Argument must be Query or Session')
+        return MongoQuery(cls, query, **kwargs)
