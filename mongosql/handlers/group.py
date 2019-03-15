@@ -26,6 +26,17 @@ class MongoGroup(MongoSort):
 
     def compile_columns(self):
         return [
-            self.supported_bags[name].desc() if d == -1 else self.supported_bags[name]
+            self.supported_bags.get(name).desc() if d == -1 else self.supported_bags.get(name)
             for name, d in self.group_spec.items()
         ]
+
+    # Not Implemented for this Query Object handler
+    compile_options = NotImplemented
+    compile_statement = NotImplemented
+    compile_statements = NotImplemented
+
+    def alter_query(self, query, as_relation=None):
+        if not self.group_spec:
+            return query  # short-circuit
+
+        return query.group_by(*self.compile_columns())

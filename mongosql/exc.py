@@ -10,6 +10,10 @@ class InvalidQueryError(BaseMongoSqlException):
         super(InvalidQueryError, self).__init__('Query object error: {err}'.format(err=err))
 
 
+class DisabledError(InvalidQueryError):
+    """ The feature is disabled """
+
+
 class InvalidColumnError(BaseMongoSqlException):
     """ Query mentioned an invalid column name """
 
@@ -25,5 +29,17 @@ class InvalidColumnError(BaseMongoSqlException):
                 where=where)
         )
 
-class InvalidRelationError(InvalidColumnError):
+
+class InvalidRelationError(InvalidColumnError, BaseMongoSqlException):
     """ Query mentioned an invalid relationship name """
+    def __init__(self, model, column_name, where):
+        self.model = model
+        self.column_name = column_name
+        self.where = where
+
+        super(InvalidColumnError, self).__init__(
+            'Invalid relation "{column_name}" for "{model}" specified in {where}'.format(
+                column_name=column_name,
+                model=model,
+                where=where)
+        )

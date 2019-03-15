@@ -3,8 +3,8 @@ from ..bag import ModelPropertyBags
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
 
-class _MongoQueryStatementBase(object):
-    """ An implementation of a statement from MongoQuery
+class MongoQueryHandlerBase(object):
+    """ An implementation of a handler from MongoQuery
 
         Every subclass will handle a single field from the Query object
     """
@@ -21,17 +21,27 @@ class _MongoQueryStatementBase(object):
         :param model: The sqlalchemy model it's being applied to
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         """
-        #: The model to build the statement for
-        self.model = model
+        #: The model to handle the Query Object for
+        self.model = model  # the model, ot its alias (when used with self.aliased())
         #: Model property bags: because we need access to the lists of its properties
-        self.bags = ModelPropertyBags.for_model_or_alias(model)
+        self.bags = ModelPropertyBags.for_model(model)
         #: A CombinedBag() that allows to handle properties of multiple types (e.g. columns + hybrid properties)
         self.supported_bags = self._get_supported_bags()
+        #: MongoQuery bound to this object. It may remain uninitialized.
+        self.mongoquery = None
+
+    def with_mongoquery(self, mongoquery):
+        """ Bind this object with a MongoQuery
+
+            :type mongoquery: mongosql.query.MongoQuery
+            """
+        self.mongoquery = mongoquery
+        return self
 
     def __copy__(self):
         """ Some objects may be reused: i.e. their state before input() is called.
 
-        Reusable statements are implemented using the Reusable() wrapper which performs the
+        Reusable handlers are implemented using the Reusable() wrapper which performs the
         automatic copying on input() call
         """
         cls = self.__class__
@@ -39,8 +49,19 @@ class _MongoQueryStatementBase(object):
         result.__dict__.update(self.__dict__)
         return result
 
+    def aliased(self, model):
+        """ Use an aliased model to build queries
+
+            This is used by MongoQuery.aliased(), which is ultimately useful to MongoJoin handler.
+            Note that the method modifies the current object and does not make a copy!
+        """
+        self.model = model
+        self.bags = self.bags.aliased(model)
+        self.supported_bags = self._get_supported_bags()  # re-initialize
+        return self
+
     def _get_supported_bags(self):
-        """ Get the _PropertiesBag interface supported by this statement
+        """ Get the _PropertiesBag interface supported by this handler
 
         :rtype: mongosql.bag.PropertiesBagBase
         """
@@ -64,6 +85,18 @@ class _MongoQueryStatementBase(object):
                                      invalid.pop(),
                                      where or self.query_object_section_name)
 
+    def input_prepare_query_object(self, query_object):
+        """ Modify the Query Object before it is processed.
+
+        Sometimes a handler would need to alter it.
+        Here's its chance.
+
+        This method is called before any input(), or validation, or anything.
+
+        :param query_object: dict
+        """
+        return query_object
+
     def input(self, qo_value):
         """ Get a section of the Query object.
 
@@ -75,16 +108,29 @@ class _MongoQueryStatementBase(object):
         :param qo_value: the value of the Query object field it's handling
         :param qo_value: Any
 
-        :rtype: _MongoQueryStatementBase
+        :rtype: MongoQueryHandlerBase
         :raises InvalidRelationError
         :raises InvalidColumnError
         :raises InvalidQueryError
         """
-        self.input = qo_value  # no copying. Try not to modify it.
+        self.input_value = qo_value  # no copying. Try not to modify it.
+
+        # Make sure that input() can only be used once
+        self.input = self.__raise_input_not_reusable
+
         return self
 
-    # These methods implement the logic of individual statements
-    # Note that not all methods are going to be implemented!
+    def is_input_empty(self):
+        """ Test whether the input value was empty """
+        return not self.input_value
+
+    def __raise_input_not_reusable(self, *args, **kwargs):
+        raise RuntimeError("You can't use the {}.input() method twice. "
+                           "Wrap the class into Reusable()!"
+                           .format(self.__class__.__name__))
+
+    # These methods implement the logic of individual handlers
+    # Note that not all methods are going to be implemented by subclasses!
 
     def compile_columns(self):
         """ Compile a list of columns.
@@ -117,5 +163,17 @@ class _MongoQueryStatementBase(object):
         """ Compile a list of statements
 
         :return: list of SQL statements
+        """
+        raise NotImplementedError()
+
+    def alter_query(self, query, as_relation):
+        """ Alter the given query and apply the Query Object section this handler is handling
+
+        :param query: The query to apply this MongoSQL Query Object to
+        :type query: Query
+        :param as_relation: Load interface to work with nested relations.
+            Note that some classed need it, others don't
+        :type as_relation: Load
+        :rtype: Query
         """
         raise NotImplementedError()

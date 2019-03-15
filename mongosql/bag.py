@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from itertools import chain, repeat
+from copy import copy
 
 from sqlalchemy import inspect
 from sqlalchemy import Column
@@ -39,10 +40,16 @@ class ModelPropertyBags(object):
             return model.__mongosql_bags
 
     @classmethod
+    def for_alias(cls, aliased_model):
+        """ Get bags for an aliased class """
+        model = inspect(aliased_model).class_
+        return cls.for_model(model).aliased(aliased_model)
+
+    @classmethod
     def for_model_or_alias(cls, target):
-        # TODO: there should be no difference! This method has to be removed
+        """ Get bags for a model, or aliased(model) """
         if inspect(target).is_aliased_class:
-            return cls(target)
+            return cls.for_alias(target)
         else:
             return cls.for_model(target)
 
@@ -52,39 +59,36 @@ class ModelPropertyBags(object):
         :param model: Model
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         """
-        # Get the correct inspector
-        # When you use aliases (e.g. join to the same table multiple times), a different
-        # inspector should be used
-        # TODO: this code should not be here at all ; but MongoModel is used in JOINs in order to
-        #  analyze aliased models, so we have to respect that for a while.
-        ins = inspect(model)
-        pure_model = model
-        if ins.is_aliased_class:
-            ins = ins.mapper
-            #model = ins.entity
-            pure_model = ins.entity
+        # We don't tolerate aliases here
+        assert not inspect(model).is_aliased_class, \
+            'MongoPropertyBags does not tolerate aliased() models.' \
+            'If you do really need to use one, do it this way: ' \
+            'ModelPropertyBags.for_alias(aliased_model)'
+
+        # Get the inspector
+        insp = inspect(model)
 
         # Initialize
         self.model = model
         self.model_name = model.__name__
 
         #: Column properties
-        self.columns = DotColumnsBag(_get_model_columns(model, ins))
+        self.columns = DotColumnsBag(_get_model_columns(model, insp))
 
         #: Calculated properties: @property
-        self.properties = PropertiesBag(_get_model_properties(pure_model, ins))
+        self.properties = PropertiesBag(_get_model_properties(model, insp))
 
         #: Hybrid properties
-        self.hybrid_properties = HybridPropertiesBag(_get_model_hybrid_properties(model, ins))
+        self.hybrid_properties = HybridPropertiesBag(_get_model_hybrid_properties(model, insp))
 
         #: Relationship properties
         relations = {name: getattr(model, name)
-                     for name, c in ins.relationships.items()}
+                     for name, c in insp.relationships.items()}
         self.relations = RelationshipsBag(relations)
 
         #: Primary key properties
         self.pk = PrimaryKeyBag({c.name: self.columns[c.name]
-                                 for c in ins.primary_key})
+                                 for c in insp.primary_key})
 
         #: Nullable properties
         self.nullable = ColumnsBag({name: c
@@ -93,6 +97,22 @@ class ModelPropertyBags(object):
 
         #: Relationship column properties
         self.related_columns = DotRelatedColumnsBag(relations)
+
+    def aliased(self, aliased_class):
+        # Copy the class
+        cls = self.__class__
+        result = cls.__new__(cls)
+
+        # Copy the dict, invoking aliased() on every bag
+        result.__dict__.update({
+            k: v.aliased(aliased_class)
+               if isinstance(v, PropertiesBagBase)
+               else v
+            for k, v in self.__dict__.items()
+        })
+
+        # Done
+        return result
 
 
 class PropertiesBagBase(object):
@@ -128,6 +148,16 @@ class PropertiesBagBase(object):
         """
         raise NotImplementedError
 
+    def __copy__(self):
+        """ Copy behavior is used to make an AliasedBag """
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.__dict__.update(self.__dict__)
+        return result
+
+    def aliased(self, aliased_class):
+        return copy(self)
+
     @property
     def names(self):
         """ Get the set of names
@@ -154,7 +184,7 @@ class PropertiesBag(PropertiesBagBase):
     """ Contains simple model properties (@property) """
 
     def __init__(self, properties):
-        self._property_names = set(properties.keys())
+        self._property_names = frozenset(properties.keys())
 
     @property
     def names(self):
@@ -192,9 +222,19 @@ class ColumnsBag(PropertiesBagBase):
         :type columns: dict[sqlalchemy.orm.properties.ColumnProperty]
         """
         self._columns = columns
-        self._column_names = set(self._columns.keys())
-        self._array_columns = {name: col for name, col in self._columns.items() if _is_column_array(col)}
-        self._json_columns =  {name: col for name, col in self._columns.items() if _is_column_json(col)}
+        self._column_names = frozenset(self._columns.keys())
+        self._array_column_names = frozenset(name
+                                             for name, col in self._columns.items()
+                                             if _is_column_array(col))
+        self._json_column_names =  frozenset(name
+                                             for name, col in self._columns.items()
+                                             if _is_column_json(col))
+
+    def aliased(self, aliased_class):
+        return DictOfAliasedColumns.aliased_attrs(
+            aliased_class,
+            copy(self), '_columns'
+        )
 
     def is_column_array(self, name):
         """ Is the column an ARRAY column
@@ -202,7 +242,7 @@ class ColumnsBag(PropertiesBagBase):
         :rtype: bool
         """
         column_name = _dot_notation(name)[0]
-        return column_name in self._array_columns
+        return column_name in self._array_column_names
 
     def is_column_json(self, name):
         """ Is the column a JSON column
@@ -210,7 +250,7 @@ class ColumnsBag(PropertiesBagBase):
         :rtype: bool
         """
         column_name = _dot_notation(name)[0]
-        return column_name in self._json_columns
+        return column_name in self._json_column_names
 
     @property
     def names(self):
@@ -234,6 +274,36 @@ class ColumnsBag(PropertiesBagBase):
 
 class HybridPropertiesBag(ColumnsBag):
     """ Contains hybrid properties of a model """
+
+    class _Hack_Lazy_Dict(object):
+        """ A Lazy dict that only loads its keys upon request """
+        __slots__ = ('_l', '_ks')
+
+        def __init__(self, keys, lambda_value):
+            self._ks = keys
+            self._l = lambda_value
+
+        def __getitem__(self, key):
+            return self._l(key)
+
+    def aliased(self, aliased_class):
+        new = copy(self)
+        # For some reason, hybrid properties do not get a proper alias with adapt_to_entity()
+        # We have to get them the usual way: from the entity
+        # TODO: This method is a hack and is not supposed to be here at all. I've got to find out
+        #   why hybrid methods got through this wrapper dictionary are not getting a proper alias!
+        #   It seems that adapt_to_entity() is somehow insufficient. Perhaps, it is only manifest
+        #   when an alias has an explicitly set name with aliased(name=...) ?
+        #   When the bug is solved, this method should be removed completely.
+
+        # new._columns = {col_name: getattr(aliased_class, col_name)
+        #                 for col_name in self._column_names}
+        # Don't use a real dict; use a lazy wrapper
+        new._columns = self._Hack_Lazy_Dict(
+            self._column_names,
+            lambda col_name: getattr(aliased_class, col_name))
+
+        return new
 
 
 class PrimaryKeyBag(ColumnsBag):
@@ -291,11 +361,17 @@ class RelationshipsBag(PropertiesBagBase):
         :param relationships: Model relationships
         :type relationships: dict[sqlalchemy.orm.relationships.RelationshipProperty]
         """
-        self._rels = relationships
-        self._rel_names = set(self._rels.keys())
-        self._array_rel_names = set((name
-                                     for name, rel in self._rels.items()
-                                     if _is_relationship_array(rel)))
+        self._relations = relationships
+        self._rel_names = frozenset(self._relations.keys())
+        self._array_rel_names = frozenset(name
+                                          for name, rel in self._relations.items()
+                                          if _is_relationship_array(rel))
+
+    def aliased(self, aliased_class):
+        return DictOfAliasedColumns.aliased_attrs(
+            aliased_class,
+            copy(self), '_relations'
+        )
 
     def is_relationship_array(self, name):
         """ Is the relationship an array relationship?
@@ -318,13 +394,13 @@ class RelationshipsBag(PropertiesBagBase):
 
         :rtype: dict[sqlalchemy.orm.relationships.RelationshipProperty]
         """
-        return iter(self._rels.items())
+        return iter(self._relations.items())
 
     def __contains__(self, name):
-        return name in self._rels
+        return name in self._relations
 
     def __getitem__(self, name):
-        return self._rels[name]
+        return self._relations[name]
 
     def get_target_model(self, name):
         """ Get target model of a relationship """
@@ -338,19 +414,15 @@ class DotRelatedColumnsBag(ColumnsBag):
         self._rel_bag = RelationshipsBag(relationships)
 
         #: Dot-notation mapped to columns: 'rel.col' => Column
-        self._rel_cols = {}
-        #: Dot-notation mapped to models: 'rel.col' => Model
-        self._rel_col_models = {}
+        related_columns = {}
+        #: Dot-notation mapped to target models: 'rel.col' => Model, and 'rel' => Model
+        rel_col_2_model = {}
 
         # Collect columns from every relation
         for rel_name, relation in self._rel_bag:
             # Get the model
-            # There are two different ways, depending on the kind of relationship
-            if relation.property.uselist:
-                model = relation.property.mapper.class_
-            else:
-                model = relation.property.mapper.class_
-            self._rel_col_models[rel_name] = model
+            model = relation.property.mapper.class_
+            rel_col_2_model[rel_name] = model
 
             # Get the columns
             ins = inspect(model)
@@ -359,51 +431,36 @@ class DotRelatedColumnsBag(ColumnsBag):
             # Remember all of them, using dot-notation
             for col_name, col in cols.items():
                 key = '{}.{}'.format(rel_name, col_name)
-                self._rel_cols[key] = col
-                self._rel_col_models[key] = model
+                related_columns[key] = col
+                rel_col_2_model[key] = model
 
-        #: The set of all possible relationship columns
-        self._rel_col_names = set(self._rel_cols.keys())
+        # Now, when we have enough information, call super().__init__
+        # It will initialize:
+        # `._columns`,
+        # `._column_names`,
+        # `._array_column_names`,
+        # `._json_column_names`
+        # Keep in mind that all of them are RELATED COLUMNS
+        super(DotRelatedColumnsBag, self).__init__(related_columns)
 
-        #: Names of array columns
-        self._rel_array_col_names = {name: col
-                                     for name, col in self._rel_cols.items()
-                                     if _is_column_array(col)}
-        self._rel_json_col_names = {name: col
-                                    for name, col in self._rel_cols.items() if
-                                    _is_column_json(col)}
+        #: A mapping of related column names to target models
+        #self._column_name_to_related_model = rel_col_2_model  # unused
 
-
-    @property
-    def names(self):
-        """ Get the set of all related column names
-
-        :rtype: set[str]
-        """
-        return self._rel_col_names
-
-    def __iter__(self):
-        """ Get related columns
-
-        :rtype: dict[sqlalchemy.orm.relationships.RelationshipProperty]
-        """
-        return iter(self._rel_cols.items())
-
-    def __contains__(self, name):
-        return name in self._rel_cols
-
-    def __getitem__(self, name):
-        return self._rel_cols[name]
-
-    def get_invalid_names(self, names):
-        return set(names) - self._rel_col_names
+    def aliased(self, aliased_class):
+        new = DictOfAliasedColumns.aliased_attrs(
+            aliased_class,
+            copy(self), '_columns', #'_column_name_to_related_model',
+        )
+        new._rel_bag = new._rel_bag.aliased(aliased_class)
+        return new
 
     def is_column_array(self, name):
-        """ Is this related column an array? """
-        return name in self._rel_array_col_names
+        # not dot-notation filter like in the parent class: check as is!
+        return name in self._array_column_names
 
     def is_column_json(self, name):
-        return name in self._rel_json_col_names
+        # not dot-notation filter like in the parent class: check as is!
+        return name in self._json_column_names
 
     def get_relationship_name(self, col_name):
         return _dot_notation(col_name)[0]
@@ -447,14 +504,22 @@ class CombinedBag(PropertiesBagBase):
     def __init__(self, **bags):
         self._bags = bags
         # Combined names from all bags
-        self._names = set(chain(*(bag.names for bag in bags.values())))
+        self._names = frozenset(chain(*(bag.names for bag in bags.values())))
 
         # List of JSON columns
-        self._json_column_names = set()
+        json_column_names = []
         for bag in self._bags.values():
             # We'll access a protected property, so got to make sure we've got the right class
-            if isinstance(bag, ColumnsBag) and not isinstance(bag, DotRelatedColumnsBag):
-                self._json_column_names.update(bag._json_columns.keys())
+            if isinstance(bag, ColumnsBag):
+                json_column_names.extend(bag._json_column_names)
+        self._json_column_names = frozenset(json_column_names)
+
+    def aliased(self, aliased_class):
+        new = copy(self)
+        # aliased() on every bag
+        new._bags = {name: bag.aliased(aliased_class)
+                     for name, bag in self._bags}
+        return new
 
     def __contains__(self, name):
         # Simple
@@ -507,17 +572,20 @@ def _get_model_columns(model, ins):
             if isinstance(c.expression, Column)
             }
 
+
 def _get_model_hybrid_properties(model, ins):
     """ Get a dict of model hybrid properties and regular properties """
     return {name: getattr(model, name)
             for name, c in ins.all_orm_descriptors.items()
             if isinstance(c, hybrid_property)}
 
+
 def _get_model_properties(model, ins):
     """ Get a dict of model properties (calculated properies) """
     return {name: prop
             for name, prop in model.__dict__.items()
             if isinstance(prop, property)}
+
 
 def _is_column_array(col):
     """ Is the column a PostgreSql ARRAY column?
@@ -558,3 +626,65 @@ def _dot_notation(name):
     """
     path = name.split('.')
     return path[0], path[1:]
+
+
+class DictOfAliasedColumns(object):
+    """ A dict of columns that makes proper aliases upon access
+
+        All our bags contain columns of a real model.
+        However, in queries, we often need aliases, and need to get them transparently.
+
+        To achieve that, we implement a dict that is capable of producing
+        columns of an aliased model on demand.
+
+        Upon access, adapt_to_entity() is called.
+    """
+    __slots__ = ('_d', '_a',)
+
+    @classmethod
+    def aliased_attrs(cls, aliased_class, obj, *attr_names):
+        """ Wrap a whole list of dictionaries into aliased wrappers """
+        # Prepare AliasedInsp: this is what adapt_to_entity() wants
+        aliased_inspector = inspect(aliased_class)
+        assert aliased_inspector.is_aliased_class, '`aliased_class` must be an alias!'
+
+        # Convert every attribute
+        for attr_name in attr_names:
+            setattr(obj, attr_name,
+                    # Wrap it with self
+                    cls(getattr(obj, attr_name),
+                        aliased_inspector)
+                    )
+
+        # Done
+        return obj
+
+    def __init__(self, columns_dict, aliased_insp):
+        """ Make a dict of columns, ready to alias them as needed
+
+        :param columns_dict:
+        :param aliased_insp:
+        :return:
+        """
+        self._d = columns_dict
+        self._a = aliased_insp
+
+    def _adapt_to_entity(self, attr):
+        """ Helper to adapt properties to aliases """
+        return attr.adapt_to_entity(self._a)
+
+    # adapters
+
+    def __contains__(self, key):
+        return key in self._d
+
+    def __getitem__(self, key):
+        return self._adapt_to_entity(self._d[key])
+
+    def values(self):
+        return (self._adapt_to_entity(c)
+                for c in self._d.values())
+
+    def items(self):
+        return ((k, self._adapt_to_entity(c))
+                for k, c in self._d.items())

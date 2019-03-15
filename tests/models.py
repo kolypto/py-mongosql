@@ -3,8 +3,8 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 
 from sqlalchemy.sql.expression import and_
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, String, Integer
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy import Column, String, Integer, Boolean, Table
+from sqlalchemy.orm import relationship, backref, remote, foreign
 from sqlalchemy.sql.schema import ForeignKey
 
 from sqlalchemy.dialects import postgresql as pg
@@ -84,7 +84,7 @@ class Article(Base):
 
     @hybrid_property
     def hybrid(self):
-        return and_(self.id > 10, self.user.age > 18)
+        return self.id > 10 and self.user.age > 18
 
     @hybrid.expression
     def hybrid(cls):
@@ -179,6 +179,43 @@ class ManyFieldsModel(Base):
     j_k = Column(pg.JSON)
 
 
+class GirlWatcherFavorites(Base):
+    __tablename__ = 'gwf'
+    gw_id = Column(Integer, ForeignKey("gw.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("u.id"), primary_key=True)
+    best = Column(Boolean)
+
+
+class GirlWatcher(Base):
+    """ Complex joins, custom conditions, many-to-many """
+    __tablename__ = 'gw'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    age = Column(Integer)
+
+    favorite_id = Column(Integer, ForeignKey(User.id))
+
+    favorite = relationship(User, foreign_keys=favorite_id)
+
+    best = relationship(User, uselist=True, viewonly=True,
+                        secondary=GirlWatcherFavorites.__table__,
+                        primaryjoin= and_(id == GirlWatcherFavorites.gw_id,
+                                          GirlWatcherFavorites.best == True),
+                        secondaryjoin= GirlWatcherFavorites.user_id == User.id,
+                        )
+    good = relationship(User, uselist=True, viewonly=True,
+                        secondary=GirlWatcherFavorites.__table__,
+                        primaryjoin= and_(id == GirlWatcherFavorites.gw_id,
+                                          GirlWatcherFavorites.best == False),
+                        secondaryjoin= GirlWatcherFavorites.user_id == User.id,
+                        )
+
+
+
+
+
+
 def init_database(autoflush=True):
     """ Init DB
     :rtype: (sqlalchemy.engine.Engine, sqlalchemy.orm.Session)
@@ -197,7 +234,7 @@ def drop_all(engine):
 
 def content_samples():
     """ Generate content samples """
-    return [
+    return [[
         User(id=1, name='a', age=18, tags=['1', 'a']),
         User(id=2, name='b', age=18, tags=['2', 'a', 'b']),
         User(id=3, name='c', age=16, tags=['3', 'a', 'b', 'c']),
@@ -218,30 +255,56 @@ def content_samples():
         Comment(id=106, aid=20, uid=1, text='20-a-ONE'),
         Comment(id=107, aid=20, uid=1, text='20-a-TWO'),
         Comment(id=108, aid=21, uid=1, text='21-a'),
-    ]
+
+        GirlWatcher(id=1, name='Fred', age=65, favorite_id=3),
+        GirlWatcher(id=2, name='Ban', age=55, favorite_id=2),
+    ], [
+        GirlWatcherFavorites(gw_id=1, user_id=2, best=False),
+        GirlWatcherFavorites(gw_id=1, user_id=3, best=True),
+        GirlWatcherFavorites(gw_id=2, user_id=1, best=False),
+        GirlWatcherFavorites(gw_id=2, user_id=2, best=True),
+        GirlWatcherFavorites(gw_id=2, user_id=3, best=False),
+    ]]
+
+
+def get_working_db_for_tests(autoflush=True):
+    # Connect, create tables
+    engine, Session = init_database(autoflush=autoflush)
+    drop_all(engine)
+    create_all(engine)
+
+    # Fill DB
+    ssn = Session()
+    for entities_list in content_samples():
+        if autoflush:
+            ssn.begin()
+        ssn.add_all(entities_list)
+        ssn.commit()
+
+    # Done
+    return engine, Session
+
 
 if __name__ == '__main__':
+    # Developer's playground!
     import logging
     logging.basicConfig(level=logging.DEBUG)
     logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
-    engine, Session = init_database()
+    engine, Session = get_working_db_for_tests()
+
+    # Useful imports and variables
     ssn = Session()
 
+    from util import q2sql
+    from mongosql import MongoQuery
     from sqlalchemy import inspect, func
-    from sqlalchemy.orm import noload, load_only, defaultload, lazyload, immediateload, aliased, contains_eager, contains_alias
+    from sqlalchemy.orm import Query
+    from sqlalchemy.orm.base import instance_state
+    from sqlalchemy.orm import Load, defaultload, lazyload, immediateload, selectinload
+    from sqlalchemy.orm import raiseload, noload, load_only, defer, undefer
+    from sqlalchemy.orm import aliased, contains_eager, contains_alias
 
-    ssn.query(User).filter_by(id=999).delete()
-
-    u1 = User(id=999, name=999)
-    u2 = User(id=999, name=999) ; ssn.add(u2)
-    u3 = ssn.query(User).filter_by(id=1).one()
-    u4 = ssn.query(User).options(load_only(User.name)).filter_by(id=2).one() ; u4.tags = [1,2,3]
-
-    #ssn.begin()
-    #ssn.commit()
-
-
-    s1, s2, s3, s4 = map(inspect, (u1, u2, u3, u4))
+    print('\n'*10)
 
     from IPython import embed ; embed()

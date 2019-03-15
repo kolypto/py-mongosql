@@ -8,20 +8,9 @@ class HistoryTest(unittest.TestCase):
     """ Test MongoQuery """
 
     def setUp(self):
-        # Connect, create tables
-        engine, Session = models.init_database(autoflush=False)
-        models.drop_all(engine)
-        models.create_all(engine)
-
-        # Fill DB
-        ssn = Session()
-        ssn.add_all(models.content_samples())
-        ssn.commit()
-
-        # Session
-        self.Session = Session
-        self.engine = engine
-        self.db = Session()
+        # Init db
+        self.engine, self.Session = models.get_working_db_for_tests(autoflush=False)
+        self.db = self.Session()
 
     def tearDown(self):
         self.db.close()  # Need to close the session: otherwise, drop_all() hangs forever

@@ -45,7 +45,7 @@ Querying
 MongoSQL follows [MongoDB query operators](http://docs.mongodb.org/manual/reference/operator/query/) 
 syntax with custom additions.
 
-Source for syntax handlers: [mongosql/statements.py](mongosql/statements.py)
+Source for syntax handlers: [mongosql/handlers](mongosql/handlers)
 
 
 

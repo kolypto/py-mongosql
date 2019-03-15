@@ -1,15 +1,18 @@
 import unittest
 from collections import OrderedDict
+from sqlalchemy.orm import Load
 
-from mongosql.statements import *
-from mongosql.exc import InvalidColumnError, InvalidQueryError, InvalidRelationError
+from mongosql import Reusable
+from mongosql.handlers import *
+from mongosql.exc import InvalidColumnError, DisabledError, InvalidQueryError, InvalidRelationError
 from .models import *
 from .util import stmt2sql
 
 
-class StatementsTest(unittest.TestCase):
-    """ Test individual statements """
+class HandlersTest(unittest.TestCase):
+    """ Test individual handlers """
 
+    longMessage = True
     maxDiff = None
 
     def test_projection(self):
@@ -34,13 +37,17 @@ class StatementsTest(unittest.TestCase):
                     if expected_full_projection.get(col_name, 0))
             )
 
+        # === Test: input() can be called only once
+        with self.assertRaises(RuntimeError):
+            MongoProject(Article).input(None).input(None)
+
         # === Test: No input
-        p = MongoProjection(Article).input(None)
+        p = MongoProject(Article).input(None)
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict())
 
         # === Test: Valid projection, array
-        p = MongoProjection(Article).input(['id', 'uid', 'title'])
+        p = MongoProject(Article).input(['id', 'uid', 'title'])
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
 
@@ -54,7 +61,7 @@ class StatementsTest(unittest.TestCase):
                                 )
 
         # === Test: Valid projection, dict, include mode
-        p = MongoProjection(Article).input(dict(id=1, uid=1, title=1))
+        p = MongoProject(Article).input(dict(id=1, uid=1, title=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
 
@@ -65,7 +72,7 @@ class StatementsTest(unittest.TestCase):
                                 )
 
         # === Test: Valid projection, dict, exclude mode
-        p = MongoProjection(Article).input(dict(theme=0, data=0))
+        p = MongoProject(Article).input(dict(theme=0, data=0))
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(theme=0, data=0))
 
@@ -76,7 +83,7 @@ class StatementsTest(unittest.TestCase):
                                 )
 
         # === Test: `default_exclude` in exclude mode
-        p = MongoProjection(Article, default_exclude=('calculated', 'hybrid'))\
+        p = MongoProject(Article, default_exclude=('calculated', 'hybrid'))\
             .input(dict(theme=0, data=0))
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(theme=0, data=0,
@@ -90,7 +97,7 @@ class StatementsTest(unittest.TestCase):
                                 )
 
         # === Test: `default_exclude` in include mode (no effect)
-        p = MongoProjection(Article, default_exclude=('calculated', 'hybrid')) \
+        p = MongoProject(Article, default_exclude=('calculated', 'hybrid')) \
             .input(dict(id=1, calculated=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, calculated=1))
@@ -102,7 +109,7 @@ class StatementsTest(unittest.TestCase):
                                 )
 
         # === Test: default_projection
-        pr = Reusable(MongoProjection(Article, default_projection=dict(id=1, title=1)))
+        pr = Reusable(MongoProject(Article, default_projection=dict(id=1, title=1)))
 
         p = pr.input(None)
         self.assertEqual(p.mode, p.MODE_INCLUDE)
@@ -111,9 +118,39 @@ class StatementsTest(unittest.TestCase):
         p = pr.input(None)
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, title=1))
+
+        # === Test: merge
+
+        mk_pr = lambda mode: MongoProject(Article).input(dict.fromkeys(['id', 'uid', 'title'], mode))
+
+        # Originally include, merge include
+        pr = mk_pr(1).merge(dict(data=1))
+        self.assertEqual(pr.mode, pr.MODE_INCLUDE)
+        self.assertEqual(pr.projection, dict(id=1, uid=1, title=1,
+                                             # One new appended
+                                             data=1))
+
+        # Originally exclude, merge exclude
+        pr = mk_pr(0).merge(dict(data=0))
+        self.assertEqual(pr.mode, pr.MODE_EXCLUDE)
+        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
+                                             # One new appended
+                                             data=0))
+
+        # Originally include, merge exclude (conflict, just drop banned keys)
+        pr = mk_pr(1).merge(dict(uid=0))
+        self.assertEqual(pr.mode, pr.MODE_INCLUDE)
+        self.assertEqual(pr.projection, dict(id=1, title=1))
+
+        # Originally exclude, merge include (conflict, results in full projection)
+        pr = mk_pr(0).merge(dict(data=1))
+        self.assertEqual(pr.mode, pr.MODE_MIXED)
+        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
+                                             # Full projection in mixed mode
+                                             theme=1, data=1, calculated=1, hybrid=1))
 
         # === Test: force_include
-        pr = Reusable(MongoProjection(Article, force_include=('id',)))
+        pr = Reusable(MongoProject(Article, force_include=('id',)))
 
         # Include mode
         p = pr.input(dict(title=1))
@@ -128,7 +165,7 @@ class StatementsTest(unittest.TestCase):
                                             calculated=1, hybrid=1))
 
         # === Test: force_exclude
-        pr = Reusable(MongoProjection(Article, force_exclude=('data',)))
+        pr = Reusable(MongoProject(Article, force_exclude=('data',)))
         # Include mode
         p = pr.input(dict(id=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
@@ -146,27 +183,27 @@ class StatementsTest(unittest.TestCase):
 
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
         with self.assertRaises(InvalidColumnError):
-            MongoProjection(Article, default_projection=dict(id=1, INVALID=1))
+            MongoProject(Article, default_projection=dict(id=1, INVALID=1))
         with self.assertRaises(InvalidQueryError):
-            MongoProjection(Article, default_projection=dict(id=1, title=0))
+            MongoProject(Article, default_projection=dict(id=1, title=0))
 
         with self.assertRaises(InvalidColumnError):
-            MongoProjection(Article, default_exclude='id')
+            MongoProject(Article, default_exclude='id')
         with self.assertRaises(InvalidColumnError):
-            MongoProjection(Article, default_exclude=('INVALID',))
+            MongoProject(Article, default_exclude=('INVALID',))
 
         with self.assertRaises(InvalidColumnError):
-            MongoProjection(Article, force_exclude='id')
+            MongoProject(Article, force_exclude='id')
         with self.assertRaises(InvalidColumnError):
-            MongoProjection(Article, force_exclude=('INVALID',))
+            MongoProject(Article, force_exclude=('INVALID',))
 
         with self.assertRaises(InvalidColumnError):
-            MongoProjection(Article, force_include='id')
+            MongoProject(Article, force_include='id')
         with self.assertRaises(InvalidColumnError):
-            MongoProjection(Article, force_include=('INVALID',))
+            MongoProject(Article, force_include=('INVALID',))
 
         # === Test: Invalid projection, dict, problem: 1s and 0s
-        pr = Reusable(MongoProjection(Article))
+        pr = Reusable(MongoProject(Article))
 
         with self.assertRaises(InvalidQueryError):
             pr.input(dict(id=1, title=0))
@@ -177,11 +214,27 @@ class StatementsTest(unittest.TestCase):
 
         # === Test: A mixed object is only acceptable when it mentions EVERY column
         # No error
-        MongoProjection(Article).input(dict(id=1, uid=1, title=1, theme=1, data=0,
-                                            calculated=1, hybrid=1))
+        MongoProject(Article).input(dict(id=1, uid=1, title=1, theme=1, data=0,
+                                         calculated=1, hybrid=1))
+
+        # === Test: pluck_instance()
+        a = Article(id=100, uid=10, title='title', theme='theme', data=dict(a=1), user=User(age=21))
+        pr = MongoProject(Article).input(dict(id=1, uid=1, calculated=1))
+
+        d = pr.pluck_instance(a)
+        self.assertEqual(d, dict(id=100, uid=10, calculated=15))
+
+        # === Test: dry run of compile_*()
+        # No errors
+        for input_value in (None, ('id',), {'id': 1}, {'id': 0}):
+            MongoProject(Article).input(input_value).compile_options(Load(Article))
 
     def test_sort(self):
         sr = Reusable(MongoSort(Article))
+
+        # === Test: input() can be called only once
+        with self.assertRaises(RuntimeError):
+            MongoSort(Article).input(None).input(None)
 
         # === Test: no input
         s = sr.input(None)
@@ -189,11 +242,11 @@ class StatementsTest(unittest.TestCase):
 
         # === Test: list
         s = sr.input(['id', 'uid+', 'title-'])
-        self.assertEqual(s.sort_spec, OrderedDict([('id',+1),('uid',+1),('title',-1)]))
+        self.assertEqual(s.sort_spec, OrderedDict([('id', +1),('uid', +1),('title', -1)]))
 
         # === Test: OrderedDict
-        s = sr.input(OrderedDict([('id',+1),('uid',+1),('title',-1)]))
-        self.assertEqual(s.sort_spec, OrderedDict([('id',+1),('uid',+1),('title',-1)]))
+        s = sr.input(OrderedDict([('id', +1),('uid', +1),('title', -1)]))
+        self.assertEqual(s.sort_spec, OrderedDict([('id', +1),('uid', +1),('title', -1)]))
 
         # === Test: dict
         # One item allowed
@@ -217,12 +270,28 @@ class StatementsTest(unittest.TestCase):
         # === Test: JSON column fields
         sr.input({'data.rating': -1})
 
+        # === Test: dry run of compile_*()
+        # No errors
+        for input_value in (None, ('id',), {'id': +1}):
+            MongoSort(Article).input(input_value).compile_columns()
+
     def test_group(self):
+        # === Test: input() can be called only once
+        with self.assertRaises(RuntimeError):
+            MongoGroup(Article).input(None).input(None)
+
         # === Test: list
         g = MongoGroup(Article).input(['uid'])
         self.assertEqual(g.group_spec, OrderedDict(uid=+1))
 
+        g = MongoGroup(Article).input(['uid-'])
+        self.assertEqual(g.group_spec, OrderedDict(uid=-1))
+
     def test_filter(self):
+        # === Test: input() can be called only once
+        with self.assertRaises(RuntimeError):
+            MongoFilter(Article).input(None).input(None)
+
         # === Test: empty
         f = MongoFilter(Article).input(None)  # no problem
 
@@ -491,3 +560,111 @@ class StatementsTest(unittest.TestCase):
         # === Test: Hybrid Properties
         f = MongoFilter(Article).input(dict(hybrid=1))
         self.assertIn('(a.id > 10 AND (EXISTS (SELECT 1 \nFROM u', stmt2sql(f.compile_statement()))
+
+        # === Test: dry run of compile_*()
+        # No errors
+        for input_value in (None, {'id': 1}):
+            MongoFilter(Article).input(input_value).compile_statement()
+
+    def test_limit(self):
+        # Test: empty value
+        l = MongoLimit(User).input()
+        self.assertEqual((l.skip, l.limit), (None, None))
+
+        # Test: skip
+        l = MongoLimit(User).input(skip=10)
+        self.assertEqual((l.skip, l.limit), (10, None))
+
+        # Test: limit
+        l = MongoLimit(User).input(limit=10)
+        self.assertEqual((l.skip, l.limit), (None, 10))
+
+        # Test: max_limit
+        l = MongoLimit(User, max_limit=10).input()
+        self.assertEqual((l.skip, l.limit), (None, 10))
+
+        l = MongoLimit(User, max_limit=10).input(limit=20)
+        self.assertEqual((l.skip, l.limit), (None, 10))
+
+        l = MongoLimit(User, max_limit=10).input(limit=5)
+        self.assertEqual((l.skip, l.limit), (None, 5))
+
+    def test_mongoquery_pluck_instance(self):
+        """ Test MongoQuery.pluck_instance() """
+        # === Test: pluck one user
+        # This is all about projections
+        u = User(id=1, name='a', tags=[], age=18)
+
+        mq = User.mongoquery().query(project=['name'])
+        self.assertEqual(mq.pluck_instance(u), dict(name='a'))
+
+        mq = User.mongoquery().query(project=['name', 'user_calculated'])
+        self.assertEqual(mq.pluck_instance(u), dict(name='a', user_calculated=28))
+
+        mq = User.mongoquery().query(project={'tags': 0})
+        self.assertEqual(mq.pluck_instance(u), dict(id=1, name='a', age=18, user_calculated=28))
+
+        # === Test: pluck user, articles
+        # Now we have a join to a one-to-many relationship.
+        # 'join' handler is supposed to run a nested plucking session
+        u = User(id=1, name='a', tags=[], age=18)
+        u.articles = [
+            Article(id=1, uid=1, title='a', theme='s', data={}, user=u),
+            Article(id=2, uid=1, title='b', theme='s', data={}, user=u),
+            Article(id=3, uid=1, title='c', theme='s', data={}, user=u),
+        ]
+
+        # Plain join. No restrictions.
+        mq = User.mongoquery().query(project=['name'],
+                                     join=('articles',))
+        self.assertEqual(mq.pluck_instance(u),
+                         dict(name='a',
+                              articles=[
+                                  # Everything
+                                  dict(id=1, uid=1, title='a', theme='s', data={}, calculated=2, hybrid=False),
+                                  dict(id=2, uid=1, title='b', theme='s', data={}, calculated=2, hybrid=False),
+                                  dict(id=3, uid=1, title='c', theme='s', data={}, calculated=2, hybrid=False),
+                              ]))
+
+        # Join with projection
+        mq = User.mongoquery().query(project=['name'],
+                                     join={'articles': dict(project=('title',))})
+        self.assertEqual(mq.pluck_instance(u),
+                         dict(name='a',
+                              articles=[
+                                  # Just one prop
+                                  dict(title='a'),
+                                  dict(title='b'),
+                                  dict(title='c'),
+                              ]))
+
+        # Join, two levels, projections
+        # It also uses Artiles.user, which is a one-to-one relationship
+        # It also uses 'joinf' to make sure it's also involved
+        mq = User.mongoquery().query(project=['name'],
+                                     join={'articles': dict(project=('title',),
+                                                            joinf={'user': dict(project=('id',))}
+                                                            )})
+        self.assertEqual(mq.pluck_instance(u),
+                         dict(name='a',
+                              articles=[
+                                  # one prop + user
+                                  dict(title='a', user=dict(id=1)),
+                                  dict(title='b', user=dict(id=1)),
+                                  dict(title='c', user=dict(id=1)),
+                              ]))
+
+        # === Test: pluck user, articles, user
+        # A join to a one-to-one relationship
+        # 'join' handler is supposed to handle it.
+        a = u.articles[0]
+        mq = Article.mongoquery().query(project=['title'],
+                                        join={'user': dict(project=['name'])})
+        self.assertEqual(mq.pluck_instance(a),
+                         dict(title='a', user=dict(name='a')))
+
+        # === Test: won't pluck a wrong object
+        with self.assertRaises(ValueError):
+            mq.pluck_instance(u)  # can pluck Article, not User
+
+    # NOTE: we don't test 'join', 'aggregate', 'limit', 'count' here, because they're tested in t3_statements_test.py

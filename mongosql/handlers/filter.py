@@ -5,10 +5,12 @@ from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func
 
 from sqlalchemy.dialects import postgresql as pg
-from .base import _MongoQueryStatementBase
+from .base import MongoQueryHandlerBase
 from ..bag import CombinedBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
+
+# region Filter Expression Classes
 
 def _is_array(value):
     return isinstance(value, (list, tuple, set, frozenset))
@@ -205,9 +207,11 @@ class FilterRelatedColumnExpression(FilterColumnExpression):
         self.relation_name = relation_name
         self.relation = relation
 
+# endregion
 
-class MongoFilter(_MongoQueryStatementBase):
-    """ MongoDB filter.
+
+class MongoFilter(MongoQueryHandlerBase):
+    """ MongoSql filter expression.
 
         This is essentially used for filtering, but it is also used in aggregation logic.
         For instance, if you want to count all people older than 18 years old,
@@ -246,6 +250,15 @@ class MongoFilter(_MongoQueryStatementBase):
     query_object_section_name = 'filter'
 
     def __init__(self, model, scalar_operators=None, array_operators=None):
+        """ Init a filter expression
+
+        :param model: SqlAlchemy model to filter
+        :param scalar_operators: A dict of additional operators for scalar columns to recognize.
+            A mapping: {'$operator': lambda}. See class body for examples.
+        :type scalar_operators: dict[str, lambda]
+        :param array_operators: A dict of additional operators for array columns to recognize
+        :type array_operators: dict[str, lambda]
+        """
         super(MongoFilter, self).__init__(model)
 
         # On input
@@ -392,7 +405,7 @@ class MongoFilter(_MongoQueryStatementBase):
             for operator, value in criteria.items():
                 # Operator lookup
                 try:
-                    operator_lambda = self.lookup_operator_lambda(bag.is_column_array(column_name), operator)
+                    operator_lambda = self._lookup_operator(bag.is_column_array(column_name), operator)
                 except KeyError:
                     raise InvalidQueryError('Unsupported operator "{}" found in filter for column `{}`'
                                             .format(operator, column_name))
@@ -464,7 +477,7 @@ class MongoFilter(_MongoQueryStatementBase):
             else:
                 return self._BOOLEAN_EXPRESSION_CLS(op, criteria)
 
-    def lookup_operator_lambda(self, column_is_array, operator):
+    def _lookup_operator(self, column_is_array, operator):
         """ Lookup an operator in `self`, or extra operators
 
         :param column_is_array: Is the column an ARRAY column?
@@ -520,3 +533,17 @@ class MongoFilter(_MongoQueryStatementBase):
 
         # Convert the list of conditions to one final expression
         return self._BOOLEAN_EXPRESSION_CLS.sql_anded_together(conditions)
+
+    # Not Implemented for this Query Object handler
+    compile_columns = NotImplemented
+    compile_options = NotImplemented
+    compile_statements = NotImplemented
+
+    def alter_query(self, query, as_relation=None):
+        # when there's no expression, don't use Query.filter() at all,
+        # because it will put an ugly 'WHERE true' condition
+        if not self.expressions:
+            return query
+
+        # Set the condition
+        return query.filter(self.compile_statement())

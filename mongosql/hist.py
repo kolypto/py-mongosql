@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 from sqlalchemy import inspect
 from sqlalchemy.orm.util import object_state
+from sqlalchemy.orm.base import DEFAULT_STATE_ATTR
 import copy
 
 from sqlalchemy.orm.state import InstanceState
@@ -66,21 +67,26 @@ class ModelHistoryProxy(object):
         # Example:
         # hist = ModelHistoryProxy(comment)
         # hist.user.id  # wow!
-        self._sa_instance_state = InstanceState(self, instance._sa_instance_state.manager)
-        self._sa_instance_state.key = instance._sa_instance_state.key
-        self._sa_instance_state.session_id = instance._sa_instance_state.session_id
+        instance_state = getattr(instance, DEFAULT_STATE_ATTR)
+        my_state = InstanceState(self, instance_state.manager)
+        my_state.key = instance_state.key
+        my_state.session_id = instance_state.session_id
+        setattr(self, DEFAULT_STATE_ATTR, my_state)
 
     def __getattr__(self, key):
-        # This method only handles those elements that were not already handled by __init__()
+        # This method only handles those elements that were not already handled by __init__
+        # It is only possible if __copy_instance_to() was not called.
 
         # Get a relationship:
         if key in self.__relations:
             ent_class = self.__instance.__class__
             prop = getattr(ent_class, key)
             return prop.__get__(self, ent_class)
+
         # Get a property (@property)
         if isinstance(getattr(self.__instance.__class__, key, None), property):
             return getattr(self.__instance.__class__, key).fget(self)
+
         # Get a value from the instance itself
         return getattr(self.__instance, key)
 

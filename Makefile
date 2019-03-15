@@ -8,8 +8,6 @@ clean:
 	@rm -rf build/ dist/ *.egg-info/
 #README.md:
 #	@python misc/_doc/README.py | j2 --format=json -o README.md misc/_doc/README.md.j2
-README.rst: README.md
-	@pandoc -f markdown -t rst -o README.rst README.md
 
 .PHONY: build publish-test publish
 build: README.rst

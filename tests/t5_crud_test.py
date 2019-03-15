@@ -7,24 +7,12 @@ from sqlalchemy.orm.exc import NoResultFound
 from . import models
 from .crud_view import ArticlesView
 
-
+@unittest.skip('Not implemented yet')
 class CrudTest(unittest.TestCase):
     def setUp(self):
-        # Connect, create tables
-        engine, Session = models.init_database()
-        models.drop_all(engine)
-        models.create_all(engine)
-
-        # Fill DB
-        ssn = Session()
-        ssn.begin()
-        ssn.add_all(models.content_samples())
-        ssn.commit()
-
-        # Session
-        self.Session = Session
-        self.engine = engine
-        self.db = Session()
+        # Init db
+        self.engine, self.Session = models.get_working_db_for_tests()
+        self.db = self.Session()
         self.db.begin()
 
         # Flask

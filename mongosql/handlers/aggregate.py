@@ -6,10 +6,10 @@ from sqlalchemy import Integer, Float
 from sqlalchemy.sql.expression import cast
 from sqlalchemy.sql.functions import func
 
-from .base import _MongoQueryStatementBase
-from .reusable import Reusable
+from .base import MongoQueryHandlerBase
+from mongosql.util.reusable import Reusable
 from ..bag import CombinedBag
-from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
+from ..exc import InvalidQueryError, DisabledError, InvalidColumnError
 
 
 class AggregateExpressionBase(object):
@@ -125,8 +125,8 @@ class AggregateBooleanCount(AggregateExpressionBase):
 
 
 
-class MongoAggregate(_MongoQueryStatementBase):
-    """ Aggregation statements
+class MongoAggregate(MongoQueryHandlerBase):
+    """ Aggregation handler
 
         You can choose a field name to be used, essentially, as a label, and assign an expression to it
         that's going to be computed.
@@ -142,7 +142,7 @@ class MongoAggregate(_MongoQueryStatementBase):
 
             * column-name: essentially, give another name to a column.
                 WARNING: this can potentially expose sensitive data to an attacker!!!
-                It is disabled by default. See `enable_labels`
+                It is disabled by default. See `aggregate_labels`
             * { $min: operand } - MIN on a numeric column
             * { $max: operand } - MAX
             * { $avg: operand } - AVG
@@ -159,29 +159,33 @@ class MongoAggregate(_MongoQueryStatementBase):
 
     query_object_section_name = 'aggregate'
 
-    def __init__(self, model, mongofilter, allowed_columns=(), enable_labels=False):
+    def __init__(self, model, aggregateable_columns=(), aggregate_labels=False):
         """ Init aggregation
 
         :param model: Model
-        :param mongofilter: A configured MongoFilter object to be used for boolean operators
-        :type mongofilter: MongoFilter
-        :param allowed_columns: list of columns for which aggregation is enabled
-        :type allowed_columns: list[str]
-        :param enable_labels: whether labelling columns is enabled
-        :type enable_labels: bool
+        :param aggregateable_columns: list of columns for which aggregation is enabled
+        :type aggregateable_columns: list[str]
+        :param aggregate_labels: whether labelling columns is enabled
+        :type aggregate_labels: bool
         """
         super(MongoAggregate, self).__init__(model)
-        self.mongofilter = Reusable(mongofilter)
 
         # Security
-        self.allowed_columns = set(allowed_columns)
-        self.enable_labels = enable_labels
+        self.aggregateable_columns = set(aggregateable_columns)
+        self.aggregate_labels = aggregate_labels
 
         # On input
         self.agg_spec = None
 
         # Validation
-        self.validate_properties(self.allowed_columns, where='aggregate:allowed_columns')
+        self.validate_properties(self.aggregateable_columns, where='aggregate:aggregateable_columns')
+
+        # We expect a mongoquery here
+        self._mongofilter = None
+
+    def with_mongoquery(self, mongoquery):
+        super(MongoAggregate, self).with_mongoquery(mongoquery)
+        self._mongofilter = Reusable(mongoquery.handler_filter)
 
     def _get_supported_bags(self):
         return CombinedBag(
@@ -190,7 +194,7 @@ class MongoAggregate(_MongoQueryStatementBase):
         )
 
     def _get_column_insecurely(self, column_name, for_label=False):
-        """ Get a column. Insecurely. Disrespect self.allowed_columns """
+        """ Get a column. Insecurely. Disrespect self.aggregateable_columns """
         try:
             bag_name, bag, column = self.supported_bags[column_name]
             return column
@@ -198,14 +202,14 @@ class MongoAggregate(_MongoQueryStatementBase):
             raise InvalidColumnError(self.bags.model, column_name, 'aggregate')
 
     def _get_column_securely(self, column_name, for_label=False):
-        """ Get a column. Securely. Respect self.allowed_columns """
+        """ Get a column. Securely. Respect self.aggregateable_columns """
         column = self._get_column_insecurely(column_name, for_label)
-        if column_name not in self.allowed_columns:
-            raise InvalidQueryError('Aggregate: aggregation is disabled for column `{}`'
-                                    .format(column_name))
-        if for_label and not self.enable_labels:
-            raise InvalidQueryError('Aggregate: labelling is disabled for column `{}`'
-                                    .format(column_name))
+        if column_name not in self.aggregateable_columns:
+            raise DisabledError('Aggregate: aggregation is disabled for column `{}`'
+                                .format(column_name))
+        if for_label and not self.aggregate_labels:
+            raise DisabledError('Aggregate: labelling is disabled for column `{}`'
+                                .format(column_name))
         return column
 
     def input(self, agg_spec):
@@ -277,7 +281,7 @@ class MongoAggregate(_MongoQueryStatementBase):
                                                          column_name, column, is_column_json)
             elif isinstance(expression, dict):
                 # 3) Boolean expression: use MongoFilter
-                bool_expression = self.mongofilter.input(expression)  #type: MongoFilter
+                bool_expression = self._mongofilter.input(expression)
                 operator_obj = self._BOOLEAN_COUNT_CLS(comp_field_label, bool_expression)
             else:
                 raise AssertionError('Aggregate: expression should be either a column name, or an object')
@@ -293,6 +297,25 @@ class MongoAggregate(_MongoQueryStatementBase):
         """
         return [agg_col.compile()
                 for agg_col in self.agg_spec.values()]
+
+    # Not Implemented for this Query Object handler
+    compile_columns = NotImplemented
+    compile_options = NotImplemented
+    compile_statement = NotImplemented
+
+    def alter_query(self, query, as_relation=None):
+        if not self.agg_spec:
+            return query  # short-circuit
+
+        query = query.with_entities(*self.compile_statements())
+
+        # When no model criteria is specified, like COUNT(*), SqlAlchemy won't set the FROM clause
+        # A query might look like this: "SELECT count(*) AS n GROUP BY u.name". Ouch.
+        # Thus, we need to explicitly set the `FROM` clause in these cases
+        if query.whereclause is None:
+            query = query.select_from(self.model)
+
+        return query
 
 
 class MongoAggregateInsecure(MongoAggregate):

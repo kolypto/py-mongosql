@@ -9,7 +9,7 @@ from mongosql.bag import *
 
 
 class BagsTest(unittest.TestCase):
-    """ Test statements as strings """
+    """ Test bags """
 
     def test_user_bags(self):
         bags = ModelPropertyBags.for_model(models.User)
@@ -188,12 +188,121 @@ class BagsTest(unittest.TestCase):
         self.assertTrue('data.id' in cbag)
 
     def test_aliased_article_bags(self):
-        # This is not really important, but our bags seem to ignore Python properties of an
-        # aliased class. This is not right... :)
-        bags = ModelPropertyBags(aliased(models.Article))
+        # Make sure that all Bags can work with aliased classes
+        a = models.Article
+        aa = aliased(models.Article, name='a_1')
 
-        self.assertIn('id', bags.columns)
-        self.assertIn('user', bags.relations)
-        self.assertIn('user.id', bags.related_columns)
-        self.assertIn('calculated', bags.properties)
-        self.assertIn('hybrid', bags.hybrid_properties)
+        # ModelPropertyBags() does not tolerate aliases
+        with self.assertRaises(AssertionError):
+            ModelPropertyBags(aliased(models.Article))
+
+        # Init bags
+        bags = ModelPropertyBags.for_alias(aa)
+
+        # Test that every bag's dicts got wrapped
+        # Yes, we're testing their protected properties
+        self.assertIsInstance(bags.columns._columns, DictOfAliasedColumns)
+        # self.assertIsInstance(bags.hybrid_properties._columns, DictOfAliasedColumns)  # TODO: It fails. See: HybridPropertiesBag.aliased
+        self.assertIsInstance(bags.pk._columns, DictOfAliasedColumns)
+        self.assertIsInstance(bags.nullable._columns, DictOfAliasedColumns)
+
+
+        # Test every bag and make sure it returns columns of an aliased model, not the original model
+        # To test this, we're compiling its `Column.expression` to string: it should refer to the aliased table.
+
+        def test_column(column, expected_column_expression):
+            # Test whether the given column renders an expression that references the aliased model correctly
+            self.assertEqual(str(column.expression), expected_column_expression)
+
+        def get_column_by_iter(bag, col_name):
+            # Get a column through __iter__() -- for testing __iter__()
+            return dict(bag.__iter__())[col_name]  # __iter__() -> dict() -> get item
+
+        def test_column_by_get(bag, col_name, expected_column_expression):
+            # Test __getitem__()
+            test_column(bag[col_name], expected_column_expression)
+
+        def test_column_by_iter(bag, col_name, expected_column_expression):
+            # Test __iter__()
+            test_column(get_column_by_iter(bag, col_name), expected_column_expression)
+
+        def test_column_by_get_and_iter(bag, col_name, expected_column_expression):
+            # Test __getitem__() and __iter__()
+            test_column_by_get(bag, col_name, expected_column_expression)
+            test_column_by_iter(bag, col_name, expected_column_expression)
+
+        # === Test: Sanity check: the expected behavior
+        self.assertEqual(str(aa.id), 'AliasedClass_Article.id')
+        self.assertEqual(str(aa.data), 'AliasedClass_Article.data')
+        self.assertEqual(str(aa.hybrid), 'AliasedClass_Article.hybrid')
+        self.assertEqual(str(aa.id.expression), 'a_1.id')
+        self.assertEqual(str(aa.data.expression), 'a_1.data')
+        self.assertIn('a_1', str(aa.hybrid.expression))
+
+        self.assertEqual(str(a.id.adapt_to_entity(inspect(aa))), 'AliasedClass_Article.id')
+        self.assertEqual(str(a.data.adapt_to_entity(inspect(aa))), 'AliasedClass_Article.data')
+        self.assertEqual(str(a.hybrid.adapt_to_entity(inspect(aa))), 'AliasedClass_Article.hybrid')
+        self.assertEqual(str(a.id.adapt_to_entity(inspect(aa)).expression), 'a_1.id')
+        self.assertEqual(str(a.data.adapt_to_entity(inspect(aa)).expression), 'a_1.data')
+        # self.assertIn('a_1', str(a.hybrid.adapt_to_entity(inspect(aa)).expression))  # TODO: It fails. See: HybridPropertiesBag.aliased
+
+        # === Test: bags.columns: DotColumnsBag
+        bag = bags.columns
+
+        # Test ordinary column
+        test_column_by_get_and_iter(bag, 'id', 'a_1.id')
+
+        # Test JSON column
+        test_column_by_get(bag, 'data.rating', 'a_1.data #>> :data_1')  # correct even for
+
+        # Test get_column()
+        self.assertEqual(str(bag.get_column('data.rating')), 'AliasedClass_Article.data')
+
+        # === Test: bags.properties: PropertiesBag
+        # ... columns are never returned, because they do not exist in SQL :)
+        # Nothing to test here
+
+        # === Test: bags.hybrid_properties: HybridPropertiesBag(ColumnsBag)
+        bag = bags.hybrid_properties
+
+        c = bag['hybrid']
+        self.assertEqual(str(c), 'AliasedClass_Article.hybrid')
+        expr = str(c.expression)
+        self.assertIn('a_1.id > :id_1', expr)
+        self.assertIn('FROM u, a AS a_1', expr)
+        self.assertIn('u.id = a_1.uid', expr)
+
+        # === Test: bags.relations: RelationshipsBag
+        bag = bags.relations
+
+        self.assertEqual(str(bag['user']), 'AliasedClass_Article.user')
+        self.assertEqual(str(bag['comments']), 'AliasedClass_Article.comments')
+        test_column(bag['user'], 'u.id = a_1.uid')  # join condition uses aliases!
+        test_column(bag['comments'], 'a_1.id = c.aid')
+
+        self.assertIs(bag.get_target_model('user'), models.User)
+
+        # === Test: bags.pk: PrimaryKeyBag(ColumnsBag)
+        bag = bags.pk
+        test_column_by_get_and_iter(bag, 'id', 'a_1.id')
+
+        # === Test: bags.nullable: ColumnsBag
+        bag = bags.nullable
+        test_column_by_get_and_iter(bag, 'title', 'a_1.title')
+
+        # === Test: bags.related_columns: DotRelatedColumnsBag
+        bag = bags.related_columns
+
+        test_column_by_get_and_iter(bag, 'user.id', 'u.id')
+
+        # === Test: CombinedBag
+        bag = CombinedBag(
+            col=bags.columns,
+            rcol=bags.related_columns,
+            hybrid=bags.hybrid_properties,
+        )
+
+        bag_name, bag, c = bag['id']
+        test_column(c, 'a_1.id')
+
+        return

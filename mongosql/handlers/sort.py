@@ -3,12 +3,12 @@ from future.utils import string_types
 
 from collections import OrderedDict
 
-from .base import _MongoQueryStatementBase
+from .base import MongoQueryHandlerBase
 from ..bag import CombinedBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
 
-class MongoSort(_MongoQueryStatementBase):
+class MongoSort(MongoQueryHandlerBase):
     """ MongoDB sorting
 
         * None: no sorting
@@ -84,3 +84,14 @@ class MongoSort(_MongoQueryStatementBase):
             self.supported_bags.get(name).desc() if d == -1 else self.supported_bags.get(name)
             for name, d in self.sort_spec.items()
         ]
+
+    # Not Implemented for this Query Object handler
+    compile_options = NotImplemented
+    compile_statement = NotImplemented
+    compile_statements = NotImplemented
+
+    def alter_query(self, query, as_relation=None):
+        if not self.sort_spec:
+            return query  # short-circuit
+        return query.order_by(*self.compile_columns())
+

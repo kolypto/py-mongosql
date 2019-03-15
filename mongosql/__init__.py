@@ -5,9 +5,9 @@ from .exc import *
 # All this is handled by the following class:
 from .bag import ModelPropertyBags
 
-# The heart of MongoSql is in the statements.py file: that's where your JSON objects are
-# converted to actual SqlAlchemy queries!
-from . import statements
+# The heart of MongoSql are the handlers:
+# that's where your JSON objects are converted to actual SqlAlchemy queries!
+from . import handlers
 
 # MongoQuery is the man that parses your QueryObject and applies the methods from MongoModel that
 # implement individual fields.
@@ -27,3 +27,10 @@ from .crud import CrudHelper, StrictCrudHelper, CrudViewMixin
 
 # Finally, have a look at:
 # ./hist.py: an object that gives you access to model history (previous values of changed columns)
+
+
+# Helpers
+# Reusable query objects (so that you don't have to initialize them over and over again)
+from mongosql.util import Reusable
+# raiseload() that can be applied to columns, not only relationships
+from mongosql.util import raiseload_col
