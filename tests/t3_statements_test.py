@@ -1,25 +1,54 @@
-import unittest
 import re
+import sys
+import unittest
 from copy import copy
 from collections import OrderedDict
+
+from sqlalchemy import __version__ as SA_VERSION
+from sqlalchemy.orm import aliased
 
 from mongosql import handlers, MongoQuery, Reusable
 from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
 
-from sqlalchemy.orm import Query, Load
 
 from . import models
-from .util import q2sql
+from .util import q2sql, QueryLogger, TestQueryStringsMixin
+
+
+# SqlAlchemy version (see t_selectinquery_test.py)
+SA_12 = SA_VERSION.startswith('1.2')
+SA_13 = SA_VERSION.startswith('1.3')
 
 
 # Add a custom operator
+# We do it globally here; ideally, these should be in the settings
 handlers.MongoFilter.add_scalar_operator('$search', lambda col, val, oval: col.ilike('%{}%'.format(val)))
 
 
-class QueryStatementsTest(unittest.TestCase):
+class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
     """ Test statements as strings """
 
     longMessage = True
+    maxDiff = None
+
+    @classmethod
+    def setUpClass(cls):
+        # Some tests actually need a working db connection
+        cls.engine, cls.Session = models.get_working_db_for_tests()
+
+    def setUp(self):
+        # By default, it is disabled, because most tests use JOINs.
+        # Specific tests that expect selectinquery(), will declare it explicitly
+        handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = False
+
+    def test_aliased(self):
+        u = models.User
+        ua = aliased(models.User)
+
+        with self.assertRaises(AssertionError):
+            MongoQuery(ua)
+
+        MongoQuery(u).aliased(ua)  # ok
 
     def test_project(self):
         """ Test project() """
@@ -189,7 +218,7 @@ class QueryStatementsTest(unittest.TestCase):
         test_filter({'tags': ['a', 'b', 'c']}, 'u.tags = CAST(ARRAY[a, b, c] AS VARCHAR[])')
 
         # $ne
-        test_filter({'id': {'$ne': 1}}, 'u.id != 1')
+        test_filter({'id': {'$ne': 1}}, 'u.id IS DISTINCT FROM 1')
         test_filter({'tags': {'$ne': 'a'}}, 'a != ALL (u.tags)')
         test_filter({'tags': {'$ne': ['a', 'b', 'c']}}, "u.tags != CAST(ARRAY[a, b, c] AS VARCHAR[])")
 
@@ -420,79 +449,16 @@ class QueryStatementsTest(unittest.TestCase):
                          # Filter
                          'WHERE u.age > 18) AS anon_1')
 
+    @unittest.skip('Not implemented yet')
+    def test_undefer_load(self):
+        pass
+        # TODO: test how to explicitly undefer() a number of columns and relationships your code needs.
+        #   With relationships, it should also check whether the relationship has a LIMIT or a filter on it
+        #   (because then it's likely invalid for the custom code)
+
     # ---------- DREADED JOIN LINE ----------
     # Everything below this line is about joins.
     # A lot of blood was spilled on these forgotten fields.
-
-    def assertQuery(self, qs, *expected_lines):
-        """ Compare a query line by line
-
-            Problem: because of dict disorder, you can't just compare a query string: columns and expressions may be present,
-            but be in a completely different order.
-            Solution: compare a query piece by piece.
-            To achieve this, you've got to feed the query as a string where every logical piece
-            is separated by \n, and we compare the pieces.
-            It also removes trailing commas.
-
-            :param expected_lines: the query, separated into pieces
-        """
-        try:
-            # Query?
-            if isinstance(qs, Query):
-                qs = q2sql(qs)
-
-            # tuple
-            expected_lines = '\n'.join(expected_lines)
-
-            # Test
-            for line in expected_lines.splitlines():
-                self.assertIn(line.strip().rstrip(','), qs)
-
-            # Done
-            return qs
-        except:
-            print(qs)
-            raise
-
-    @staticmethod
-    def _qs_selected_columns(qs):
-        """ Get the set of column names from the SELECT clause
-
-            Example:
-            SELECT a, u.b, c AS c_1, u.d AS u_d
-            -> {'a', 'u.b', 'c', 'u.d'}
-        """
-        rex = re.compile(r'^SELECT (.*?)\s+FROM')
-        # Match
-        m = rex.match(qs)
-        # Results
-        if not m:
-            return set()
-        selected_columns_str = m.group(1)
-        # Match results
-        rex = re.compile(r'(\S+?)(?: AS \w+)?(?:,|$)')  # column names, no 'as'
-        return set(rex.findall(selected_columns_str))
-
-    def assertSelectedColumns(self, qs, *expected):
-        """ Test that the query has certain columns in the SELECT clause
-
-        :param qs: Query | query string
-        :param expected: list of expected column names
-        :returns: query string
-        """
-        # Query?
-        if isinstance(qs, Query):
-            qs = q2sql(qs)
-
-        try:
-            self.assertEqual(
-                self._qs_selected_columns(qs),
-                set(expected)
-            )
-            return qs
-        except:
-            print(qs)
-            raise
 
     def test_join__one_to_one(self):
         """ Test join() one-to-one """
@@ -929,6 +895,279 @@ class QueryStatementsTest(unittest.TestCase):
                 # a typo
                 allowed_Relations=(),
             ))
+
+    @unittest.skipIf(SA_12, 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently')
+    def test_selectinquery(self):
+        """ Test join using the custom-made selectinquery() """
+        u = models.User
+        gw = models.GirlWatcher
+
+        engine = self.engine
+        ssn = self.Session()
+
+        # Enable it, because setUp() has disabled it.
+        handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = True
+
+        # Helpers that will test the results
+        all_users_with_articles = [
+            dict(name='a', articles=[dict(title='10'), dict(title='11'), dict(title='12')]),
+            dict(name='b', articles=[dict(title='20'), dict(title='21')]),
+            dict(name='c', articles=[dict(title='30')]),
+        ]
+        pluck_users = lambda l: [mq.pluck_instance(i) for i in res]
+
+        # === Test: filter, limit, join, filter, sort
+        with QueryLogger(engine) as ql:
+            mq = u.mongoquery(ssn).query(
+                project=['name'],
+                filter={'age': {'$gte': 0}},
+                join={'articles': dict(project=['title'],
+                                       filter={'theme': {'$ne': 'biography'}},
+                                       sort=['title+']
+                                       )},
+                sort=['age-', 'id+'],
+                limit=10
+            )
+            res = mq.end().all()
+
+            # Test results
+            self.assertEqual(pluck_users(res), all_users_with_articles)
+
+            # Query 1: Primary, User
+            self.assertQuery(ql[0],
+                             # condition on the outer query
+                             'WHERE u.age >= 0',
+                             # Ordering
+                             'ORDER BY u.age DESC, u.id',
+                             # Limit
+                             'LIMIT 10'
+                             )
+            self.assertNotIn('JOIN', ql[0])  # there must be NO JOINS! selectinload() handles it
+            self.assertSelectedColumns(ql[0],
+                                       'u.id', 'u.name'  # PK, projected
+                                       )
+
+            # Query 2: selectin, Article
+            self.assertQuery(ql[1],
+                             # Querying directly
+                             'FROM a',
+                             # Custom condition
+                             'WHERE a.uid IN (1, 2, 3) AND a.theme IS DISTINCT FROM biography',
+                             # Custom ordering
+                             # First: by ForeignKey (so that sqlalchemy has entities coming in nice order)
+                             # Next: by our custom ordering
+                             'ORDER BY a.uid, a.title'
+                             )
+
+            self.assertSelectedColumns(ql[1],
+                                       'a.id', 'a.uid', 'a.title',  # PK, FK, projected
+                                       # Note that selectin_query() loader will always load the foreign key column.
+                                       # There's no way around it, because it has to join entities for us.
+                                       )
+
+        # === Test: same relationship, different query
+        # Make sure the query was not stored somewhere (e.g. Bakery), and a freshly made query is used
+        with QueryLogger(engine) as ql:
+            u.mongoquery(ssn).query(
+                project=['name'],
+                join={'articles': dict(project=['title'],
+                                       filter={'theme': 'biography'},
+                                       sort=['title-']
+                                       )}
+            ).end().all()
+
+            # Query 2: selectin, Article
+            self.assertQuery(ql[1],
+                             'FROM a',
+                             'WHERE a.uid IN (1, 2, 3) AND a.theme = biography',
+                             'ORDER BY a.uid, a.title DESC'
+                             )
+            self.assertSelectedColumns(ql[1],
+                                       'a.id', 'a.title', 'a.uid',  # PK, FK, projected
+                                       )
+
+        # === Test: two relationships at the same time
+        # This is tricky: we need two x-to-many relationships, because that's where our selectinquery() shines.
+        # GirlWatcher is the only model that has that.
+
+        with QueryLogger(engine) as ql:
+            gw.mongoquery(ssn).query(
+                project=['name'],
+                join={'good': dict(project=['name'],
+                                   filter={'age': {'$gt': 1}},
+                                   sort=['age+']),
+                      'best': dict(project=['name'],
+                                   filter={'age': {'$gt': 2}},
+                                   sort=['age-']),
+                      }
+            ).end().all()
+
+            self.assertEqual(len(ql), 3)  # two relations, 3 queries
+
+            # Note that the order is unpredictable, so we have to detect it
+            first_query = 1
+            second_query = 2
+            if 'best = true' not in ql[second_query]:
+                first_query = 2
+                second_query = 1
+
+            # Query 2: selectin, User through 'good'
+            self.assertQuery(ql[first_query],
+                             # Joins correctly
+                             'FROM gw AS gw_1 '
+                             'JOIN gwf AS gwf_1 ON gw_1.id = gwf_1.gw_id AND gwf_1.best = false '
+                             'JOIN u ON gwf_1.user_id = u.id',
+                             # selectinload
+                             'WHERE gw_1.id IN (1, 2) '
+                             # Filter correctly
+                             'AND u.age > 1',
+                             # Ordering is correct
+                             'ORDER BY gw_1.id, u.age',
+                             )
+            self.assertSelectedColumns(ql[first_query],
+                                       'gw_1.id',  # PK
+                                       'u.id', 'u.name'  # PK, projected
+                                       )
+
+            # Query 3: selectin, User through 'best'
+            self.assertQuery(ql[second_query],
+                             # Joins correctly
+                             'FROM gw AS gw_1 '
+                             'JOIN gwf AS gwf_1 ON gw_1.id = gwf_1.gw_id AND gwf_1.best = true '
+                             'JOIN u ON gwf_1.user_id = u.id',
+                             # selectinload
+                             'WHERE gw_1.id IN (1, 2) '
+                             # Filter correctly
+                             'AND u.age > 2',
+                             # Ordering is correct
+                             'ORDER BY gw_1.id, u.age DESC',
+                             )
+            self.assertSelectedColumns(ql[second_query],
+                                       'gw_1.id',  # PK
+                                       'u.id', 'u.name'  # PK, projected
+                                       )
+
+        # === Test: 2 joins (selectin + left outer join), filters and projections
+        # selectinquery() is used for articles
+        # join() is used for user
+        with QueryLogger(engine) as ql:
+            u.mongoquery(ssn).query(
+                project=['name'],
+                filter={'age': 18},
+                join={'articles': dict(project=['title'],
+                                       filter={'theme': 'sci-fi'},
+                                       join={'user': dict(project=['name'],
+                                                          filter={'age': {'$gt': 18}})})}
+            ).end().all()
+
+            self.assertEqual(len(ql), 2)  # a relation, and a joined relation: 2 queries
+
+            # Query 1: User, main
+            self.assertQuery(ql[0],
+                             'FROM u',
+                             'u.age = 18'
+                             )
+            self.assertNotIn('JOIN', ql[0])
+
+            # Query 2: Articles, selectinquery + join(user)
+            self.assertQuery(ql[1],
+                             'FROM a',
+                             # Joined relation, with filter
+                             'LEFT OUTER JOIN u AS u_1 ON u_1.id = a.uid AND u_1.age > 18',
+                             # Filter
+                             'WHERE a.uid IN (1, 2) AND a.theme = sci-fi',
+                             )
+            self.assertSelectedColumns(ql[1],
+                                       'a.id', 'a.uid', 'a.title',  # PK, FK, project
+                                       'u_1.id', 'u_1.name',  # PK, project
+                                       )
+
+        # === Test: 2 joins: selectinquery() + selectinload()
+        # Old good selectinload() is used
+        # There is no filter applied to Article.comments, so MongoJoin handler will choose selectinload()
+        with QueryLogger(engine) as ql:
+            u.mongoquery(ssn).query(
+                project=['name'],
+                filter={'age': 18},
+                join={'articles': dict(project=['title'],
+                                       filter={'theme': {'$ne': 'sci-fi'}},
+                                       join=('comments',))}
+            ).end().all()
+
+            self.assertEqual(len(ql), 3, 'expected 3 queries in total')  # a relation, and a nested relation: 3 queries
+
+        # === Test: 2 joins (selectinquery() + selectinquery()), filters and projections
+        with QueryLogger(engine) as ql:
+            u.mongoquery(ssn).query(
+                project=['name'],
+                filter={'age': 18},
+                join={'articles': dict(project=['title'],
+                                       filter={'theme': {'$ne': 'sci-fi'}},
+                                       join={'comments': dict(project=['text'],
+                                                              filter={'text': {'$exists': True}})})}
+            ).end().all()
+
+            self.assertEqual(len(ql), 3, 'expected 3 queries in total')  # a relation, and a nested relation: 3 queries
+
+            # Query 1: User, main
+            self.assertQuery(ql[0],
+                             'FROM u',
+                             'WHERE u.age = 18'
+                             )
+            self.assertNotIn('JOIN', ql[0])
+            self.assertSelectedColumns(ql[0],
+                                       'u.id', 'u.name'  # PK, project
+                                       )
+
+            # Query 2: Articles, selectin
+            self.assertQuery(ql[1],
+                             'FROM a',
+                             # Filter
+                             'WHERE a.uid IN (1, 2) AND a.theme IS DISTINCT FROM sci-fi ORDER BY a.uid',
+                             )
+            self.assertSelectedColumns(ql[1],
+                                       'a.id', 'a.uid', 'a.title',  # PK, FK, project
+                                       )
+
+            # Query 3: Comments, selectin
+            self.assertQuery(ql[2],
+                             'FROM c',
+                             # Filter
+                             'WHERE c.aid IN (10, 11, 12, 20, 21) AND c.text IS NOT NULL'
+                             )
+            self.assertSelectedColumns(ql[2],
+                                       'c.id', 'c.aid', 'c.text'  # PK, FK, project
+                                       )
+
+        # === Test: reusing selectinload() many times over
+        # SqlAlchemy reuses SelectInQueryLoader.
+        # My old code installed a wrapper, and did it every time the query was executed.
+        # As a result, the wrapper got re-wrapped every single time, and ultimately, Python gave the following exception:
+        # RecursionError: maximum recursion depth exceeded while calling a Python object
+        # This test is designed to check how selectinquery() behaves when re-used many times over.
+
+        old_recursion_limit = sys.getrecursionlimit()
+        # Let's choose just enough to detect a recursion
+        # How did I choose the number?
+        #   > [Previous line repeated 53 more times]
+        #   > RecursionError: maximum recursion depth exceeded
+        # "26" means we still have enough reserve for a few more calls when the code changes.
+        # The smaller is the number, the fewer repetitions we need to hit it, the faster will the test be.
+        sys.setrecursionlimit(200)
+
+        for i in range(100):  # use half the recursionlimit
+            u.mongoquery(ssn).query(
+                project=['name'],
+                filter={'age': 18},
+                join={'articles': dict(project=['title'],
+                                       filter={'theme': {'$ne': 'sci-fi'}},
+                                       join={'comments': dict(project=['text'],
+                                                              filter={'text': {'$exists': True}})})}
+            ).end().all()
+
+        sys.setrecursionlimit(old_recursion_limit)
+
+
 
     # region: Older tests
 

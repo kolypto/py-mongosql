@@ -267,6 +267,39 @@ def content_samples():
     ]]
 
 
+def content_samples_random(n_users, n_articles_per_user, n_comments_per_article):
+    """ Generate lots of users with lots of articles with lots of comments """
+    ret = []
+    for i in range(n_users):
+        ret.append(User(name='X', age=50,
+                        articles=[
+                            Article(title='X'*20,
+                                    comments=[
+                                        Comment(text='X'*100)
+                                        for ic in range(n_comments_per_article)
+                                    ])
+                            for ia in range(n_articles_per_user)
+                        ]))
+    return ret
+
+
+def get_big_db_for_benchmarks(n_users, n_articles_per_user, n_comments_per_article):
+    # Connect, create tables
+    engine, Session = init_database(autoflush=True)
+    drop_all(engine)
+    create_all(engine)
+
+    # Fill DB
+    ssn = Session()
+    ssn.begin()
+    ssn.add_all(content_samples_random(n_users, n_articles_per_user, n_comments_per_article))
+    ssn.commit()
+
+    # Done
+    return engine, Session
+
+
+
 def get_working_db_for_tests(autoflush=True):
     # Connect, create tables
     engine, Session = init_database(autoflush=autoflush)

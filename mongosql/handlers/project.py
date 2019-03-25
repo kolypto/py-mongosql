@@ -237,7 +237,8 @@ class MongoProject(MongoQueryHandlerBase):
             return ()  # no restrictions
 
         # load_only() all those columns
-        ret = [as_relation.load_only(*self.compile_columns())]
+        load_only_columns = self.compile_columns()
+        ret = [as_relation.load_only(*load_only_columns)]
 
         # raiseload_col() on all the rest (if requested)
         if self.raiseload:

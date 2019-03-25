@@ -12,6 +12,8 @@ from ..bag import CombinedBag
 from ..exc import InvalidQueryError, DisabledError, InvalidColumnError
 
 
+# region Aggregate Expression Classes
+
 class AggregateExpressionBase(object):
     """ Represents a computed field with a label """
     def __init__(self, label):
@@ -123,6 +125,7 @@ class AggregateBooleanCount(AggregateExpressionBase):
         # Done
         return self.labeled_expression(stmt)
 
+# endregion
 
 
 class MongoAggregate(MongoQueryHandlerBase):

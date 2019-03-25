@@ -11,8 +11,9 @@ class QueryTest(unittest.TestCase):
     """ Test MongoQuery """
 
     # TODO: test raiseload
+    # TODO: test plucking + aggregate
 
-    def setUp(self):
+    def setUp(self):  # TODO: setUpClass
         # Init db
         self.engine, self.Session = models.get_working_db_for_tests()
         self.db = self.Session()

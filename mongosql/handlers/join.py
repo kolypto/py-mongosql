@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from __future__ import absolute_import
 from sqlalchemy.orm import aliased, Query
 
@@ -104,11 +106,7 @@ class MongoJoin(MongoQueryHandlerBase):
 
             # Prepare the nested MongoQuery
             # We do it here so that all validation errors come on input()
-            nested_mongoquery = self.mongoquery._get_nested_mongoquery(
-                relation_name,
-                target_model,
-                target_model_aliased
-            ).query(**query_object or {})
+            nested_mongoquery = self.mongoquery._get_nested_mongoquery(relation_name)
 
             # Start preparing the MJP: MongoJoinParams.
             mjp = MongoJoinParams(
@@ -121,8 +119,35 @@ class MongoJoin(MongoQueryHandlerBase):
                 # it would fail because of ambiguity
                 target_model_aliased=target_model_aliased,
                 query_object=query_object,
-                nested_mongoquery=nested_mongoquery
+                parent_mongoquery=self.mongoquery,
+                nested_mongoquery=nested_mongoquery,
             )
+
+            # Choose the loading strategy
+            mjp.loading_strategy = self._choose_relationship_loading_strategy(mjp)
+
+            # Unfortunately, a MongoQuery has to be aliased() upfront, before query() is called.
+            # Therefore, we have to do it right now.
+            # However, some relationship loading strategies want aliased(), some do not.
+            # selectinquery() is the only one that does not want no aliases.
+            if mjp.loading_strategy == self.RELSTRATEGY_SELECTINQUERY:
+                # selectinquery() does not want aliases, so we don't do it.
+                # However!
+                # After a lot of pain, it was discovered that even though the second query that selectinquery()
+                # issues is a separate query, it *still* has to have a proper Load() interface chaining from
+                # the original relationship.
+                # Let's do it
+                mjp.nested_mongoquery.as_relation_of(self.mongoquery, mjp.relationship)
+            else:
+                # Everyone else wants an alias.
+                # as_relation_of() and aliased() it property
+                mjp.nested_mongoquery = mjp.nested_mongoquery \
+                    .as_relation_of(mjp.parent_mongoquery, mjp.relationship) \
+                    .aliased(mjp.target_model_aliased)
+
+            # Nested MongoQuery: input the query object
+            # We do it here, not later, so that all validation procedures take place and throw their exceptions early on
+            mjp.nested_mongoquery.query(**mjp.query_object or {})
 
             # Add the newly constructed MJP to the list
             mjp_list.append(mjp)
@@ -142,10 +167,7 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Process joins
         for mjp in self.mjps:
-            if not mjp.has_nested_query:
-                query = self._load_relationship_no_filter(query, as_relation, mjp)
-            else:
-                query = self._load_relationship_with_filter(query, as_relation, mjp)
+            query = self._load_relationship(query, as_relation, mjp)
 
         # Put a raiseload() on every other relationship!
         if self.raiseload:
@@ -153,13 +175,139 @@ class MongoJoin(MongoQueryHandlerBase):
 
         return query
 
-    # region Protected: Eager Loading Implementations
+    # region Relationship Loading Strategies
 
-    def _load_relationship_no_filter(self, query, as_relation, mjp):
-        """ Load a relationship when there's no filtering query present
+    # Turn on the modern option of loading relationships with selectinquery().
+    # selectinquery() is experimental; therefore, it can be disabled
+    ENABLED_EXPERIMENTAL_SELECTINQUERY = True
+
+    # Constants for relationship loading strategy
+    RELSTRATEGY_EAGERLOAD = 'EAGERLOAD'
+    RELSTRATEGY_LEFT_JOIN = 'LJOIN'
+    RELSTRATEGY_JOINF = 'JOINF'
+    RELSTRATEGY_SELECTINQUERY = 'SELECTINQUERY'
+
+    def _choose_relationship_loading_strategy(self, mjp):
+        """ Make a decision on how to load the relationship.
+
+        :type mjp: MongoJoinParams
+        :returns: str Relationship loading strategy
+        """
+        # The user has requested a relationship, and here we decide how to load it.
+        # There are two major cases to consider:
+        # A. No nested Query Object.
+        #    In this case, there's no filtering, projection, or anything, installed on the query.
+        #    We can just load it like we always do.
+        # B. There is a nested Query Object.
+        #    The user has requested a relationship, and he also wants to filter it, use projection, and perhaps,
+        #    load even more relationships.
+        #    In this case, we will have to use a nested MongoQuery object to generate that query for us.
+
+        # Now, how do we do it?
+        # Let's consider the options.
+
+        # 1. 𝗦𝗾𝗹𝗔𝗹𝗰𝗵𝗲𝗺𝘆'𝘀 𝗲𝗮𝗴𝗲𝗿 𝗹𝗼𝗮𝗱𝗶𝗻𝗴: 𝗷𝗼𝗶𝗻𝗲𝗱𝗹𝗼𝗮𝗱(), 𝘀𝗲𝗹𝗲𝗰𝘁𝗶𝗻𝗹𝗼𝗮𝗱().
+        #    Obviously, it only works for relationships with no nested Query Objects:
+        #    because SqlAlchemy simply cannot filter related entities!
+        #    So that's our choice for scenario A: no nested query.
+        # 2. 𝗝𝗢𝗜𝗡
+        #    Select from the primary entity, and join() the related entity to it, then use contains_eager().
+        #    All filters, projections, and ordering will be applied to the whole query.
+        #    This approach will actually 𝗱𝗶𝘀𝘁𝗼𝗿𝘁 𝘁𝗵𝗲 𝗿𝗲𝘀𝘂𝗹𝘁𝘀 𝗼𝗳 𝘁𝗵𝗲 𝗽𝗿𝗶𝗺𝗮𝗿𝘆 𝗾𝘂𝗲𝗿𝘆:
+        #    because when the primary table has nothing to JOIN to... the row is dropped.
+        #    Imagine: users JOIN articles ; and there's a user with no rows in articles. Oops.
+        #    So this method can't be used for loading relationships.
+        # 3. 𝗟𝗘𝗙𝗧 𝗢𝗨𝗧𝗘𝗥 𝗝𝗢𝗜𝗡
+        #    Use LEFT OUTER JOIN to join the related table to the primary one.
+        #    This solves the issue we had with the `JOIN` case: when the primary instance has no related rows,
+        #    it will still remain. It won't disappear: it will be a row of NULLs. Perfect.
+        #    However, in this case there is a different issue: when there is a filter on the related entity,
+        #    you cannot just put in into the WHERE clause. Because any condition in the WHERE clause will fail
+        #    to match the NULLs!
+        #    There may be two solutions to this problem.
+        #    3.1. Put the filtering condition into the ON clause.
+        #         Example:
+        #           SELECT *
+        #           FROM users LEFT OUTER JOIN articles
+        #               ON users.id = articles.author_id
+        #               AND articles.rating > 0.5
+        #    3.2. Put the filtering condition into the WHERE clause, OR'ed with the possibility of having a NULL row.
+        #         Example:
+        #           SELECT *
+        #           FROM users LEFT OUTER JOIN articles
+        #               ON users.id = articles.author_id
+        #           WHERE articles.ratikng > 0.5 OR articles.id IS NULL
+        #    The limitations of this approach are:
+        #    * For every row in the primary table, you may have multiple rows in the related table.
+        #       This transmits more data over the socket connection, forces sqlalchemy to do deduplication,
+        #       and also spoils the total number of rows: you just can't count them!
+        # 3. 𝗦𝘂𝗯𝗾𝘂𝗲𝗿𝘆
+        #    We can make the nested MongoQuery as a subquery, and join to it.
+        #    The subquery will select & filter all the relevant related entities, even LIMIT them,
+        #    and then our primary query can just join to it.
+        #    In this case, the nested condition will be isolated inside the subquery
+        #    and will not distort the results of primary query.
+        #    This method is not too different from JOINing, so it was not even considered.
+        # 4. 𝘀𝗲𝗹𝗲𝗰𝘁𝗶𝗻𝗾𝘂𝗲𝗿𝘆()
+        #    One evening I was wondering at selectinload() and dreaming: if it only could support custom filtering!
+        #    This wonderful method runs a second query that loads related entities ; such a beauty!
+        #    What if I can alter that query, and teach it to do projections, filtering, even grouping, perhaps?
+        #    That's how selectinquery() was born: a loader option that lets you customize the query.
+        #    This loading strategy injects a nested MongoSql query into the one generated by selectinload(),
+        #    and uses its internal machinery to load related entities.
+        #    This is currently the best method available for one-to-many and many-to-many relationships.
+
+        # Now, how do we load relationships?
+        # It depends.
+        # If there is no nested query, we don't need no custom stuff: just use the built-in sqlalchemy machinery.
+        #   It will use joinedload() for one-to-one relationships;
+        #   It will use selectinload() for `uselist` relationships.
+        # If there is a nested query, however:
+        #   It will use LEFT OUTER JOIN for one-to-one relationships
+        #   It will use selectinquery() for `uselist` relationships,
+        #       but it will fall back to LEFT OUTER JOIN, if selectinquery() is disabled.
+
+        # Implement this logic:
+        if mjp.has_nested_query:
+            # Has a Query Object
+            # SqlAlchemy can't handle it: have to use our custom methods.
+            # Depending on the type of relationship:
+            if mjp.uselist:
+                # x-to-many relationship:
+                if self.ENABLED_EXPERIMENTAL_SELECTINQUERY:
+                    # selectinquery() is experimental; therefore, it can be disabled
+                    return self.RELSTRATEGY_SELECTINQUERY
+                else:
+                    # fall back, when selectinquery() is disabled
+                    return self.RELSTRATEGY_LEFT_JOIN
+            else:
+                # one-to-one relationship:
+                return self.RELSTRATEGY_LEFT_JOIN
+        else:
+            return self.RELSTRATEGY_EAGERLOAD
+
+    def _load_relationship(self, query, as_relation, mjp):
+        """ Load the relationship using the chosen strategy """
+        return {
+            # List of strategies mapped to their handler methods
+            self.RELSTRATEGY_EAGERLOAD: self._load_relationship_sqlalchemy_eagerload,
+            self.RELSTRATEGY_LEFT_JOIN: self._load_relationship_with_filter__left_join,
+            self.RELSTRATEGY_JOINF: self._load_relationship_with_filter__joinf,
+            self.RELSTRATEGY_SELECTINQUERY: self._load_relationship_with_filter__selectinquery,
+        }[mjp.loading_strategy](query, as_relation, mjp)  # use the method
+
+    def _load_relationship_sqlalchemy_eagerload(self, query, as_relation, mjp):
+        """ Load a relationship using sqlalchemy's eager loading.
 
             This method just uses SqlAlchemy's eager loading.
+            It's only applicable when there is no nested query present, because SqlAlchemy can't filter relationships
+            loaded with options(): it just gives them all.
+
+            :type query: sqlalchemy.orm.Query
+            :type as_relation: Load
+            :type mjp: MongoJoinParams
         """
+        assert not mjp.has_nested_query, 'Cannot use this strategy when a nested query is present'
         # There is no nested Query: all we have to do is just to load the relationship.
         # In this case, it's sufficient to use sqlalchemy eager loading.
 
@@ -174,10 +322,13 @@ class MongoJoin(MongoQueryHandlerBase):
             # Make sure there's no column name clash in the results
             query = query.with_labels()
 
+        # Run nested MongoQuery
+        # It's already been alias()ed and as_relation_from()ed
         # We still have to let the nested MongoQuery run its business
         # It may be installing projections even when there's no Query Object:
         # because there are default settings, and sometimes the user does not get what he wants, but what we want :)
-        query = mjp.nested_mongoquery.from_query(query).end()
+        query = mjp.nested_mongoquery \
+            .from_query(query).end()
 
         # Since there's no Query Object, there's no projection nor join provided.
         # This means that the user does not want sub-relations, so we don't load them.
@@ -189,41 +340,7 @@ class MongoJoin(MongoQueryHandlerBase):
         # Done here
         return query.options(rel_load)
 
-    def _load_relationship_with_filter(self, query, as_relation, mjp):
-        """ Load a relationship when a filter is present """
-        # A user has requested a relationship, and also provided a Query Object.
-        # In this case, we will use another MongoQuery to build a query that loads them.
-
-        # Previously, MongoSQL used join()s, but it resulted in a whole bunch of issues.
-        # Even when you had used join(isouter=True), any filter applied to the whole query
-        # resulted in the loss of your original entities! Because when there was no related
-        # model, and the joined column was null ... the whole row was dropped.
-
-        # There can be multiple solutions.
-        # 1. Make the nested MongoQuery in a subquery.
-        #    The subquery will generate & filter all the related entities, and then our
-        #    primary query can just join to it.
-        #    In this case, the nested condition will be isolated inside the subquery and
-        #    will not distort the results of primary query.
-        # 2. LEFT OUTER JOIN the relationship with ON-clause.
-        #    Perform the regular .join(relationship), but put all filtering on that
-        #    relationship into the ON-clause for the join.
-        #    This will ensure that the results are not distorted, and the related entities
-        #    are only joined to it when present.
-        # 3. Use a join(), but put an additional condition on the whole query that a related
-        #    column (e.g. primary key) may be NULL
-        # 4. Load these related entities separately: the likes of selectinload()
-
-        # We choose: #2: LEFT OUTER JOIN + ON clause
-
-        if mjp.uselist:
-            # Use left_outer_join for lists # TODO: use selectinload for lists!
-            return self._load_relationship_with_filter__left_outer_join(query, as_relation, mjp)
-        else:
-            # Use left_outer_join for foreign-key relations
-            return self._load_relationship_with_filter__left_outer_join(query, as_relation, mjp)
-
-    def _load_relationship_with_filter__left_outer_join(self, query, as_relation, mjp):
+    def _load_relationship_with_filter__left_join(self, query, as_relation, mjp):
         """ Load a relationship with LEFT OUTER JOIN and filter it.
 
             This will do a .join(isouter=True) to the related entity, producing a LEFT OUTER JOIN,
@@ -255,7 +372,9 @@ class MongoJoin(MongoQueryHandlerBase):
               GROUP BY, SKIP, and LIMIT would modify the original query and distort its results.
             * We've had a LOT of headache with bulding this query.. :)
 
-            :type Query: sqlalchemy.orm.Query
+            :type query: sqlalchemy.orm.Query
+            :type as_relation: Load
+            :type mjp: MongoJoinParams
         """
         # Check the Query Object
         for unsupported in ('aggregate', 'group', 'skip', 'limit'):
@@ -327,8 +446,8 @@ class MongoJoin(MongoQueryHandlerBase):
                     for column_name in order_by_column_names
                 ])
 
-        # Initialize the nested MongoQuery
-        # as_relation() and aliased() already configured for us
+        # Get the nested MongoQuery
+        # It's already been alias()ed and as_relation_from()ed
         nested_mq = mjp.nested_mongoquery
 
         # Build a LEFT OUTER JOIN from `query` to the `target_model`, through the `relationship`
@@ -405,6 +524,10 @@ class MongoJoin(MongoQueryHandlerBase):
             * It does not permit grouping, skipping, and limiting:
               GROUP BY, SKIP, and LIMIT would modify the original query and distort its results.
             * Has wrong COUNT
+
+            :type query: Query
+            :type as_relation: Load
+            :type mjp: MongoJoinParams
         """
         # Check the Query Object
         for unsupported in ('aggregate', 'group', 'skip', 'limit'):
@@ -415,7 +538,8 @@ class MongoJoin(MongoQueryHandlerBase):
         # JOIN
         joined_query = query.join((mjp.relationship, mjp.target_model_aliased))
 
-        # Nested MongoQuery
+        # Run nested MongoQuery
+        # It's already been alias()ed and as_relation_from()ed
         query = mjp.nested_mongoquery \
             .from_query(joined_query) \
             .end().with_labels()
@@ -426,22 +550,37 @@ class MongoJoin(MongoQueryHandlerBase):
                 mjp.relationship,
                 alias=mjp.target_model_aliased))
 
-    def _load_relationship_with_filter__selectinload(self, query, as_relation, mjp):
+    def _load_relationship_with_filter__selectinquery(self, query, as_relation, mjp):
         """ Load a relationship with a custom sort of selectinload() and filter it
 
             This technique will issue a second query, loading all the related entities separately, and populating
             the relation field with the results of that query.
-            This is perhaps the most efficient technique available.
+            This is perhaps the most efficient technique available, and the most flexible.
 
             See: https://docs.sqlalchemy.org/en/latest/orm/loading_relationships.html#select-in-loading
-        """
-        raise NotImplementedError
 
-        # TODO: can't we mimic the behavior of selectinload() here? Load all instances,
-        #  gather their primary keys, make another query, populate their attributes...
-        #  That's a lot of work, but the result should be fantastic!
-        #  Moreover, I'm sure we can reuse a lot of code from selectinload(), just feed it with
-        #  a query it does not expect.
+            :type query: sqlalchemy.orm.Query
+            :type as_relation: Load
+            :type mjp: MongoJoinParams
+        """
+        # Check the Query Object
+        for unsupported in ('aggregate', 'group', 'skip', 'limit'):
+            if unsupported in mjp.query_object:
+                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries'
+                                        .format(unsupported))
+        # TODO: tests support for aggregate and group!
+
+        # It's not being loaded as a relation anymore ; it' loaded in a separate query.
+        # Thus, we need it un-aliased().
+        nested_mq = mjp.nested_mongoquery
+
+        # Just set the option. That's it :)
+        return query.options(
+            as_relation.selectinquery(
+                relationship=mjp.relationship,
+                alter_query=lambda q, **kw: nested_mq.from_query(q).end()
+            )
+        )
 
     # endregion
 
@@ -488,15 +627,24 @@ class MongoJoinParams(object):
         about it to the target MongoQuery procedure that will actually implement it.
     """
 
+    __slots__ = ('model', 'bags',
+                 'relationship_name', 'relationship',
+                 'target_model', 'target_model_aliased',
+                 'query_object',
+                 'parent_mongoquery',
+                 'nested_mongoquery',
+                 'uselist', 'loading_strategy')
+
     def __init__(self,
                  model,
                  bags,
                  relationship_name,
                  relationship,
                  target_model,
-                 target_model_aliased=None,
-                 query_object=None,
-                 nested_mongoquery=None):
+                 target_model_aliased,
+                 query_object,
+                 parent_mongoquery,
+                 nested_mongoquery):
         """ Values for joins
 
         :param model: The source model of this relationship
@@ -511,9 +659,10 @@ class MongoJoinParams(object):
         :type target_model: sqlalchemy.ext.declarative.DeclarativeMeta
         :param target_model_aliased: Target model, aliased
         :type target_model_aliased: sqlalchemy.orm.util.AliasedClass
-        :param query_object: Query object dict for :meth:MongoQuery.query(). It can have more filters,
-            joins, and whatnot.
+        :param query_object: Query object dict for :meth:MongoQuery.query(). It can have more filters, joins, and whatnot.
         :type query_object: dict | None
+        :param parent_mongoquery: Parent MongoQuery
+        :type parent_mongoquery: mongosql.query.MongoQuery
         :param nested_mongoquery: Nested MongoQuery, initialized with all the aliases,
             and with `query_object` as its input.
         :type nested_mongoquery: mongosql.MongoQuery | None
@@ -530,7 +679,10 @@ class MongoJoinParams(object):
         self.uselist = relationship.property.uselist  # is relationship array?
 
         self.query_object = query_object or None  # remake it into None when an empty dict is given
+        self.parent_mongoquery = parent_mongoquery
         self.nested_mongoquery = nested_mongoquery
+
+        self.loading_strategy = None  # will be added later
 
     @property
     def has_nested_query(self):
@@ -545,6 +697,7 @@ class MongoJoinParams(object):
                'model_name={0.bags.model_name}, ' \
                'relationship_name={0.relationship_name}, ' \
                'target_model={0.target_model}, ' \
+               'target_model_aliased={0.target_model_aliased}, ' \
                'query_object={0.query_object!r}, ' \
                ')>'.format(self)
 
@@ -667,6 +820,8 @@ def _sa_create_joins(relation, left, right):
                 source_polymorphic=True,
                 dest_polymorphic=True,
                 of_type_mapper=right_info.mapper)
+    else:
+        raise AssertionError('Unsupported SqlAlchemy version! Expected 1.2.x or 1.3.x')
 
     return (
         primaryjoin,

@@ -34,3 +34,5 @@ from .crud import CrudHelper, StrictCrudHelper, CrudViewMixin
 from mongosql.util import Reusable
 # raiseload() that can be applied to columns, not only relationships
 from mongosql.util import raiseload_col
+# selectinquery() relationship loader that supports custom queries
+from mongosql.util import selectinquery

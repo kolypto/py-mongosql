@@ -29,7 +29,7 @@ class RaiseloadColTest(unittest.TestCase):
         with self.assertRaises(sa_exc.InvalidRequestError):
             u.age  # raiseload_col() works here
 
-    def test_raiseload_all(self):
+    def test_raiseload_star(self):
         ssn = self.Session()
 
         u = ssn.query(models.User) \

@@ -249,6 +249,8 @@ class MongoFilter(MongoQueryHandlerBase):
 
     query_object_section_name = 'filter'
 
+    # TODO: force_filter option: filtering that you can't undo. An object, or a lambda. Also applicable to joins.
+
     def __init__(self, model, scalar_operators=None, array_operators=None):
         """ Init a filter expression
 
@@ -284,7 +286,7 @@ class MongoFilter(MongoQueryHandlerBase):
         # operator => lambda column, value, original_value
         # `original_value` is to be used in conditions, because `val` can be an SQL-expression!
         '$eq':  lambda col, val, oval: col == val,
-        '$ne':  lambda col, val, oval: col != val,
+        '$ne':  lambda col, val, oval: col.is_distinct_from(val),  # (see comment below)
         '$lt':  lambda col, val, oval: col < val,
         '$lte': lambda col, val, oval: col <= val,
         '$gt':  lambda col, val, oval: col > val,
@@ -292,6 +294,11 @@ class MongoFilter(MongoQueryHandlerBase):
         '$in':  lambda col, val, oval: col.in_(val),  # field IN(values)
         '$nin': lambda col, val, oval: col.notin_(val),  # field NOT IN(values)
         '$exists': lambda col, val, oval: col != None if oval else col == None,
+
+        # Note on $ne:
+        # We can't actually use '!=' here, because with nullable columns, it will give unexpected results.
+        # {'name': {'$ne': 'brad'}} won't select a User(name=None),
+        # because in Postgres, a '!=' comparison with NULL is... NULL, which is a false value.
     }
 
     # Operators for array columns

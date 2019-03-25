@@ -352,7 +352,7 @@ class HandlersTest(unittest.TestCase):
 
         e = f.expressions[2]
         self.assertEqual(e.operator_str, '$ne')
-        self.assertEqual(stmt2sql(e.compile_expression()), 'm.c != 100')
+        self.assertEqual(stmt2sql(e.compile_expression()), 'm.c IS DISTINCT FROM 100')
 
         e = f.expressions[3]
         self.assertEqual(e.operator_str, '$gte')

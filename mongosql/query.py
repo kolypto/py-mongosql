@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 from copy import copy
 
+from sqlalchemy import inspect
 from sqlalchemy.orm import Query, Load, defaultload
 
 from .bag import ModelPropertyBags
@@ -9,6 +10,8 @@ from . import handlers
 from .exc import InvalidQueryError
 from .util import QuerySettings
 
+
+# TODO: implement lambda-callables that can alter a query in an arbitrary way, even on join. Give it load and alias.
 
 class MongoQuery(object):
     """ MongoDB-style queries """
@@ -70,6 +73,13 @@ class MongoQuery(object):
 
         :type handler_settings: dict | None
         """
+        # Aliases?
+        if inspect(model).is_aliased_class:
+            raise AssertionError('MongoQuery does not accept aliases. '
+                                 'If you want to query an alias, do it like this: '
+                                 'MongoQuery(User).aliased(aliased(User))')
+
+        # Init with the model
         self._model = model  # model, or its alias (when used with self.aliased())
         self._bags = ModelPropertyBags.for_model(self._model)
 
@@ -83,6 +93,7 @@ class MongoQuery(object):
 
         # Initialized later
         self._query = None  # type: Query | None
+        self._parent_mongoquery = None  # type: MongoQuery | None
 
         # Get ready: Query object handlers
         self._init_query_object_handlers()
@@ -166,11 +177,24 @@ class MongoQuery(object):
             self._as_relation = Load(self._model)
         return self
 
+    def as_relation_of(self, mongoquery, relationship):
+        """ Handle the query as a sub-query handling a relationship
+
+        This is used by the MongoJoin handler to build queries to related models.
+
+        :param mongoquery: The parent query
+        :param relationship: The relationship
+        :return: MongoQuery
+        """
+        return self.as_relation(mongoquery._join_path + (relationship,))
+
     def aliased(self, model):
         """ Make a query to an aliased model instead.
 
         This is used by MongoJoin handler to issue subqueries.
         Note that the method modifies the current object and does not make a copy!
+
+        Note: should always be called after as_relation_of(), not before!
 
         :param model: Aliased model
         """
@@ -181,13 +205,16 @@ class MongoQuery(object):
         # Aliased loader interface
         # Currently, our join path looks like this: [..., User]
         # Now, when we're using an alias instead, we have to replace that last element with an alias too
-        # SqlAlchemy 1.2.x used to work well without doint it;
+        # SqlAlchemy 1.2.x used to work well without doing it;
         # SqlAlchemy 1.3.x now requires adapting a relationship by using of_type() on it.
         # See: https://github.com/sqlalchemy/sqlalchemy/issues/4566
-        # Okay. First. Replace the last element on the join path with the aliased model's relationship
-        new_join_path = self._join_path[0:-1] + (self._join_path[-1].of_type(model),)
-        # Second. Apply the new join path
-        self.as_relation(new_join_path)
+        if self._join_path:  # not empty
+            # Okay. First. Replace the last element on the join path with the aliased model's relationship
+            new_join_path = self._join_path[0:-1] + (self._join_path[-1].of_type(model),)
+            # Second. Apply the new join path
+            self.as_relation(new_join_path)
+        else:  # empty
+            self._as_relation = Load(self._model)  # use the alias
 
         # Aliased handlers
         for handler_name in self.HANDLER_ATTR_NAMES:
@@ -281,6 +308,9 @@ class MongoQuery(object):
         # Seems like there's no one else?
         # Done.
         return dct
+
+    def __repr__(self):
+        return 'MongoQuery({})'.format(str(self._model))
 
     # region Query Object handlers
 
@@ -407,7 +437,7 @@ class MongoQuery(object):
         # Done
         return mongoquery
 
-    def _get_nested_mongoquery(self, relationship_name, target_model, target_model_aliased):
+    def _get_nested_mongoquery(self, relationship_name):
         """ Get a MongoQuery for a nested model (through a relationship)
 
         Remember that the 'join' operation support nested queries!
@@ -429,13 +459,11 @@ class MongoQuery(object):
 
         In this case, the API user won't be able to get the password by join()ing to it from other entities.
 
-        :param target_model:
-        :param target_model_aliased:
+        Note that this method does not call as_relation() nor aliased().
+        You'll have to do it yourself.
+
         :rtype: MongoQuery
         """
-        # Get the relationship
-        relationship = self._bags.relations[relationship_name]
-
         # If there's no nested MongoQuery inited, make one
         if relationship_name not in self._nested_mongoqueries:
             self._nested_mongoqueries[relationship_name] = self._init_mongoquery_for_related_model(relationship_name)
@@ -444,9 +472,10 @@ class MongoQuery(object):
         nested_mq = self._nested_mongoqueries[relationship_name]
 
         # Make a copy, set as_relation() properly, put an alias on it
-        nested_mq = copy(nested_mq) \
-            .as_relation(self._join_path + (relationship,)) \
-            .aliased(target_model_aliased)
+        nested_mq = copy(nested_mq)
+
+        # Parent relationship to self
+        nested_mq._parent_mongoquery = self
 
         # Done
         return nested_mq

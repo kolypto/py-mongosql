@@ -18,6 +18,11 @@ class MongoFilteringJoin(MongoJoin):
 
     query_object_section_name = 'joinf'
 
-    def _load_relationship_with_filter(self, query, as_relation, mjp):
-        # This is the culprit: a joining method that does not do its job right... :)
-        return self._load_relationship_with_filter__joinf(query, as_relation, mjp)
+    def _choose_relationship_loading_strategy(self, mjp):
+        if mjp.has_nested_query:
+            # Quite intentionally, we will use a regular JOIN here.
+            # It will remove rows that 1) have no related rows, and 2) do not match our filter conditions.
+            # This is what the user wants when they use 'joinf' handler.
+            return self.RELSTRATEGY_JOINF
+        else:
+            return self.RELSTRATEGY_EAGERLOAD
