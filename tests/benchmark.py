@@ -1,6 +1,14 @@
 from time import time
+from sqlalchemy.orm import joinedload, selectinload
+
 from tests.models import *
 from mongosql.handlers import MongoJoin
+try:
+    from mongosql import selectinquery
+    SELECTINQUERY_SUPPORTED = True
+except ImportError:
+    # This is to reuse this benchmark with the old MongoSql 1.x
+    SELECTINQUERY_SUPPORTED = False
 
 
 # Timer class
@@ -30,10 +38,7 @@ for big_db in (False, True):
     # Session
     ssn = Session()
 
-    # Test sqlalchemy: joinedload
-    from sqlalchemy.orm import joinedload, selectinload
-    from mongosql import selectinquery
-
+    # Test sqlalchemy: joinedload, selectinload, selectinquery
     joinedload_timer = timer()
     for i in range(N_QUERIES):
         q = ssn.query(User).options(joinedload(User.articles).joinedload(Article.comments))
@@ -48,20 +53,23 @@ for big_db in (False, True):
     selectinload_timer.stop()
     print(f'SqlAlchemy, selectinload: {selectinload_timer.total:.02f}s')
 
-    selectinquery_timer = timer()
-    for i in range(N_QUERIES):
-        q = ssn.query(User).options(selectinquery(User.articles, lambda q, **kw: q).selectinquery(Article.comments, lambda q, **kw: q))
-        list(q.all())
-    selectinquery_timer.stop()
-    print(f'SqlAlchemy, selectinquery: {selectinquery_timer.total:.02f}s')
+    if SELECTINQUERY_SUPPORTED:
+        selectinquery_timer = timer()
+        for i in range(N_QUERIES):
+            q = ssn.query(User).options(selectinquery(User.articles, lambda q, **kw: q).selectinquery(Article.comments, lambda q, **kw: q))
+            list(q.all())
+        selectinquery_timer.stop()
+        print(f'SqlAlchemy, selectinquery: {selectinquery_timer.total:.02f}s')
 
-    # Test sqlalchemy: selectinload
 
     # The benchmark itself
-    for selectinquery_enabled in (False, True):
+    selectinquery_states = (False, True) if SELECTINQUERY_SUPPORTED else (False,)
+    for selectinquery_enabled in selectinquery_states:
         # Enable/Disable selectinquery()
-        MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = selectinquery_enabled
+        if SELECTINQUERY_SUPPORTED:
+            MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = selectinquery_enabled
 
+        # Prepare the list of results
         qs = [None for i in range(N_QUERIES)]
 
         # Benchmark
