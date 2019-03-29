@@ -27,6 +27,15 @@ class MongoQueryHandlerBase(object):
         self.bags = ModelPropertyBags.for_model(model)
         #: A CombinedBag() that allows to handle properties of multiple types (e.g. columns + hybrid properties)
         self.supported_bags = self._get_supported_bags()
+
+        # Has the input() method been called already?
+        # This may be important for handlers that depend on other handlers
+        self.input_received = False
+
+        # Has the aliased() method been called already?
+        # This is important because it can't be done again, or undone.
+        self.is_aliased = False
+
         #: MongoQuery bound to this object. It may remain uninitialized.
         self.mongoquery = None
 
@@ -55,6 +64,13 @@ class MongoQueryHandlerBase(object):
             This is used by MongoQuery.aliased(), which is ultimately useful to MongoJoin handler.
             Note that the method modifies the current object and does not make a copy!
         """
+        # Only once
+        assert not self.is_aliased, 'You cannot call {}.aliased() ' \
+                                    'on a handler that has already been aliased()' \
+                                    .format(self.__class__.__name__)
+        self.is_aliased = True
+
+        # aliased() everything
         self.model = model
         self.bags = self.bags.aliased(model)
         self.supported_bags = self._get_supported_bags()  # re-initialize
@@ -115,6 +131,9 @@ class MongoQueryHandlerBase(object):
         """
         self.input_value = qo_value  # no copying. Try not to modify it.
 
+        # Set the flag
+        self.input_received = True
+
         # Make sure that input() can only be used once
         self.input = self.__raise_input_not_reusable
 
@@ -126,7 +145,7 @@ class MongoQueryHandlerBase(object):
 
     def __raise_input_not_reusable(self, *args, **kwargs):
         raise RuntimeError("You can't use the {}.input() method twice. "
-                           "Wrap the class into Reusable()!"
+                           "Wrap the class into Reusable(), or copy() it!"
                            .format(self.__class__.__name__))
 
     # These methods implement the logic of individual handlers
