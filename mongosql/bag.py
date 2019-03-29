@@ -4,6 +4,7 @@ from copy import copy
 
 from sqlalchemy import inspect
 from sqlalchemy import Column
+from sqlalchemy.orm import ColumnProperty
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -33,11 +34,17 @@ class ModelPropertyBags(object):
         :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.DeclarativeMeta
         :rtype: ModelPropertyBags
         """
+        # The goal of this method is to only initialize a ModelPropertyBags only once per model.
+        # Previously, we used to store them inside model attributes.
+
         try:
-            return model.__mongosql_bags
-        except AttributeError:
-            model.__mongosql_bags = cls(model)
-            return model.__mongosql_bags
+            # We only want ModelPropertyBags for this very model, not inherited from someone!
+            # We check __dict__, because getattr() would look up all parent classes,
+            # but we only need our own, class-local ModelPropertyBags
+            return model.__dict__['__mongosql_bags']
+        except KeyError:
+            model.__mongosql_bags = bags = cls(model)
+            return bags
 
     @classmethod
     def for_alias(cls, aliased_model):
@@ -82,9 +89,8 @@ class ModelPropertyBags(object):
         self.hybrid_properties = HybridPropertiesBag(_get_model_hybrid_properties(model, insp))
 
         #: Relationship properties
-        relations = {name: getattr(model, name)
-                     for name, c in insp.relationships.items()}
-        self.relations = RelationshipsBag(relations)
+        relationships_dict = _get_model_relationships(model, insp)
+        self.relations = RelationshipsBag(relationships_dict)
 
         #: Primary key properties
         self.pk = PrimaryKeyBag({c.name: self.columns[c.name]
@@ -95,8 +101,8 @@ class ModelPropertyBags(object):
                                     for name, c in self.columns
                                     if c.nullable})
 
-        #: Relationship column properties
-        self.related_columns = DotRelatedColumnsBag(relations)
+        #: Related column properties
+        self.related_columns = DotRelatedColumnsBag(relationships_dict)
 
     def aliased(self, aliased_class):
         # Copy the class
@@ -582,9 +588,15 @@ def _get_model_hybrid_properties(model, ins):
 
 def _get_model_properties(model, ins):
     """ Get a dict of model properties (calculated properies) """
-    return {name: prop
-            for name, prop in model.__dict__.items()
-            if isinstance(prop, property)}
+    return {name: None  # we don't need the property itself
+            for name in dir(model)
+            if isinstance(getattr(model, name), property)}
+
+
+def _get_model_relationships(model, ins):
+    """ Get a dict of model relationships """
+    return {name: getattr(model, name)
+            for name, c in ins.relationships.items()}
 
 
 def _is_column_array(col):

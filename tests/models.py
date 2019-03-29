@@ -2,8 +2,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 
 from sqlalchemy.sql.expression import and_
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, String, Integer, Boolean, Table
+from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Table
 from sqlalchemy.orm import relationship, backref, remote, foreign
 from sqlalchemy.sql.schema import ForeignKey
 
@@ -135,6 +135,10 @@ class Edit(Base):
 
 
 class ManyFieldsModel(Base):
+    """ A table with many, many columns
+
+        Goal: convenience to test many filters in one query
+    """
     # A model with many fields for testing huge filters
     __tablename__ = 'm'
     id = Column(Integer, primary_key=True)
@@ -187,7 +191,10 @@ class GirlWatcherFavorites(Base):
 
 
 class GirlWatcher(Base):
-    """ Complex joins, custom conditions, many-to-many """
+    """ Complex joins, custom conditions, many-to-many
+
+        Goal: test how MongoSql handles many-to-many relationships
+    """
     __tablename__ = 'gw'
 
     id = Column(Integer, primary_key=True)
@@ -210,6 +217,87 @@ class GirlWatcher(Base):
                                           GirlWatcherFavorites.best == False),
                         secondaryjoin= GirlWatcherFavorites.user_id == User.id,
                         )
+
+
+class CreationTimeMixin(object):
+    """ Inheritance tests: a mixin """
+    ctime = Column(DateTime, doc="Creation time")
+
+    @declared_attr
+    def cuid(cls):
+        return Column(Integer, ForeignKey(User.id, ondelete='SET NULL'),
+                      nullable=True, doc="Created by")
+
+    @declared_attr
+    def cuser(cls):
+        return relationship('User', remote_side=User.id,
+                            foreign_keys='{}.cuid'.format(cls.__name__), doc="Created by")
+
+
+class SpecialMixin(object):
+    @property
+    def get_42(self):
+        return 42
+
+    @hybrid_property
+    def hyb_big_id(self):
+        return self.id > 1000
+
+    @hyb_big_id.expression
+    def hyb_big_id(cls):
+        return and_(cls.id > 1000)
+
+
+class CarArticle(Article, CreationTimeMixin, SpecialMixin):
+    """ Inheritance tests: inherit attrs """
+    __tablename__ = 'ia'
+    id = Column(Integer, ForeignKey(Article.id), primary_key=True)
+    car = relationship('Cars', back_populates='article')
+
+
+class Cars(Base):
+    """ Inheritance tests: joined table inheritance + mixin """
+    __tablename__ = 'ic'  # inheritance: cars
+
+    id = Column(Integer, primary_key=True)
+    type = Column(String(50))
+
+    make = Column(String(50))
+    model = Column(String(50))
+    horses = Column(Integer)
+
+    article_id = Column(ForeignKey(CarArticle.id))
+    article = relationship(CarArticle, back_populates='car')
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'car',
+        'polymorphic_on': type
+    }
+
+
+class GasolineCar(Cars):
+    """ Inheritance tests: joined table inheritance """
+    __tablename__ = 'icg'
+
+    id = Column(Integer, ForeignKey(Cars.id), primary_key=True)
+    engine_volume = Column(Integer)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'gasoline',
+    }
+
+
+class ElectricCar(Cars):
+    """ Inheritance tests: joined table inheritance """
+    __tablename__ = 'ice'
+
+    id = Column(Integer, ForeignKey(Cars.id), primary_key=True)
+    batt_capacity = Column(Integer)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'electric',
+    }
+
 
 
 

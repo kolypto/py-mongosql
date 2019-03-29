@@ -4,7 +4,6 @@ from sqlalchemy.orm import aliased
 
 from . import models
 
-from mongosql import ModelPropertyBags
 from mongosql.bag import *
 
 
@@ -156,7 +155,7 @@ class BagsTest(unittest.TestCase):
         self.assertEqual(bags.properties.names, {'calculated'})
         self.assertEqual(bags.hybrid_properties.names, {'hybrid'})
 
-        # === rel_columns. Dot-notation
+        # === related_columns. Dot-notation
         bag = bags.related_columns
 
         self.assertGreaterEqual(bag.names, {'user.id', 'comments.id', 'comments.text'})  # just a few
@@ -306,3 +305,76 @@ class BagsTest(unittest.TestCase):
         test_column(c, 'a_1.id')
 
         return
+
+    def test_mixins_car_article(self):
+        """ Test table mixins """
+        # First, load Article
+        # MongoSql used to install its custom property on the parent model, and the child model used to read it.
+        # This is unacceptable: these two have to be two different bags!
+        ModelPropertyBags.for_model(models.Article)
+        # Only then, load CarArticle
+        bags = ModelPropertyBags.for_model(models.CarArticle)
+
+        # === columns
+        bag = bags.columns
+        self.assertSetEqual(bag.names, {'id', 'uid', 'title', 'theme', 'data',  # Article
+                                        'id',  # CarArticle
+                                        'cuid', 'ctime',  # mixin
+                                        })
+
+        # === relations
+        bag = bags.relations
+        self.assertSetEqual(bag.names, {'user', 'comments',  # Article
+                                        'car',  # CarArticle
+                                        'cuser',  # mixin
+                                        })
+
+        # === related columns
+        bag = bags.related_columns
+        self.assertGreaterEqual(bag.names, {'user.id', 'comments.id',  # Article
+                                            'cuser.id',  # mixin
+                                            'car.id',  # CarAticle
+                                            })
+
+        # === pk, nullable, properties, hybrid properties
+        self.assertSetEqual(bags.pk.names, {'id'})
+        self.assertSetEqual(bags.nullable.names, {'uid', 'title', 'theme', 'data',  # Article
+                                                  'cuid', 'ctime',  # mixin
+                                                  })
+        self.assertSetEqual(bags.properties.names, {'calculated',  # Article
+                                                    'get_42'  # mixin
+                                                    })
+        self.assertSetEqual(bags.hybrid_properties.names, {'hybrid',  # Article
+                                                           'hyb_big_id'  # Mixin
+                                                           })
+
+
+    def test_inheritance_cars(self):
+        """ Test table inheritance """
+        bags = ModelPropertyBags.for_model(models.ElectricCar)
+
+        # === columns
+        bag = bags.columns
+        self.assertSetEqual(bag.names, {'id', 'type', 'make', 'model', 'horses', 'article_id',  # Car
+                                        'id', 'batt_capacity',  # ElectricCar
+                                        })
+
+        # === relations
+        bag = bags.relations
+        self.assertSetEqual(bag.names, {'article',  # Car
+                                        # None for ElectricCar
+                                        })
+
+        # === related columns
+        bag = bags.related_columns
+        self.assertGreaterEqual(bag.names, {'article.id',  # Car
+                                            # None for ElectricCar
+                                            })
+
+        # === pk, nullable, properties, hybrid properties
+        self.assertSetEqual(bags.pk.names, {'id'})
+        self.assertSetEqual(bags.nullable.names, {'type', 'make', 'model', 'horses', 'article_id',  # Car
+                                                  'batt_capacity',  # ElectricCar
+                                                  })
+        self.assertSetEqual(bags.properties.names, set())
+        self.assertSetEqual(bags.hybrid_properties.names, set())

@@ -27,8 +27,6 @@ class MongoSqlBase(object):
 
         return MongoQuery(cls, handler_settings=handler_settings)
 
-    __cached_mongoquery = None
-
     @classmethod
     def _get_mongoquery(cls):
         """ Get a Reusable MongoQuery for this model ; initialize it only once
@@ -36,7 +34,9 @@ class MongoSqlBase(object):
             :rtype: MongoQuery
         """
         # Initialize cached property
-        if cls.__cached_mongoquery is None:
+        # We check __dict__, because getattr() would look up all parent classes,
+        # but we only need our own, class-local MongoQuery
+        if '__cached_mongoquery' not in cls.__dict__:
             cls.__cached_mongoquery = cls._init_mongoquery()
 
         # Return a copy
