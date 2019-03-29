@@ -35,6 +35,7 @@ class MongoCount(MongoQueryHandlerBase):
         return query_object
 
     def input(self, count=None):
+        super(MongoCount, self).input(count)
         if not isinstance(count, (bool, NoneType)):
             raise InvalidQueryError('Count must be either true or false')
 

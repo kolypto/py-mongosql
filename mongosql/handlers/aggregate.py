@@ -323,6 +323,17 @@ class MongoAggregate(MongoQueryHandlerBase):
 
         return query
 
+    # Extra features
+
+    @property
+    def projection(self):
+        """ Get a projection-like dict from the aggregate handler
+
+            It will describe all those additional keys that it is going to install on a query.
+        """
+        return {comp_field_label: 1
+                for comp_field_label in self.agg_spec.keys()}
+
 
 class MongoAggregateInsecure(MongoAggregate):
     """ An insecure version of MongoAggregate

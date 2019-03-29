@@ -577,7 +577,7 @@ class MongoJoin(MongoQueryHandlerBase):
             if unsupported in mjp.query_object:
                 raise InvalidQueryError('MongoSQL does not support `{}` for joined queries'
                                         .format(unsupported))
-        # TODO: tests support for aggregate and group!
+        # TODO: perhaps, I can use postgresql's window functions to implement limits?
 
         # It's not being loaded as a relation anymore ; it' loaded in a separate query.
         # Thus, we need it un-aliased().

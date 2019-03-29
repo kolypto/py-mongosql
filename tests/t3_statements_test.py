@@ -409,15 +409,18 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             aggregate_labels=True,
         ))
 
-        aggregate = lambda agg_spec: copy(mq).query(project=('id',),aggregate=agg_spec).end()
+        aggregate_mq = lambda agg_spec: copy(mq).query(project=('id',),aggregate=agg_spec)
 
         def test_aggregate(agg_spec, expected_starts):
-            qs = q2sql(aggregate(agg_spec))
+            mq = aggregate_mq(agg_spec)
+            qs = q2sql(mq.end())
             self.assertTrue(qs.startswith(expected_starts), '{!r} should start with {!r}'.format(qs, expected_starts))
 
         def test_aggregate_qs(agg_spec, *expected_query):
-            q = aggregate(agg_spec)
+            mq = aggregate_mq(agg_spec)
+            q = mq.end()
             self.assertQuery(q, *expected_query)
+            return mq
 
         # Empty
         test_aggregate(None, 'SELECT u.id \nFROM')
@@ -451,11 +454,14 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         q = OrderedDict()  # OrderedDict() to have predictable output
         q['max_age'] = {'$max': 'age'}
         q['count'] = {'$sum': OrderedDict([('id', 1), ('age', {'$gte': 16})])}
-        test_aggregate_qs(q,
-                          'SELECT',
-                          'max(u.age) AS max_age,',
-                          'sum(CAST((u.id = 1 AND u.age >= 16) AS INTEGER)) AS count',
-                          'FROM')
+        ag = test_aggregate_qs(q,
+                               'SELECT',
+                               'max(u.age) AS max_age,',
+                               'sum(CAST((u.id = 1 AND u.age >= 16) AS INTEGER)) AS count',
+                               'FROM')
+
+        # projection
+        self.assertEqual(ag.handler_aggregate.projection, {'count': 1, 'max_age': 1})
 
         # Unknown column
         self.assertRaises(InvalidColumnError, test_aggregate, {'a': '???'}, '')

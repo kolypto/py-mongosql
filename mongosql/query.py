@@ -287,6 +287,19 @@ class MongoQuery(object):
 
         return q
 
+    # Extra features
+
+    def result_contains_entities(self):
+        """ Test whether the result will contain entities.
+
+        This is normally the case in the absense of 'aggregate', 'group', and 'count' queries.
+
+        :rtype: bool
+        """
+        return self.handler_aggregate.is_input_empty() and \
+               self.handler_group.is_input_empty() and \
+               self.handler_count.is_input_empty()
+
     def ensure_loaded(self, *cols):
         """ Ensure the given columns and relationships are loaded
 
@@ -300,10 +313,13 @@ class MongoQuery(object):
             * The user does not want to see no 'd' in the output.
             Solution: use ensure_loaded('d'), and then pluck_instance()
 
-            One limitation: if the user has requested filtering on a relationship, you can't use ensure_loaded() on it.
-            This method will raise an InvalidQueryError().
-            This makes sense, because if your application code relies on the presence of a certain relationship,
-            it certainly needs it fully loaded, and unfiltered.
+            Limitation:
+            1. If the user has requested filtering on a relationship, you can't use ensure_loaded() on it.
+                This method will raise an InvalidQueryError().
+                This makes sense, because if your application code relies on the presence of a certain relationship,
+                it certainly needs it fully loaded, and unfiltered.
+            2. If the request contains no entities (e.g. 'group' or 'aggregate' handlers are used),
+               this method would throw an AssertionError
 
             If all you need is just to know whether something is loaded or not, use MongoQuery.__contains__() instead.
 
@@ -313,6 +329,8 @@ class MongoQuery(object):
                 It does not throw `InvalidColumnError` because that's likely your error, not an error of the API user :)
             :rtype: MongoQuery
         """
+        assert self.result_contains_entities(), 'Cannot use ensure_loaded() on a result set that does not contain entities'
+
         # Tell columns and relationships apart
         columns = []
         relations = {}
