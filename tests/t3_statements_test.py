@@ -542,6 +542,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    # everything else is excluded by projection
                                    )
 
+        # Test __contains__()
+        self.assertTrue('user' in mq.handler_join)
+
         # === Test: join, limit
         with self.assertRaises(InvalidQueryError):
             mq = a.mongoquery().query(

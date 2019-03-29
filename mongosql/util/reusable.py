@@ -9,7 +9,7 @@ class Reusable(object):
 
         Example:
 
-            projection = Reusable(MongoProject(User, force_exclude=('password',))
+            project = Reusable(MongoProject(User, force_exclude=('password',))
 
         It also works for MongoQuery:
 

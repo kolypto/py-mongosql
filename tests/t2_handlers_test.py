@@ -2,7 +2,7 @@ import unittest
 from collections import OrderedDict
 from sqlalchemy.orm import Load
 
-from mongosql import Reusable
+from mongosql import Reusable, MongoQuery
 from mongosql.handlers import *
 from mongosql.exc import InvalidColumnError, DisabledError, InvalidQueryError, InvalidRelationError
 from .models import *
@@ -148,6 +148,17 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
                                              # Full projection in mixed mode
                                              theme=1, data=1, calculated=1, hybrid=1))
+
+        # === Test: merge, quiet mode
+        # Originally include, merge include
+        pr = mk_pr(1).merge(dict(data=1), quietly=True)
+        self.assertEqual(pr.get_full_projection(),
+                         dict(id=1, uid=1, title=1, theme=0, data=0, calculated=0, hybrid=0))  # not 'data'
+
+        # Originally exclude, merge include (conflict, results in full projection)
+        pr = mk_pr(0).merge(dict(title=1), quietly=True)
+        self.assertEqual(pr.get_full_projection(),
+                         dict(id=0, uid=0, title=0, theme=1, data=1, calculated=1, hybrid=1))  # not 'title'
 
         # === Test: force_include
         pr = Reusable(MongoProject(Article, force_include=('id',)))
@@ -588,6 +599,131 @@ class HandlersTest(unittest.TestCase):
 
         l = MongoLimit(User, max_limit=10).input(limit=5)
         self.assertEqual((l.skip, l.limit), (None, 5))
+
+    def test_join(self):
+        def test_mjp(mjp, relname, qo):
+            self.assertEqual(mjp.relationship_name, relname)
+            self.assertEqual(mjp.query_object, qo)
+
+        def test_mongojoin(mongojoin, *expected_mjps):
+            self.assertEqual(len(mongojoin.mjps), len(expected_mjps))
+            for mjp, expected_mjp in zip(mongojoin.mjps, expected_mjps):
+                test_mjp(mjp, **expected_mjp)
+
+        mq = MongoQuery(User)
+        mj = Reusable(MongoJoin(User).with_mongoquery(mq))  # type: MongoJoin
+
+        # === Test: empty value
+        test_mongojoin(mj.input(None))
+        test_mongojoin(mj.input(()))
+        test_mongojoin(mj.input([]))
+        test_mongojoin(mj.input({}))
+
+        # === Test: list
+        j = mj.input(('articles',))
+        test_mongojoin(j, dict(relname='articles', qo=None))
+
+        # Test: dict + None
+        j = mj.input({'articles': None})
+        test_mongojoin(j, dict(relname='articles', qo=None))
+
+        # === Test: dict + empty dict
+        j = mj.input({'articles': {}})
+        test_mongojoin(j, dict(relname='articles', qo=None))
+
+        # === Test: dict + dict
+        j = mj.input({'articles': dict(project=('id',))})
+        test_mongojoin(j, dict(relname='articles', qo=dict(project=('id',))))
+
+        # === Test: dict + dict + dict
+        j = mj.input({'articles': dict(project=('id',),
+                                       join={
+                                           'comments': dict(project=('id',))
+                                       })})
+        test_mongojoin(j, dict(relname='articles', qo=dict(project=('id',),
+                                                           join={'comments': dict(project=('id',))})))
+
+
+
+        # === Test: merge()
+        # Test plain relations as a list
+        j = mj.input(('articles',))
+
+        j.merge(('articles',))
+        j.merge(('articles',))  # no problem twice
+        self.assertEqual(j.get_projection_tree(), {'articles': {}})
+
+        j.merge(('comments',))
+        self.assertEqual(j.get_projection_tree(), {'articles': {}, 'comments': {}})
+
+        # Test plain relations with a nested projection
+        j = mj.input({'articles': dict(project=('title',))})
+
+        j.merge(('articles',))
+        self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1}})  # no change
+
+        j.merge({'articles': dict(project=('data',))})
+        self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1, 'data': 1}})  # + 'data'
+
+        # Test plain, nested join, projections
+        j = mj.input({'articles': dict(project=('title',),
+                                       join={
+                                           'comments': dict(project=('text',))
+                                       })})
+
+        j.merge({'articles': dict(project=('data',),
+                                  join={
+                                      'user': dict(project=('id',)),
+                                      'comments': dict(project=('id',),
+                                                       join=('user',))
+                                  })})
+        self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1, 'data': 1,  # + 'data'
+                                                                'comments': {'text': 1, 'id': 1,  # +'id'
+                                                                             # + 'user':
+                                                                             'user': {}
+                                                                             },
+                                                                # + 'user':
+                                                                'user': {'id': 1}
+                                                                }})
+
+        # Test: conflicting merge
+        with self.assertRaises(InvalidQueryError):
+            # Can't merge with a filter
+            j.merge({'articles': dict(filter={'id': 1})})
+
+        # Test: quietly
+        j = mj.input({'articles': dict(project=('title',))})
+
+        j.merge(('comments',), quietly=True)
+        self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1}})  # no 'comments'
+
+        j.merge({'articles': dict(project=('data',))}, quietly=True)
+        self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1, 'data': 0}})  # no 'data'
+
+
+
+        # === Test: allowed_relations
+        mj = Reusable(MongoJoin(User, allowed_relations=('articles',)).with_mongoquery(mq))  # type: MongoJoin
+
+        mj.input(('articles',))
+        with self.assertRaises(DisabledError):
+            mj.input(('comments',))
+        with self.assertRaises(InvalidRelationError):
+            mj.input(('non-existent',))
+
+        # === Test: banned_relations
+        mj = Reusable(MongoJoin(User, banned_relations=('comments',)).with_mongoquery(mq))  # type: MongoJoin
+
+        mj.input(('articles',))
+        with self.assertRaises(DisabledError):
+            mj.input(('comments',))
+        with self.assertRaises(InvalidRelationError):
+            mj.input(('non-existent',))
+
+        # Test: allowed_relations + banned_relations
+        with self.assertRaises(AssertionError):
+            Reusable(MongoJoin(User, allowed_relations=('articles',), banned_relations=('comments',)).with_mongoquery(mq))
+
 
     def test_mongoquery_pluck_instance(self):
         """ Test MongoQuery.pluck_instance() """

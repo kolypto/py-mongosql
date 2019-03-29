@@ -38,12 +38,12 @@ class MongoQuery(object):
                 related={'author': { default_exclude=('password',) } }
 
             The list of all settings:
-                # projection
+                # project
                     default_projection=None
                     default_exclude=None
                     force_include=None
                     force_exclude=None
-                # projection & join & joinf
+                # project & join & joinf
                     raiseload=False
                 # aggregate
                     aggregateable_columns=()
@@ -283,6 +283,23 @@ class MongoQuery(object):
             q = handler.alter_query(q, as_relation=self._as_relation)
 
         return q
+
+    def get_projection_tree(self):
+        """ Get a projection-like dict that maps every included column to 1, and every relationship to a nested projection dict.
+
+            Example:
+
+                MongoQuery(User).query(join={'articles': dict(project=('id',))}).handler_join.projection
+                #-> {'articles': {'id': 1}}
+
+            This is mainly useful for debugging nested Query Objects.
+            :rtype: dict
+        """
+        ret = {}
+        ret.update(self.handler_project.projection)
+        ret.update(self.handler_join.get_projection_tree())
+        ret.update(self.handler_joinf.get_projection_tree())
+        return ret
 
     def pluck_instance(self, instance):
         """ Pluck an sqlalchemy instance and make it into a dict

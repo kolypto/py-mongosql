@@ -26,3 +26,6 @@ class MongoFilteringJoin(MongoJoin):
             return self.RELSTRATEGY_JOINF
         else:
             return self.RELSTRATEGY_EAGERLOAD
+
+    # merge() is not implemented for joinf, because the results wouldn't be compatible
+    merge = NotImplemented

@@ -46,6 +46,8 @@ class MongoJoin(MongoQueryHandlerBase):
             self.validate_properties(self.allowed_relations, where='join:allowed_relations')
 
         # On input
+        # type: dict
+        self.relations = None
         # type: list[MongoJoinParams]
         self.mjps = None
 
@@ -78,27 +80,35 @@ class MongoJoin(MongoQueryHandlerBase):
         except InvalidColumnError as e:
             raise InvalidRelationError(e.model, e.column_name, e.where)
 
-    def input(self, rels):
-        super(MongoJoin, self).input(rels)
+    def input(self, relations):
+        assert self.mongoquery is not None, 'MongoJoin has to be coupled with a MongoQuery object. ' \
+                                            'Call with_mongoquery() on it'
+        super(MongoJoin, self).input(relations)
+        self.relations, self.mjps = self._input_process(relations)
+        return self
 
+    def _input_process(self, relations):
+        """ Process the input Query Object and produce a list of MJPs
+
+            :returns: (dict, list[MongoJoinParams])
+        """
         # Validation
-        if not rels:
-            rels = {}
-        elif isinstance(rels, (list, tuple)):
-            rels = {relname: None for relname in rels}
-        elif isinstance(rels, dict):
-            rels = rels
+        if not relations:
+            relations = {}
+        elif isinstance(relations, (list, tuple)):
+            relations = {relname: None for relname in relations}
+        elif isinstance(relations, dict):
+            relations = relations
         else:
             raise InvalidQueryError('Join must be one of: null, array, object')
 
-        self.validate_properties(rels.keys())
-        self.rels = rels
+        self.validate_properties(relations.keys())
 
         # Go over all relationships and simply build MJP objects that will carry the necessary
         # information to the Query on the outside, which will use those MJP objects to handle the
         # actual joining process
         mjp_list = []
-        for relation_name, query_object in self.rels.items():
+        for relation_name, query_object in relations.items():
             # Get the relationship and its target model
             rel = self._get_relation_securely(relation_name)
             target_model = self.bags.relations.get_target_model(relation_name)
@@ -118,7 +128,7 @@ class MongoJoin(MongoQueryHandlerBase):
                 # Got to use an alias because when there are two relationships to the same model,
                 # it would fail because of ambiguity
                 target_model_aliased=target_model_aliased,
-                query_object=query_object,
+                query_object=query_object or None,  # force falsy values to `None`
                 parent_mongoquery=self.mongoquery,
                 nested_mongoquery=nested_mongoquery,
             )
@@ -152,8 +162,7 @@ class MongoJoin(MongoQueryHandlerBase):
             # Add the newly constructed MJP to the list
             mjp_list.append(mjp)
 
-        self.mjps = mjp_list
-        return self
+        return relations, mjp_list
 
     # Not Implemented for this Query Object handler
     compile_options = NotImplemented
@@ -586,6 +595,163 @@ class MongoJoin(MongoQueryHandlerBase):
 
     # Extra features
 
+    @property
+    def projection(self):
+        """ Get a projection-like dict from the join handler
+
+            Since "join" decides which properties to load and which not to, it behaves like a sort of projection.
+            This property will generate a dict {'relname': 1} for you.
+            It may be useful to have a clear picture about what's loaded and what isn't.
+
+            Example:
+
+                MongoQuery(User).query(join={'articles': ...}).handler_join.projection
+                #-> {'articles': 1}
+
+            :rtype: dict
+        """
+        return {mjp.relationship_name: 1
+                for mjp in self.mjps
+                if not mjp.quietly_included}
+
+    def get_projection_tree(self):
+        """ Get a projection-like dict that will also have nested dictionaries for nested projections
+
+            When a relationship has a nested Query Object, it will be mapped to another dict.
+            Example:
+
+                MongoQuery(User).query(join={'articles': dict(project=('id',))}).handler_join.projection
+                #-> {'articles': {'id': 1}}
+
+            This is mainly useful for debugging nested Query Objects.
+            :rtype: dict
+        """
+        return {mjp.relationship_name: mjp.nested_mongoquery.get_projection_tree()
+                for mjp in self.mjps
+                if not mjp.quietly_included}
+
+    def get_full_projection(self):
+        """ Get a full projection-like dict from the join handler
+
+            It will include every known relationship, mapped either to 1 or to 0.
+            Example:
+
+                MongoQuery(User).query(join={'articles': ...}).handler_join.projection
+                #-> {'articles': 1, 'comments': 0}
+
+            :rtype: dict
+        """
+        projection = self.projection
+        return {relation_name: projection.get(relation_name, 0)
+                for relation_name in self.bags.relations.names}
+
+    def merge(self, relations, quietly=False):
+        """ Add another relationship to be eagerly loaded.
+
+            This enables you to load additional relationships, even after the Query Object has been processed.
+            Note that it only lets you load these relationships in a simple fashion ; no nested Queries are supported.
+
+            Furthermore, if a relationship has already been loaded via input(),
+            and it conflicts with the current relationship, you will get an error.
+            A 'conflict' is when either one of these relationships contains anything but 'join' or 'project',
+            because then they cannot be merged.
+
+            :param relations: Relationships to load eagerly
+            :type relations: dict | list
+            :param quietly: Whether to include the new relations and projections quietly:
+                that is, without changing the results of `self.projection` and `self.pluck_instance()`.
+                See MongoQuery.merge() for more info.
+            :type quietly: bool
+            :rtype: MongoJoin
+            :raises InvalidQueryError: Conflicting query objects
+        """
+        # Process the input
+        relations, mjps = self._input_process(relations)
+
+        # Current MJPs
+        current_mjps = {mjp.relationship_name: mjp for mjp in self.mjps}
+
+        # Helpers
+        merge_allowed_keys = {'project', 'join'}
+        is_mjp_simple = lambda mjp: mjp is None \
+                                   or not mjp.has_nested_query or \
+                                   set(mjp.query_object.keys()) <= merge_allowed_keys
+
+        # Merge both dicts and MJPs
+        for mjp in mjps:
+            relation_name = mjp.relationship_name
+
+            # Find a matching MJP, if there even is one
+            current_mjp = current_mjps.get(relation_name, None)  # type: MongoJoinParams
+
+            # Test if the two MJPs are compatible
+            # Let me explain.
+            # The goal of this merging is to provide a superset of results that is compatible with the original request.
+            #
+            # Two MJPs won't be compatible if either MJP contains a filter:
+            # just imagine that the API user expects only a limited number of entities,
+            # while the application expects the relationship to be loaded completely.
+            # Or vice versa: the API expects a filtered result, but the application has loaded them all.
+            #
+            # Therefore, to make sure that both requests are satisfied, we impose a limitation:
+            # you can only merge two MJPs when neither of them contains:
+            #       filter, sort, group, aggregate, joinf, limit, count
+            # They can, however, contain:
+            #       project, join.
+            if not is_mjp_simple(mjp):
+                raise InvalidQueryError(u"You can only merge() a simple relationship, limited to 'join' and 'project'; "
+                                        u"Your relationship '{}' is not simple."
+                                        .format(relation_name))
+            if not is_mjp_simple(current_mjp):
+                raise InvalidQueryError(u"You can only merge() to simple relationships, limited to 'join' and 'project'; "
+                                        u"Relationship '{}' has already been loaded with advanced features. "
+                                        u"Cannot merge."
+                                        .format(relation_name))
+
+            # If there was no relationship - just add it
+            if current_mjp is None:
+                # Easy
+                self.relations[relation_name] = mjp.query_object
+                self.mjps.append(mjp)
+
+                # Exclude from plucking
+                if quietly:
+                    mjp.quietly_included = True
+            else:
+                # Have to merge them
+                # Merge projections
+                current_mjp.nested_mongoquery.handler_project.merge(
+                    mjp.nested_mongoquery.handler_project.projection,
+                    quietly=quietly
+                )
+
+                # Merge joins
+                current_mjp.nested_mongoquery.handler_join.merge(
+                    mjp.nested_mongoquery.handler_join.relations,
+                    quietly=quietly
+                )
+
+                # Merge relations dict
+                # Merge project
+                if self.relations[relation_name] is None:
+                    self.relations[relation_name] = {}
+                self.relations[relation_name]['project'] = current_mjp.nested_mongoquery.handler_project.projection
+                self.relations[relation_name]['join'] = current_mjp.nested_mongoquery.handler_join.relations
+
+
+            # We don't have to re-initialize MongoQuery or anything, because we only support two handlers:
+            # join, and project, and both have this 'merge' method
+
+        # Done
+        return self
+
+    def __contains__(self, name):
+        """ Test whether a relationship name is going to be eagerly loaded (by name)
+
+        :type item: str
+        """
+        return name in self.relations
+
     def pluck_instance(self, instance):
         """ Pluck an sqlalchemy instance and make it into a dict -- for JSON output
 
@@ -598,6 +764,9 @@ class MongoJoin(MongoQueryHandlerBase):
         """
         ret = {}
         for mjp in self.mjps:
+            if mjp.quietly_included:
+                continue
+
             # The relationship we're handling. It's been loaded.
             rel_name = mjp.relationship_name
 
@@ -633,7 +802,8 @@ class MongoJoinParams(object):
                  'query_object',
                  'parent_mongoquery',
                  'nested_mongoquery',
-                 'uselist', 'loading_strategy')
+                 'uselist', 'loading_strategy',
+                 'quietly_included')
 
     def __init__(self,
                  model,
@@ -683,6 +853,12 @@ class MongoJoinParams(object):
         self.nested_mongoquery = nested_mongoquery
 
         self.loading_strategy = None  # will be added later
+
+        # Whether to include this field into get_full_projection() and pluck_instance()
+        # `True` is for the relationships that were officially requested by the user
+        # `False` is for the relationships that were quietly loaded by the application, but should be excluded from the
+        # response because the API user has not requested it.
+        self.quietly_included = False
 
     @property
     def has_nested_query(self):
