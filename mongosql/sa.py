@@ -27,20 +27,25 @@ class MongoSqlBase(object):
 
         return MongoQuery(cls, handler_settings=handler_settings)
 
+    __mongoquery_per_class_cache = {}
+
     @classmethod
     def _get_mongoquery(cls):
         """ Get a Reusable MongoQuery for this model ; initialize it only once
 
             :rtype: MongoQuery
         """
-        # Initialize cached property
-        # We check __dict__, because getattr() would look up all parent classes,
-        # but we only need our own, class-local MongoQuery
-        if '__cached_mongoquery' not in cls.__dict__:
-            cls.__cached_mongoquery = cls._init_mongoquery()
+        try:
+            # We want ever model class to have its own MongoQuery,
+            # and we want no one to inherit it.
+            # We could use model.__dict__ for this, but classes in Python 3 use an immutable `mappingproxy` instead.
+            # Thus, we have to keep our own cache of ModelPropertyBags.
+            mq = cls.__mongoquery_per_class_cache[cls]
+        except KeyError:
+            cls.__mongoquery_per_class_cache[cls] = mq = cls._init_mongoquery()
 
         # Return a copy
-        return copy(cls.__cached_mongoquery)
+        return copy(mq)
 
     @classmethod
     def mongoquery_configure(cls, handler_settings):

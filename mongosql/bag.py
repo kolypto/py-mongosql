@@ -23,6 +23,7 @@ class ModelPropertyBags(object):
 
     Whenever it's too much to inspect several properties, use CombinedBag() over them.
     """
+    __bags_per_model_cache = {}
 
     @classmethod
     def for_model(cls, model):
@@ -38,12 +39,13 @@ class ModelPropertyBags(object):
         # Previously, we used to store them inside model attributes.
 
         try:
-            # We only want ModelPropertyBags for this very model, not inherited from someone!
-            # We check __dict__, because getattr() would look up all parent classes,
-            # but we only need our own, class-local ModelPropertyBags
-            return model.__dict__['__mongosql_bags']
+            # We want ever model class to have its own ModelPropertyBags,
+            # and we want no one to inherit it.
+            # We could use model.__dict__ for this, but classes in Python 3 use an immutable `mappingproxy` instead.
+            # Thus, we have to keep our own cache of ModelPropertyBags.
+            return cls.__bags_per_model_cache[model]
         except KeyError:
-            model.__mongosql_bags = bags = cls(model)
+            cls.__bags_per_model_cache[model] = bags = cls(model)
             return bags
 
     @classmethod

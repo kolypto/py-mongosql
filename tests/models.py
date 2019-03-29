@@ -388,11 +388,17 @@ def get_big_db_for_benchmarks(n_users, n_articles_per_user, n_comments_per_artic
 
 
 
-def get_working_db_for_tests(autoflush=True):
+def get_empty_db(autoflush=True):
     # Connect, create tables
     engine, Session = init_database(autoflush=autoflush)
     drop_all(engine)
     create_all(engine)
+    return engine, Session
+
+
+def get_working_db_for_tests(autoflush=True):
+    # Connect, create tables
+    engine, Session = get_empty_db(autoflush=autoflush)
 
     # Fill DB
     ssn = Session()

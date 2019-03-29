@@ -306,6 +306,20 @@ class BagsTest(unittest.TestCase):
 
         return
 
+    def test_bag_is_reused(self):
+        """ Test that ModelPropertyBags is reused every time """
+        # Test that we get the same bag every time
+        a = ModelPropertyBags.for_model(models.Article)
+        b = ModelPropertyBags.for_model(models.Article)
+        self.assertIs(a, b)
+
+        # Test that when a bag is aliased, it is a different object
+        aa = ModelPropertyBags.for_model(models.Article).aliased(aliased(models.User))
+        self.assertIsNot(aa, a)
+
+        # Test that after calling aliased(), for_model() still returns unadulterated bags
+        self.assertIs(ModelPropertyBags.for_model(models.Article), a)
+
     def test_mixins_car_article(self):
         """ Test table mixins """
         # First, load Article

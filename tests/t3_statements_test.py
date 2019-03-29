@@ -5,6 +5,7 @@ from copy import copy
 from collections import OrderedDict
 
 from sqlalchemy import __version__ as SA_VERSION
+from sqlalchemy import inspect
 from sqlalchemy.orm import aliased
 
 from mongosql import handlers, MongoQuery, Reusable
@@ -40,6 +41,53 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # By default, it is disabled, because most tests use JOINs.
         # Specific tests that expect selectinquery(), will declare it explicitly
         handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = False
+
+    def test_sa_mongoquery_reused(self):
+        """ Test that MongoSqlBase.mongoquery() gives us a fresh object every time """
+        # === Test: copy(MongoQuery) gives a different object
+        mq_1 = MongoQuery(models.User)
+        mq_2 = copy(mq_1)
+
+        # Different objects
+        self.assertIsNot(mq_1, mq_2)
+
+        # Can be reused
+        mq_1.query()
+        mq_2.query()  # input() would have complained that it can only be used once
+
+        # === Test: mongoquery() gives two different objects
+        mq_1 = models.User.mongoquery()
+        mq_2 = models.User.mongoquery()
+        mq_3 = models.User.mongoquery()
+        self.assertIsNot(mq_1, mq_2)
+        self.assertIsNot(mq_2, mq_3)
+        self.assertIsNot(mq_1, mq_3)
+
+        # === Test: Make sure that MongoQuery.__init__ is not called anymore: a copy is made instead.
+        # Remove the __init__ method
+        mongoquery_init_backup = MongoQuery.__init__
+        MongoQuery.__init__ = None
+
+        # Get a few mongoqueries
+        # If an error happens here, it means that multiple MongoQuery objects are intialized.
+        # There should only be one per model!
+        models.User.mongoquery()
+        models.User.mongoquery()
+
+        # Restore
+        MongoQuery.__init__ = mongoquery_init_backup
+
+        # === Test: mongoquery() objects can be reused
+        # init() would complain if called twice
+        mq = models.User.mongoquery().query(filter={'id': 1})
+        mq = models.User.mongoquery().query(filter={'id': 2})
+
+        # === Test: aliased() is applied to a copy, and has no effects on other queries
+        mq_1 = models.User.mongoquery().aliased(aliased(models.User))
+        mq_2 = models.User.mongoquery()
+        # not aliased
+        self.assertIsNot(mq_1._bags, mq_2._bags)
+        self.assertFalse(inspect(mq_2._model).is_aliased_class)
 
     def test_aliased(self):
         u = models.User

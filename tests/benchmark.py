@@ -2,8 +2,8 @@ from time import time
 from sqlalchemy.orm import joinedload, selectinload
 
 from tests.models import *
-from mongosql.handlers import MongoJoin
 try:
+    from mongosql.handlers import MongoJoin
     from mongosql import selectinquery
     SELECTINQUERY_SUPPORTED = True
 except ImportError:
@@ -22,13 +22,17 @@ class timer(object):
         return self
 
 # Take the scariest query with joins, and execute it many times over
-N_QUERIES = 100
+N_QUERIES = 1000
+FOCUS_ON_MONGOSQL = False  # skip all row processing ; just build the query
 
 
-for big_db in (False, True):
+for big_db in (False, True) if not FOCUS_ON_MONGOSQL else (None,):
     # Init the DB
     print()
-    if big_db:
+    if big_db is None:
+        print('Test: focus on MongoSQL, no data')
+        engine, Session = get_empty_db()
+    elif big_db is True:
         print('Test: with a large result set')
         engine, Session = get_big_db_for_benchmarks(n_users=100, n_articles_per_user=5, n_comments_per_article=3)
     else:
@@ -39,27 +43,28 @@ for big_db in (False, True):
     ssn = Session()
 
     # Test sqlalchemy: joinedload, selectinload, selectinquery
-    joinedload_timer = timer()
-    for i in range(N_QUERIES):
-        q = ssn.query(User).options(joinedload(User.articles).joinedload(Article.comments))
-        list(q.all())
-    joinedload_timer.stop()
-    print(f'SqlAlchemy, joinedload: {joinedload_timer.total:.02f}s')
-
-    selectinload_timer = timer()
-    for i in range(N_QUERIES):
-        q = ssn.query(User).options(selectinload(User.articles).selectinload(Article.comments))
-        list(q.all())
-    selectinload_timer.stop()
-    print(f'SqlAlchemy, selectinload: {selectinload_timer.total:.02f}s')
-
-    if SELECTINQUERY_SUPPORTED:
-        selectinquery_timer = timer()
+    if not FOCUS_ON_MONGOSQL and 'test-sqlalchemy':
+        joinedload_timer = timer()
         for i in range(N_QUERIES):
-            q = ssn.query(User).options(selectinquery(User.articles, lambda q, **kw: q).selectinquery(Article.comments, lambda q, **kw: q))
+            q = ssn.query(User).options(joinedload(User.articles).joinedload(Article.comments))
             list(q.all())
-        selectinquery_timer.stop()
-        print(f'SqlAlchemy, selectinquery: {selectinquery_timer.total:.02f}s')
+        joinedload_timer.stop()
+        print(f'SqlAlchemy, joinedload: {joinedload_timer.total:.02f}s')
+
+        selectinload_timer = timer()
+        for i in range(N_QUERIES):
+            q = ssn.query(User).options(selectinload(User.articles).selectinload(Article.comments))
+            list(q.all())
+        selectinload_timer.stop()
+        print(f'SqlAlchemy, selectinload: {selectinload_timer.total:.02f}s')
+
+        if SELECTINQUERY_SUPPORTED:
+            selectinquery_timer = timer()
+            for i in range(N_QUERIES):
+                q = ssn.query(User).options(selectinquery(User.articles, lambda q, **kw: q).selectinquery(Article.comments, lambda q, **kw: q))
+                list(q.all())
+            selectinquery_timer.stop()
+            print(f'SqlAlchemy, selectinquery: {selectinquery_timer.total:.02f}s')
 
 
     # The benchmark itself
@@ -89,8 +94,9 @@ for big_db in (False, True):
         mongosql_timer.stop()
 
         sqlalchemy_timer = timer()
-        for q in qs:
-            list(q.all())  # load all, force sqlalchemy to process every row
+        if not FOCUS_ON_MONGOSQL and 'sqlalchemy-load':
+            for q in qs:
+                list(q.all())  # load all, force sqlalchemy to process every row
         sqlalchemy_timer.stop()
         total_timer.stop()
 
