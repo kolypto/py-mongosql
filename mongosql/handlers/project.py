@@ -96,7 +96,7 @@ class MongoProject(MongoQueryHandlerBase):
         return CombinedBag(
             col=self.bags.columns,
             hybrid=self.bags.hybrid_properties,
-            prop=self.bags.properties,
+            prop=self.bags.properties
         )
 
     #: MongoSQL projection handler operation modes
@@ -117,7 +117,7 @@ class MongoProject(MongoQueryHandlerBase):
         super(MongoProject, self).input(projection)
 
         # Process
-        self.mode, self._projection = self._input_process(projection)
+        self.mode, self._projection, relations = self._input_process(projection)
 
         # Settings: default_exclude, force_include, force_exclude
         if self.mode == self.MODE_EXCLUDE and self.default_exclude:
@@ -127,6 +127,9 @@ class MongoProject(MongoQueryHandlerBase):
 
         if self.force_include or self.force_exclude:
             self._input_process_force_include_exclude()
+
+        # Relations
+        self._pass_relations_to_mongojoin(relations)
 
         # Done
         assert self.mode is not None  # somebody should have decided by now
@@ -148,6 +151,21 @@ class MongoProject(MongoQueryHandlerBase):
             raise InvalidQueryError('Projection must be one of: null, array, object; '
                                     '{type} provided'.format(type=type(projection)))
 
+        # Remove items that are relationships
+        # This is only supported when there's a MongoQuery that binds the two together
+        relations = {}
+        if self.mongoquery:
+            for name in list(projection.keys()):
+                # If the name happens to be a relationship
+                if name in self.bags.relations:
+                    # Remove it
+                    value = projection.pop(name)
+
+                    # When value=1, transform it into a proper MongoJoin value
+                    if value:
+                        relations[name] = {}
+
+
         # Validate keys
         self.validate_properties(projection.keys())
 
@@ -167,9 +185,10 @@ class MongoProject(MongoQueryHandlerBase):
                 mode = self.MODE_MIXED
             else:
                 raise InvalidQueryError('Dict projection values shall be all 0s or all 1s, '
-                                        'or a full projection object')
+                                        'or a full projection object with all fields')
 
-        return mode, projection
+        # Done
+        return mode, projection, relations
 
     def _input_process_force_include_exclude(self):
         """ input(): process self.force_include and self.force_exclude """
@@ -180,6 +199,27 @@ class MongoProject(MongoQueryHandlerBase):
         # force_exclude
         if self.force_exclude:
             self.merge(dict.fromkeys(self.force_exclude, 0))
+
+    def _pass_relations_to_mongojoin(self, relations):
+        """ When _input_process() detects relationships, it returns them as a separate dict.
+        This method forwards them to MongoJoin handler.
+
+        It also tests whether 'join' is enabled on the query.
+        """
+        # Give relations to MongoJoin
+        if relations:
+            # This code relies on MongoJoin having been input()ed
+            assert self.mongoquery, 'MongoProject tried to pass a relationship to MongoJoin, ' \
+                                    'but there is no MongoQuery to bind the two together'
+            assert self.mongoquery.handler_join.input_received, \
+                'MongoProject tried to pass a relationship to MongoJoin, '\
+                'but MongoJoin has not yet been given a chance to process its input()'
+
+            # Raise an error if the 'join' handler is disabled for this query
+            self.mongoquery._raise_if_handler_is_not_enabled('join')
+
+            # Pass it to MongoJoin
+            self.mongoquery.handler_join.merge(relations)
 
     @staticmethod
     def _columns2names(columns):
@@ -318,7 +358,7 @@ class MongoProject(MongoQueryHandlerBase):
         :rtype: MongoProject
         """
         # Validate
-        mode, projection = self._input_process(projection)
+        mode, projection, relations = self._input_process(projection)
 
         # Make a copy because we're going to modify it
         orig_mode = self.mode
@@ -376,6 +416,9 @@ class MongoProject(MongoQueryHandlerBase):
 
             # Note that we don't worry about other cases (EXCLUDE + EXCLUDE, INCLUDE + EXCLUDE),
             # because quiet mode only handles fields that appear during merge, not those that disappear.
+
+        # Relations
+        self._pass_relations_to_mongojoin(relations)
 
         # Done
         return self

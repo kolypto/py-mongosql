@@ -1,6 +1,8 @@
 from __future__ import absolute_import
 from future.utils import string_types
 
+from copy import copy
+
 from sqlalchemy import Integer, Float
 
 from sqlalchemy.sql.expression import cast
@@ -188,7 +190,7 @@ class MongoAggregate(MongoQueryHandlerBase):
 
     def with_mongoquery(self, mongoquery):
         super(MongoAggregate, self).with_mongoquery(mongoquery)
-        self._mongofilter = Reusable(mongoquery.handler_filter)
+        self._mongofilter = copy(mongoquery.handler_filter)
 
     def _get_supported_bags(self):
         return CombinedBag(
@@ -284,7 +286,8 @@ class MongoAggregate(MongoQueryHandlerBase):
                                                          column_name, column, is_column_json)
             elif isinstance(expression, dict):
                 # 3) Boolean expression: use MongoFilter
-                bool_expression = self._mongofilter.input(expression)
+                # Use a copy of a handler because we reuse it.
+                bool_expression = copy(self._mongofilter).input(expression)
                 operator_obj = self._BOOLEAN_COUNT_CLS(comp_field_label, bool_expression)
             else:
                 raise AssertionError('Aggregate: expression should be either a column name, or an object')

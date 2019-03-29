@@ -665,6 +665,8 @@ class MongoJoin(MongoQueryHandlerBase):
             :rtype: MongoJoin
             :raises InvalidQueryError: Conflicting query objects
         """
+        assert self.input_received, 'Can only use merge() when the input() has already been received'
+
         # Process the input
         relations, mjps = self._input_process(relations)
 

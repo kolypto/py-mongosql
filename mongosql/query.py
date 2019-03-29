@@ -251,20 +251,24 @@ class MongoQuery(object):
         if invalid_keys:
             raise InvalidQueryError(u'Unknown Query Object operations: {}'.format(', '.join(invalid_keys)))
 
+        # Bind every handler with ourselves
+        # We do it as a separate step because some handlers want other handlers in a pristine condition
+        for handler_name, handler in self._handlers():
+            handler.with_mongoquery(self)
+
         # Process every field with its method
         # Every handler should be invoked because they may have defaults even when no input was provided
-        for handler_name, handler in self._handlers():
+        for handler_name, handler in self._handlers_ordered_for_query_method():
             # Query Object value for this handler
             input_value = query_object.get(handler_name, None)
 
             # Disabled handlers exception
             # But only test that if there actually was any input
             if input_value is not None:
-                self._handler_settings.raise_if_not_handler_enabled(self._bags.model_name, handler_name)
+                self._raise_if_handler_is_not_enabled(handler_name)
 
             # Use the handler
             # Run it even when it does not have any input
-            handler.with_mongoquery(self)
             handler.input(input_value)
 
         # Done
@@ -279,7 +283,7 @@ class MongoQuery(object):
         q = self._from_query()
 
         # Apply every handler
-        for handler_name, handler in self._handlers():
+        for handler_name, handler in self._handlers_ordered_for_end_method():
             q = handler.alter_query(q, as_relation=self._as_relation)
 
         return q
@@ -415,7 +419,15 @@ class MongoQuery(object):
         return (
             # Note that the ordering of these handlers may actually influence the way queries are processed!
 
-            # Considerations:
+            # Considerations for the input() method:
+            # 1. 'project' before 'join'
+            #    Because 'project' will try to send relationships to the 'join' handler,
+            #    and MongoJoin has to have input() already called by then.
+            #    NOTE: this is the only handler that has preferences for its input() method.
+            #          Because other handlers do not care, and this one does, the best way to bring it down
+            #          to the bottom is to use reversed(self._handlers()).
+            #
+            # Considerations for the alter_query() method:
             # 1. 'limit' after 'order_by':
             #    'order_by' does not like limits
             # 2. 'join' after 'filter' and 'limit'
@@ -439,6 +451,15 @@ class MongoQuery(object):
             ('joinf', self.handler_joinf),
             ('count', self.handler_count)
         )
+
+    def _handlers_ordered_for_query_method(self):
+        """ Handlers in an order suitable for the query() method """
+        # reversed() is applied as a hack to move 'project' below 'join'.
+        return reversed(self._handlers())
+
+    def _handlers_ordered_for_end_method(self):
+        """ Handlers in an order suitable for the end() method """
+        return self._handlers()
 
     # for IDE completion
     handler_project = None  # type: mongosql.handlers.MongoProject
@@ -549,5 +570,16 @@ class MongoQuery(object):
 
         # Done
         return nested_mq
+
+    def _raise_if_handler_is_not_enabled(self, handler_name):
+        """ Raise an error if a handler is not enabled.
+
+            This is used by:
+            * query() method, to raise errors when a user provides input to a disabled handler
+            * MongoProject.input() method, which feeds MongoJoin with projections, and has to check settings
+
+            :return:
+        """
+        self._handler_settings.raise_if_not_handler_enabled(self._bags.model_name, handler_name)
 
     # endregion

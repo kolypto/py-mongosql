@@ -1240,6 +1240,16 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           # 'comments' not even mentioned
                           })
 
+    def test_projection_join(self):
+        """ Test loading relationships by specifyint their name in the projection """
+        u = models.User
+
+        # === Test: project column + relationship
+        mq = u.mongoquery().query(
+            project=['name', 'articles'],
+        )
+        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'articles': {}})
+
     # region: Older tests
 
     def test_join_advanced(self):
