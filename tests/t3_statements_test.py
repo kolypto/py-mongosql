@@ -793,11 +793,12 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             aggregateable_columns=('age',),  # can aggregate on this column
             force_include=('name',),  # 'name' is always included
             banned_relations=('roles',),  # a relation is banned
+            force_filter={'age': {'$gte': 18}},  # whatever you do, you can only get older users
             # Related models
             related={
                 'articles': lambda: article_settings,  # recursive config
                 'comments': lambda: comment_settings,  # recursive config
-            }
+            },
         )
 
         comment_settings = dict(
@@ -813,7 +814,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Imagine that we want to exclude `password`, or something sensitive like this
             related={
                 'user': dict(
-                    force_exclude=('tags',)  # sensitive data not allowed
+                    force_filter=lambda query, model, load: query.filter(model.age >= 18),  # whatever you do, you can only get older users
+                    force_exclude=('tags',),  # sensitive data not allowed
                 ),
                 'creator': dict(
                     force_exclude=('tags',)  # sensitive data not allowed
@@ -861,6 +863,15 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'u_1.id', 'u_1.age',  # PK, projected
                                    'u_1.name'  # force_include
                                    )
+
+        # === Test: Article: user: force_filter, dict
+        mq = a_mq.query(project=('data',),
+                        join={'user': dict(project=('age',))})
+        self.assertQuery(mq.end(),
+                         'FROM a '
+                         'LEFT OUTER JOIN u AS u_1 '
+                         # The condition is right here, even though it was loaded as a relationship
+                            'ON u_1.id = a.uid AND u_1.age >= 18')
 
         # === Test: Article: user:  banned_relations
         # For `user`, 'roles' relation is inaccessible
@@ -912,6 +923,14 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'e.id', 'e.description',  # PK, project
                                    'u_1.id', 'u_1.age',  # +PK ; -tags
                                    )
+
+        # === Test: Edit: user -> force_filter, callable
+        self.assertQuery(mq.end(),
+                         'FROM e '
+                         'LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid',
+                         # Callable installed the condition on the whole clause
+                         # It is properly aliased.
+                         'WHERE u_1.age >= 18')
 
         # === Test: Articles: user: simple join, force_exclude=('data',)
         # Let's see what happens when we load a relationship with restricted columns without a filter.

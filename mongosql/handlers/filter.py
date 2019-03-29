@@ -249,12 +249,18 @@ class MongoFilter(MongoQueryHandlerBase):
 
     query_object_section_name = 'filter'
 
-    # TODO: force_filter option: filtering that you can't undo. An object, or a lambda. Also applicable to joins.
-
-    def __init__(self, model, scalar_operators=None, array_operators=None):
+    def __init__(self, model, force_filter=None, scalar_operators=None, array_operators=None):
         """ Init a filter expression
 
         :param model: SqlAlchemy model to filter
+        :param force_filter: A filtering condition that will be forcefully applied to the query.
+            Can be:
+                * a dict, which will become ANDed to every request ;
+                * a `lambda query, model, load`: which can alter the query in any arbitrary way.
+                    `model` argument is the model class, which may be aliased.
+                    `load` is the load interface, in case you're going to load any relationships.
+                  NOTE: when you use a callable for filtering relationships, you are likely to distort the results
+                        of the original query! See 'joinf' handler for an explanation.
         :param scalar_operators: A dict of additional operators for scalar columns to recognize.
             A mapping: {'$operator': lambda}. See class body for examples.
         :type scalar_operators: dict[str, lambda]
@@ -269,6 +275,19 @@ class MongoFilter(MongoQueryHandlerBase):
         # Extra configuration
         self._extra_scalar_ops = scalar_operators or {}
         self._extra_array_ops = array_operators or {}
+
+        # Extra configuraion: force_filter
+        self.force_filter_dict = None
+        self.force_filter_callable = None
+
+        if callable(force_filter):
+            # When a callable, just store it
+            self.force_filter_callable = force_filter
+        elif isinstance(force_filter, dict):
+            # When a dict, store it, and validate it
+            self.force_filter_dict = force_filter
+            # just for the sake of validation
+            self._parse_criteria(force_filter)  # validate force_filter
 
     def _get_supported_bags(self):
         return CombinedBag(
@@ -354,8 +373,14 @@ class MongoFilter(MongoQueryHandlerBase):
         cls._operators_array[name] = callable
 
     def input(self, criteria):
+        # Process input
         super(MongoFilter, self).input(criteria)
         self.expressions = self._parse_criteria(criteria)
+
+        # Apply force_filter if it was a dict
+        if self.force_filter_dict:
+            self.expressions.extend(self._parse_criteria(self.force_filter_dict))
+
         return self
 
     def _parse_criteria(self, criteria):
@@ -547,10 +572,15 @@ class MongoFilter(MongoQueryHandlerBase):
     compile_statements = NotImplemented
 
     def alter_query(self, query, as_relation=None):
-        # when there's no expression, don't use Query.filter() at all,
-        # because it will put an ugly 'WHERE true' condition
-        if not self.expressions:
-            return query
+        # Only use Query.filter() when there is a self.expression,
+        # because an empty expression will put an ugly 'WHERE true' condition on the query,
+        # and we want it looking nice :)
+        if self.expressions:
+            query = query.filter(self.compile_statement())
 
-        # Set the condition
-        return query.filter(self.compile_statement())
+        # Apply force_filter if it was a callable
+        if self.force_filter_callable:
+            query = self.force_filter_callable(query, self.model, as_relation)
+
+        # Done
+        return query

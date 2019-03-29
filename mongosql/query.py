@@ -11,8 +11,6 @@ from .exc import InvalidQueryError
 from .util import QuerySettings
 
 
-# TODO: implement lambda-callables that can alter a query in an arbitrary way, even on join. Give it load and alias.
-
 class MongoQuery(object):
     """ MongoDB-style queries """
 
@@ -49,6 +47,7 @@ class MongoQuery(object):
                     aggregateable_columns=()
                     aggregate_labels=False
                 # filter
+                    force_filter=None
                     scalar_operators=None
                     array_operators=None
                 # join & joinf
