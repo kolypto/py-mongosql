@@ -473,6 +473,9 @@ class DotRelatedColumnsBag(ColumnsBag):
     def get_relationship_name(self, col_name):
         return _dot_notation(col_name)[0]
 
+    def get_related_column_name(self, col_name):
+        return _dot_notation(col_name)[1]
+
     def get_relationship(self, col_name):
         return self._rel_bag[self.get_relationship_name(col_name)]
 

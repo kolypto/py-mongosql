@@ -653,14 +653,14 @@ class MongoJoin(MongoQueryHandlerBase):
 
             Furthermore, if a relationship has already been loaded via input(),
             and it conflicts with the current relationship, you will get an error.
-            A 'conflict' is when either one of these relationships contains anything but 'join' or 'project',
-            because then they cannot be merged.
+            A 'conflict' is when either one of these relationships contains anything but 'project', 'sort', 'join',
+            because then they cannot be merged. Even with 'sort', only either of them may have it, but not both.
 
             :param relations: Relationships to load eagerly
             :type relations: dict | list
             :param quietly: Whether to include the new relations and projections quietly:
                 that is, without changing the results of `self.projection` and `self.pluck_instance()`.
-                See MongoQuery.merge() for more info.
+                See MongoQuery.ensure_loaded() for more info.
             :type quietly: bool
             :rtype: MongoJoin
             :raises InvalidQueryError: Conflicting query objects
@@ -672,10 +672,13 @@ class MongoJoin(MongoQueryHandlerBase):
         current_mjps = {mjp.relationship_name: mjp for mjp in self.mjps}
 
         # Helpers
-        merge_allowed_keys = {'project', 'join'}
+        merge_allowed_keys = {'project', 'join', 'sort'}
         is_mjp_simple = lambda mjp: mjp is None \
-                                   or not mjp.has_nested_query or \
-                                   set(mjp.query_object.keys()) <= merge_allowed_keys
+                                    or not mjp.has_nested_query or \
+                                    set(mjp.query_object.keys()) <= merge_allowed_keys
+        mjp_has_sort = lambda mjp: mjp is not None and \
+                                   mjp.has_nested_query and \
+                                   'sort' in mjp.query_object
 
         # Merge both dicts and MJPs
         for mjp in mjps:
@@ -695,18 +698,26 @@ class MongoJoin(MongoQueryHandlerBase):
             #
             # Therefore, to make sure that both requests are satisfied, we impose a limitation:
             # you can only merge two MJPs when neither of them contains:
-            #       filter, sort, group, aggregate, joinf, limit, count
+            #       filter, group, aggregate, joinf, limit, count
             # They can, however, contain:
-            #       project, join.
+            #       project, join. sort
+            #       sort: either, but not both
             if not is_mjp_simple(mjp):
-                raise InvalidQueryError(u"You can only merge() a simple relationship, limited to 'join' and 'project'; "
-                                        u"Your relationship '{}' is not simple."
+                raise InvalidQueryError(u"You can only merge() a simple relationship, "
+                                        u"whose Query Object is limited to 'project', 'sort', 'join'; "
+                                        u"Your relationship '{}' Query Object has more than that."
                                         .format(relation_name))
             if not is_mjp_simple(current_mjp):
-                raise InvalidQueryError(u"You can only merge() to simple relationships, limited to 'join' and 'project'; "
+                raise InvalidQueryError(u"You can only merge() to simple relationships, "
+                                        u"whose Query Objects is limited to 'project', 'sort', 'join'; "
                                         u"Relationship '{}' has already been loaded with advanced features. "
-                                        u"Cannot merge."
+                                        u"Cannot merge to it."
                                         .format(relation_name))
+            # if mjp_has_sort(mjp) and mjp_has_sort(current_mjp):
+            #     raise InvalidQueryError(u"You can only merge() when one of the Query Objects has 'sort', "
+            #                             u"but not both.")
+            if mjp_has_sort(mjp) and mjp_has_sort(current_mjp):
+                raise InvalidQueryError(u"Sorry, merge() does not support sorting yet.")
 
             # If there was no relationship - just add it
             if current_mjp is None:

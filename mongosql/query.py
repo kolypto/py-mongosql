@@ -284,6 +284,59 @@ class MongoQuery(object):
 
         return q
 
+    def ensure_loaded(self, *cols):
+        """ Ensure the given columns and relationships are loaded
+
+            Despite any projections and joins the user may be doing, make sure that the given `cols` are loaded.
+            This will ensure that every column is loaded, every relationship is joined, and none of those is included
+            into `projection` and `pluck_instance`.
+
+            This method is to be used by the application code to handle the following situation:
+            * The API user has requested only fields 'a', 'b', 'c' to be loaded
+            * The application code needs field 'd' for its operation
+            * The user does not want to see no 'd' in the output.
+            Solution: use ensure_loaded('d'), and then pluck_instance()
+
+            One limitation: if the user has requested filtering on a relationship, you can't use ensure_loaded() on it.
+            This method will raise an InvalidQueryError().
+            This makes sense, because if your application code relies on the presence of a certain relationship,
+            it certainly needs it fully loaded, and unfiltered.
+
+            If all you need is just to know whether something is loaded or not, use MongoQuery.__contains__() instead.
+
+            :param cols: Column names
+            :raises InvalidQueryError: cannot merge because the relationship has a filter on it
+            :raises ValueError: invalid column or relationship name given.
+                It does not throw `InvalidColumnError` because that's likely your error, not an error of the API user :)
+            :rtype: MongoQuery
+        """
+        # Tell columns and relationships apart
+        columns = []
+        relations = {}
+        for name in cols:
+            # Tell apart
+            if name in self._bags.related_columns:
+                # A related column will initialize a projection
+                relation_name, column_name = name.split('.', 1)
+                relations.setdefault(relation_name, {})
+                relations[relation_name].setdefault('project', {})
+                relations[relation_name]['project'][column_name] = 1
+            elif name in self._bags.relations:
+                # A relation will init an empty object
+                relations.setdefault(name, {})
+            elif name in self._bags.columns:
+                # A column will just be loaded
+                columns.append(name)
+            else:
+                raise ValueError(name)
+
+        # Load all them
+        self.handler_project.merge(columns, quietly=True)
+        self.handler_join.merge(relations, quietly=True)
+
+        # Done
+        return self
+
     def get_projection_tree(self):
         """ Get a projection-like dict that maps every included column to 1, and every relationship to a nested projection dict.
 

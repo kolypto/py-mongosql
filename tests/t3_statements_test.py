@@ -1218,7 +1218,27 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         sys.setrecursionlimit(old_recursion_limit)
 
+    def test_ensure_loaded(self):
+        """ Test MongoQuery.ensure_loaded() """
+        u = models.User
 
+        # === Test: columns, relationship
+        mq = u.mongoquery().query(
+            project=['name'],
+            filter={'age': {'$gt': 0}},
+            join={'articles': dict(project=['title'])}
+        )
+        mq.ensure_loaded('age', 'comments', 'articles.data')
+
+        self.assertEqual(mq.get_projection_tree(),
+                         {'name': 1,
+                          'age': 0,  # quietly
+                          'articles': {
+                              'title': 1,
+                              'data': 0  # quietly
+                          },
+                          # 'comments' not even mentioned
+                          })
 
     # region: Older tests
 

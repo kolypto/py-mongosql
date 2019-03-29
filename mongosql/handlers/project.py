@@ -87,6 +87,11 @@ class MongoProject(MongoQueryHandlerBase):
         if self.force_exclude:
             self.validate_properties(self.force_exclude, where='project:force_exclude')
 
+    def __copy__(self):
+        obj = super(MongoProject, self).__copy__()
+        obj.quietly_included = obj.quietly_included.copy()
+        return obj
+
     def _get_supported_bags(self):
         return CombinedBag(
             col=self.bags.columns,
