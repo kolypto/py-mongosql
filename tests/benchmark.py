@@ -14,7 +14,7 @@ class timer(object):
         return self
 
 # Take the scariest query with joins, and execute it many times over
-N_QUERIES = 1000
+N_QUERIES = 100
 
 
 for big_db in (False, True):
@@ -28,11 +28,37 @@ for big_db in (False, True):
         engine, Session = get_working_db_for_tests()
 
     # Session
-    print('Starting benchmarks....')
     ssn = Session()
 
+    # Test sqlalchemy: joinedload
+    from sqlalchemy.orm import joinedload, selectinload
+    from mongosql import selectinquery
+
+    joinedload_timer = timer()
+    for i in range(N_QUERIES):
+        q = ssn.query(User).options(joinedload(User.articles).joinedload(Article.comments))
+        list(q.all())
+    joinedload_timer.stop()
+    print(f'SqlAlchemy, joinedload: {joinedload_timer.total:.02f}s')
+
+    selectinload_timer = timer()
+    for i in range(N_QUERIES):
+        q = ssn.query(User).options(selectinload(User.articles).selectinload(Article.comments))
+        list(q.all())
+    selectinload_timer.stop()
+    print(f'SqlAlchemy, selectinload: {selectinload_timer.total:.02f}s')
+
+    selectinquery_timer = timer()
+    for i in range(N_QUERIES):
+        q = ssn.query(User).options(selectinquery(User.articles, lambda q, **kw: q).selectinquery(Article.comments, lambda q, **kw: q))
+        list(q.all())
+    selectinquery_timer.stop()
+    print(f'SqlAlchemy, selectinquery: {selectinquery_timer.total:.02f}s')
+
+    # Test sqlalchemy: selectinload
+
     # The benchmark itself
-    for selectinquery_enabled in (True, False):
+    for selectinquery_enabled in (False, True):
         # Enable/Disable selectinquery()
         MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = selectinquery_enabled
 
@@ -56,15 +82,13 @@ for big_db in (False, True):
 
         sqlalchemy_timer = timer()
         for q in qs:
-            list(list(
-                list(a.comments) for a in u.articles
-            ) for u in q.all())  # load all, force sqlalchemy to process every row
+            list(q.all())  # load all, force sqlalchemy to process every row
         sqlalchemy_timer.stop()
         total_timer.stop()
 
         ms_per_query = total_timer.total / N_QUERIES * 1000
 
-        print(f'{"with" if selectinquery_enabled else "without"} selectinquery: {total_timer.total:0.2f}s '
+        print(f'MongoSql, {"selectinquery" if selectinquery_enabled else "left join"}: {total_timer.total:0.2f}s '
               f'(mongosql: {mongosql_timer.total:0.2f}s, sqlalchemy: {sqlalchemy_timer.total:0.2f}s), {ms_per_query:.02f}ms/query')
 
 # Current run time with 3000 queries, Python 3.7
