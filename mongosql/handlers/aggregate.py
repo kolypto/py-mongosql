@@ -164,26 +164,26 @@ class MongoAggregate(MongoQueryHandlerBase):
 
     query_object_section_name = 'aggregate'
 
-    def __init__(self, model, aggregateable_columns=(), aggregate_labels=False):
+    def __init__(self, model, aggregate_columns=(), aggregate_labels=False):
         """ Init aggregation
 
         :param model: Model
-        :param aggregateable_columns: list of columns for which aggregation is enabled
-        :type aggregateable_columns: list[str]
+        :param aggregate_columns: list of columns for which aggregation is enabled
+        :type aggregate_columns: list[str]
         :param aggregate_labels: whether labelling columns is enabled
         :type aggregate_labels: bool
         """
         super(MongoAggregate, self).__init__(model)
 
         # Security
-        self.aggregateable_columns = set(aggregateable_columns)
+        self.aggregate_columns = set(aggregate_columns)
         self.aggregate_labels = aggregate_labels
 
         # On input
         self.agg_spec = None
 
         # Validation
-        self.validate_properties(self.aggregateable_columns, where='aggregate:aggregateable_columns')
+        self.validate_properties(self.aggregate_columns, where='aggregate:aggregate_columns')
 
         # We expect a mongoquery here
         self._mongofilter = None
@@ -199,7 +199,7 @@ class MongoAggregate(MongoQueryHandlerBase):
         )
 
     def _get_column_insecurely(self, column_name, for_label=False):
-        """ Get a column. Insecurely. Disrespect self.aggregateable_columns """
+        """ Get a column. Insecurely. Disrespect self.aggregate_columns """
         try:
             bag_name, bag, column = self.supported_bags[column_name]
             return column
@@ -207,14 +207,19 @@ class MongoAggregate(MongoQueryHandlerBase):
             raise InvalidColumnError(self.bags.model, column_name, 'aggregate')
 
     def _get_column_securely(self, column_name, for_label=False):
-        """ Get a column. Securely. Respect self.aggregateable_columns """
+        """ Get a column. Securely. Respect self.aggregate_columns """
+        # Get the column
         column = self._get_column_insecurely(column_name, for_label)
-        if column_name not in self.aggregateable_columns:
+
+        # Now test whether it's allowed
+        if column_name not in self.aggregate_columns:
             raise DisabledError('Aggregate: aggregation is disabled for column `{}`'
                                 .format(column_name))
         if for_label and not self.aggregate_labels:
             raise DisabledError('Aggregate: labelling is disabled for column `{}`'
                                 .format(column_name))
+
+        # Done
         return column
 
     def input(self, agg_spec):

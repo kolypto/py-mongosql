@@ -388,10 +388,11 @@ class MongoJoin(MongoQueryHandlerBase):
         # Check the Query Object
         for unsupported in ('aggregate', 'group'):
             if unsupported in mjp.query_object:
-                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries'
-                                        .format(unsupported))
+                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries (relationship={}, strategy={})'
+                                        .format(unsupported, mjp.relationship_name, mjp.loading_strategy))
         if 'skip' in mjp.query_object or 'limit' in mjp.query_object:
-            raise InvalidQueryError('MongoSQL does not support `skip` or `limit` for this kind of `join`')
+            raise InvalidQueryError('MongoSQL does not support `skip` or `limit` for this kind of `join` (relationship={}, strategy={})'
+                                    .format(mjp.relationship_name, mjp.loading_strategy))
 
         # If our source model is aliased, we have to use its alias in the query
         # self.model is that very thing: it's aliased, if we're aliased()
@@ -577,8 +578,8 @@ class MongoJoin(MongoQueryHandlerBase):
         # Check the Query Object
         for unsupported in ('aggregate', 'group'):
             if unsupported in mjp.query_object:
-                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries'
-                                        .format(unsupported))
+                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries (relationship={}, strategy={})'
+                                        .format(unsupported, mjp.relationship_name, mjp.loading_strategy))
 
         # It's not being loaded as a relation anymore ; it' loaded in a separate query.
         # Thus, we need it un-aliased().

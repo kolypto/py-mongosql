@@ -44,7 +44,7 @@ class MongoQuery(object):
                 # project & join & joinf
                     raiseload=False
                 # aggregate
-                    aggregateable_columns=()
+                    aggregate_columns=()
                     aggregate_labels=False
                 # filter
                     force_filter=None
@@ -145,6 +145,11 @@ class MongoQuery(object):
         :type query: sqlalchemy.orm.Query
         """
         self._query = query
+        return self
+
+    def with_session(self, ssn):
+        """ Query with the given sqlalchemy Session """
+        self._query = self._from_query().with_session(ssn)
         return self
 
     def as_relation(self, join_path=None):
@@ -251,7 +256,8 @@ class MongoQuery(object):
             raise InvalidQueryError(u'Unknown Query Object operations: {}'.format(', '.join(invalid_keys)))
 
         # Bind every handler with ourselves
-        # We do it as a separate step because some handlers want other handlers in a pristine condition
+        # We do it as a separate step because some handlers want other handlers in a pristine condition.
+        # Namely, MongoAggregate wants to copy MongoFilter before it receives any input.
         for handler_name, handler in self._handlers():
             handler.with_mongoquery(self)
 

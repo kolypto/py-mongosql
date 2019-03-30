@@ -42,6 +42,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # Specific tests that expect selectinquery(), will declare it explicitly
         handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = False
 
+    @classmethod
+    def tearDownClass(cls):
+        # Restore to the original value
+        handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = True
+
     def test_sa_mongoquery_reused(self):
         """ Test that MongoSqlBase.mongoquery() gives us a fresh object every time """
         # === Test: copy(MongoQuery) gives a different object
@@ -405,7 +410,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # Configure MongoQuery
         mq = MongoQuery(m, dict(
-            aggregateable_columns=('age',),
+            aggregate_columns=('age',),
             aggregate_labels=True,
         ))
 
@@ -796,7 +801,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         )
 
         user_settings = dict(
-            aggregateable_columns=('age',),  # can aggregate on this column
+            aggregate_columns=('age',),  # can aggregate on this column
             force_include=('name',),  # 'name' is always included
             banned_relations=('roles',),  # a relation is banned
             force_filter={'age': {'$gte': 18}},  # whatever you do, you can only get older users
@@ -857,7 +862,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         mq = a_mq.query(join=('user',))
         self.assertQuery(mq.end(), 'LEFT OUTER JOIN u')  # joined
 
-        # === Test: Article: user: aggregateable_columns
+        # === Test: Article: user: aggregate_columns
         # can't test: joins don't support aggregation yet
 
         # === Test: Article: user:  force_include
