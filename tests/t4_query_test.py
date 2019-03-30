@@ -11,7 +11,7 @@ class QueryTest(unittest.TestCase):
     """ Test MongoQuery """
 
     # TODO: test raiseload
-    # TODO: test plucking + aggregate
+    # TODO: test plucking
 
     def setUp(self):  # TODO: setUpClass
         # Init db

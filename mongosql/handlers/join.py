@@ -386,10 +386,12 @@ class MongoJoin(MongoQueryHandlerBase):
             :type mjp: MongoJoinParams
         """
         # Check the Query Object
-        for unsupported in ('aggregate', 'group', 'skip', 'limit'):
+        for unsupported in ('aggregate', 'group'):
             if unsupported in mjp.query_object:
                 raise InvalidQueryError('MongoSQL does not support `{}` for joined queries'
                                         .format(unsupported))
+        if 'skip' in mjp.query_object or 'limit' in mjp.query_object:
+            raise InvalidQueryError('MongoSQL does not support `skip` or `limit` for this kind of `join`')
 
         # If our source model is aliased, we have to use its alias in the query
         # self.model is that very thing: it's aliased, if we're aliased()
@@ -541,7 +543,7 @@ class MongoJoin(MongoQueryHandlerBase):
         # Check the Query Object
         for unsupported in ('aggregate', 'group', 'skip', 'limit'):
             if unsupported in mjp.query_object:
-                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries'
+                raise InvalidQueryError('MongoSQL does not support `{}` for queries joined with `joinf`'
                                         .format(unsupported))
 
         # JOIN
@@ -573,15 +575,24 @@ class MongoJoin(MongoQueryHandlerBase):
             :type mjp: MongoJoinParams
         """
         # Check the Query Object
-        for unsupported in ('aggregate', 'group', 'skip', 'limit'):
+        for unsupported in ('aggregate', 'group'):
             if unsupported in mjp.query_object:
                 raise InvalidQueryError('MongoSQL does not support `{}` for joined queries'
                                         .format(unsupported))
-        # TODO: perhaps, I can use postgresql's window functions to implement limits?
 
         # It's not being loaded as a relation anymore ; it' loaded in a separate query.
         # Thus, we need it un-aliased().
         nested_mq = mjp.nested_mongoquery
+
+        # Prepare the loader option
+
+        # Tell the nested MongoLimit handler that it has to apply a smart limit to the query.
+        # It has to use a window function over a partition groped by the foreign key.
+        # Therefore, it has to know which foreign key to use.
+        # Get the list of foreign key columns for this relationship
+        relation_fk = mjp.relationship.property.remote_side
+        # Give them to the MongoLimit handler
+        nested_mq.handler_limit.limit_groups_over_columns(relation_fk)
 
         # Just set the option. That's it :)
         return query.options(

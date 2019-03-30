@@ -1243,6 +1243,118 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         sys.setrecursionlimit(old_recursion_limit)
 
+    @unittest.skipIf(SA_12, 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently')
+    def test_selectinquery_join_skip_limit(self):
+        """ Test join + skip/limit
+
+            This is an experimental method that only works with PostgreSQL and uses window functions
+        """
+        u = models.User
+
+        engine = self.engine
+        ssn = self.Session()
+
+        # Enable it, because setUp() has disabled it.
+        handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = True
+
+        # === Test: joined one-to-many, LIMIT
+        with QueryLogger(engine) as ql:
+            mq = u.mongoquery(ssn).query(project=('id',),
+                                         join={'articles': dict(project=('id', 'uid'),
+                                                                sort=('id-',),
+                                                                limit=1)},
+                                         sort=('id-',),
+                                         limit=2)
+            res = mq.end().all()
+
+            self.assertQuery(ql[0],
+                             'FROM u',
+                             'ORDER BY u.id DESC',
+                             # Outer query: limit as usual
+                             'LIMIT 2')
+
+            self.assertQuery(ql[1],
+                             # Rows in a window are numbered ; ordering is applied
+                             'row_number() OVER (PARTITION BY a.uid ORDER BY a.id DESC) AS group_row_n',
+                             # Limit works through an outside condition
+                             'WHERE group_row_n <= 1',
+                             )
+            self.assertNotIn('LIMIT', ql[1])
+
+            self.assertEqual(list(map(mq.pluck_instance, res)),
+                             [{'id': 3, 'articles': [{'id': 30, 'uid': 3}]},
+                              {'id': 2, 'articles': [{'id': 21, 'uid': 2}]}])
+
+        # === Test: joined one-to-many, SKIP + LIMIT
+        with QueryLogger(engine) as ql:
+            mq = u.mongoquery(ssn).query(project=('id',),
+                                         join={'articles': dict(project=('id', 'uid'),
+                                                                sort=('id-',),
+                                                                skip=1,
+                                                                limit=1)},
+                                         sort=('id-',),
+                                         skip=1,
+                                         limit=2)
+            res = mq.end().all()
+
+            self.assertQuery(ql[0],
+                             'FROM u',
+                             'ORDER BY u.id DESC',
+                             # Outer query: limit & offset as usual
+                             'LIMIT 2 OFFSET 1')
+
+            self.assertQuery(ql[1],
+                             # Limit & skip work through a condition
+                             'WHERE group_row_n > 1 AND group_row_n <= 2',
+                             )
+
+            self.assertEqual(list(map(mq.pluck_instance, res)),
+                             [{'id': 2, 'articles': [{'id': 21, 'uid': 2}]},
+                              {'id': 1, 'articles': [{'id': 11, 'uid': 1}]}])
+
+        # === Test: join + join, limits everywhere
+        # This test will join 2 relationships to a limited query:
+        # 1. 'comments', which will be laoded with selectinload()
+        # 2. 'user', which will be loaded with a left join
+        # Both are supposed to work fine, despite MongoLimit wrapping everything into a from_self() subquery
+        with QueryLogger(engine) as ql:
+            mq = u.mongoquery(ssn).query(project=('id',),
+                                         join={'articles': dict(project=('id', 'uid'),
+                                                                join={
+                                                                    # one-to-many: using selectinquery()
+                                                                    'comments': dict(project=('id', 'aid'),
+                                                                                     sort=('id-',),
+                                                                                     limit=1),
+                                                                    # one-to-one: using left join
+                                                                    'user': dict(project=('id',),)},
+                                                                sort=('id-',),
+                                                                limit=1)},
+                                         sort=('id-',),
+                                         limit=2)
+            res = mq.end().all()
+
+            self.assertQuery(ql[1],
+                             # Rows in a window are numbered ; ordering is applied
+                             'row_number() OVER (PARTITION BY a.uid ORDER BY a.id DESC) AS group_row_n',
+                             # Limit works through an outside condition
+                             'WHERE group_row_n <= 1',
+                             # Joined users, properly aliased
+                             'LEFT OUTER JOIN u AS u_1 ON u_1.id = anon_1.a_uid',
+                             )
+
+            self.assertQuery(ql[2],
+                             # Rows numbered
+                             'row_number() OVER (PARTITION BY c.aid ORDER BY c.id DESC) AS group_row_n',
+                             # Limit with a condition
+                             'WHERE group_row_n <= 1',
+                             )
+            from pprint import pprint
+            pprint(list(map(mq.pluck_instance, res)))
+            self.assertEqual(list(map(mq.pluck_instance, res)), [
+                {'id': 3, 'articles': [{'id': 30, 'uid': 3, 'user': {'id': 3}, 'comments': []}]},
+                {'id': 2, 'articles': [{'id': 21, 'uid': 2, 'user': {'id': 2}, 'comments': [{'aid': 21, 'id': 108}]}]},
+            ])
+
     def test_ensure_loaded(self):
         """ Test MongoQuery.ensure_loaded() """
         u = models.User

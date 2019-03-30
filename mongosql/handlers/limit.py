@@ -1,5 +1,9 @@
 from __future__ import absolute_import
 
+from sqlalchemy import inspect
+from sqlalchemy.orm import aliased
+from sqlalchemy.sql import func, literal_column
+
 from .base import MongoQueryHandlerBase
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
@@ -29,6 +33,10 @@ class MongoLimit(MongoQueryHandlerBase):
         # On input
         self.skip = None
         self.limit = None
+
+        # Internal
+        # List of columns to group results with (in order to import a limit per group)
+        self._window_over_columns = None
 
     def input_prepare_query_object(self, query_object):
         """ Alter Query Object
@@ -84,12 +92,90 @@ class MongoLimit(MongoQueryHandlerBase):
     compile_statement = NotImplemented
     compile_statements = NotImplemented
 
+    def limit_groups_over_columns(self, fk_columns):
+        """ Instead of the usual limit, use a window function over the given columns.
+
+        Instead of using LIMIT, LimitHandler will group rows over `fk_columns`, and impose a limit per group.
+        This is used to load related models with selectinquery(), where you can now put a limit per group:
+        that is, a limit on the number of related entities per primary entity.
+
+        This is achieved using a Window Function:
+
+            SELECT *, row_number() OVER(PARTITION BY author_id) AS group_row_n
+            FROM articles
+            WHERE group_row_name < 10
+
+            This will result in the following table:
+
+            id  |   author_id   |   group_row_n
+            ------------------------------------
+            1       1               1
+            2       1               2
+            3       2               1
+            4       2               2
+            5       2               3
+            6       3               1
+            7       3               2
+
+            That's what window functions do: they work like aggregate functions, but they don't group rows.
+
+        :param fk_columns: List of foreign key columns to group with
+        """
+        # Adaptation not needed, because this method is never used with aliases
+        # pa_insp = inspect(self.model)
+        # fk_columns = [col.adapt_to_entity(pa_insp) for col in fk_columns]
+        assert not inspect(self.model).is_aliased_class, "Cannot be used with aliases; not implemented yet (because nobody needs it anyway!)"
+
+        self._window_over_columns = fk_columns
+
     def alter_query(self, query, as_relation=None):
         """ Apply offset() and limit() to the query """
-        if self.skip:
-            query = query.offset(self.skip)
-        if self.limit:
-            query = query.limit(self.limit)
+        if not self._window_over_columns:
+            # Use the regular skip/limit
+            if self.skip:
+                query = query.offset(self.skip)
+            if self.limit:
+                query = query.limit(self.limit)
+        else:
+            # Use a window function
+            return self._limit_using_window_function(query)
+
+        return query
+
+    def _limit_using_window_function(self, query):
+        """ Apply a limit using a window function
+
+            This approach enables us to limit the number of eagerly loaded related entities
+        """
+        # Only do it when there is a limit
+        if self.skip or self.limit:
+            # First, add a row counter:
+            query = query.add_columns(
+                # for every group, count the rows with row_number().
+                func.row_number().over(
+                    # Groups are partitioned by self._window_over_columns,
+                    partition_by=self._window_over_columns,
+                    # We have to apply the same ordering from the outside query;
+                    # otherwise, the numbering will be undetermined
+                    order_by=self.mongoquery.handler_sort.compile_columns()
+                ).label('group_row_n')  # give it a name that we can use later
+            )
+
+            # Now, make ourselves into a subquery
+            query = query.from_self()
+
+            # Well, it turns out that subsequent joins somehow work.
+            # I have no idea how, but they do.
+            # Otherwise, we would have had to ban using 'joins' after 'limit' in nested queries.
+
+            # And apply the LIMIT condition using row numbers
+            # These two statements simulate skip/limit using window functions
+            if self.skip:
+                query = query.filter(literal_column('group_row_n') > self.skip)
+            if self.limit:
+                query = query.filter(literal_column('group_row_n') <= ((self.skip or 0) + self.limit))
+
+        # Done
         return query
 
 

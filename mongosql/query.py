@@ -455,8 +455,10 @@ class MongoQuery(object):
             #    without any clauses like WHERE, ORDER BY, GROUP BY
             # 4. 'sort' before 'join'
             #    Because join makes a subquery, and it has to contain ordering within it.
-            # 5. 'count' after everything
-            #    Because it will wrap everything into a subquery, and count the results
+            # 5. 'limit' after everything
+            #    Because it will wrap everything into a subquery, which has a different name.
+            #    However, 'join' and 'joinf' somehow manage to handle the situation, so the requirement is restated:
+            #    "after everything", but can be before "join".
             # *. There may be others that the author is not aware of... yet.
             ('project', self.handler_project),
             ('aggregate', self.handler_aggregate),
