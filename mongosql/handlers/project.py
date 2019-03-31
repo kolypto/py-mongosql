@@ -288,6 +288,9 @@ class MongoProject(MongoQueryHandlerBase):
         if self.raiseload:
             ret.append(as_relation.raiseload_col('*'))
 
+            # Undefer PKs (otherwise, raiseload_col() will get them)
+            ret.append(as_relation.undefer(*(column for name, column in self.bags.pk)))
+
         # done
         return ret
 

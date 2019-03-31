@@ -105,15 +105,16 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
     def test_project(self):
         """ Test project() """
-        m = models.User
+        mq = Reusable(MongoQuery(models.User))
 
-        project = lambda projection: m.mongoquery().query(project=projection)
+        project = lambda projection: mq.query(project=projection)
 
-        def test_projection(projection, expected_columns):
+        def test_projection(projection, expected_columns, project_func=project):
             """ Test a projection object and see if the resulting SQL query has the expected columns """
             # MongoSQL query done
             mq = project(projection)  # type: mongosql.MongoQuery
             query = mq.end()
+
             # Test query
             try: test_query(query, expected_columns)
             except:
@@ -168,6 +169,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         test_projection(['name'], ('id', 'name'))
         test_projection({'name': 1}, ('id', 'name'))
         test_projection({'id': 0}, ('id', 'name', 'tags', 'age'))
+
+        # BUG: With raiseload=True, it was possible to exclude a PK from projection
+        test_projection(['name'], ('id', 'name'), project_func=lambda p: MongoQuery(models.User, dict(raiseload=True)).query(project=p))
 
     def test_get_project(self):
         # Previously, MongoQuery has a method, get_project(), which allowed to export projections from the query.
@@ -507,13 +511,6 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          'FROM u LEFT OUTER JOIN a AS a_1 ON u.id = a_1.uid AND a_1.theme = sci-fi',
                          # Filter
                          'WHERE u.age > 18) AS anon_1')
-
-    @unittest.skip('Not implemented yet')
-    def test_undefer_load(self):
-        pass
-        # TODO: test how to explicitly undefer() a number of columns and relationships your code needs.
-        #   With relationships, it should also check whether the relationship has a LIMIT or a filter on it
-        #   (because then it's likely invalid for the custom code)
 
     # ---------- DREADED JOIN LINE ----------
     # Everything below this line is about joins.

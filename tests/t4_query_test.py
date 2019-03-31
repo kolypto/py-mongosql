@@ -1,9 +1,13 @@
 import unittest
+
 from sqlalchemy import inspect
+from sqlalchemy.orm import Load
 
 from mongosql import Reusable, MongoQuery
 
+from . import t_raiseload_col_test
 from . import models
+from .util import ExpectedQueryCounter
 
 
 row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
@@ -12,8 +16,8 @@ row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
 class QueryTest(unittest.TestCase):
     """ Test MongoQuery """
 
-    # TODO: test raiseload
-    # TODO: test plucking
+    # Enable SQL query logging
+    SQL_LOGGING = False
 
     @classmethod
     def setUpClass(cls):
@@ -24,7 +28,7 @@ class QueryTest(unittest.TestCase):
         # Logging
         import logging
         logging.basicConfig(level=logging.DEBUG)
-        logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)  # TODO: change to INFO
+        logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO if cls.SQL_LOGGING else logging.ERROR)
 
     def test_projection(self):
         """ Test project() """
@@ -206,3 +210,126 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(row2dict(row), {'high': 3, 'max_rating': 6, 'a_is_none': 2})
 
         # Aggregate & Group
+
+    assertRaiseloadWorked = t_raiseload_col_test.RaiseloadColTest.assertRaiseloadWorked  # reuse
+
+    def test_raise(self):
+        # Prepare settings
+        user_settings = dict(
+            raiseload=True,
+            related={
+                'articles': lambda: article_settings,
+                'comments': lambda: comment_settings,
+            }
+        )
+        article_settings = dict(
+            raiseload=True,
+            related={
+                'user': lambda: user_settings,
+                'comments': lambda: comment_settings,
+            }
+        )
+        comment_settings = dict(
+            raiseload=True,
+            related={
+                'user': lambda: user_settings,
+                'article': lambda: article_settings
+            }
+        )
+
+        # Prepare MongoQuery
+        engine = self.engine
+
+        mq_user = Reusable(MongoQuery(models.User, user_settings))
+        mq_article = Reusable(MongoQuery(models.Article, article_settings))
+        mq_comment = Reusable(MongoQuery(models.Comment, comment_settings))
+
+        # === Test: User: no projections (all columns), no joins
+        ssn = self.Session()
+        user = mq_user.query().with_session(ssn).end().first()
+        self.assertRaiseloadWorked(
+            user,
+            loaded={'id', 'name', 'age'},
+            raiseloaded={'articles', 'comments', 'roles'},
+            unloaded={}
+        )
+
+        # === Test: User, projection
+        ssn = self.Session()
+        user = mq_user.query(project=('name',)).with_session(ssn).end().first()
+        self.assertRaiseloadWorked(
+            user,
+            loaded={'id', 'name'},  # PK is loaded
+            raiseloaded={'age', 'tags',  # can't use these columns now
+                         'articles', 'comments', 'roles'},
+            unloaded={}
+        )
+
+        # === Test: User, projection + join Article
+        ssn = self.Session()
+        user = mq_user.query(project=('name',),
+                             join=('articles',)).with_session(ssn).end().first()
+
+        self.assertRaiseloadWorked(
+            user,
+            loaded={'id', 'name',  # PK is loaded
+                        'articles',  # can use it now
+                    },
+            raiseloaded={'age', 'tags',
+                         'comments', 'roles'},
+            unloaded={}
+        )
+
+        article = user.articles[0]
+        self.assertRaiseloadWorked(
+            article,
+            loaded={'id', 'uid', 'title', 'theme', 'data'},
+            raiseloaded={'user', 'comments'},
+            unloaded={}
+        )
+
+        # === Test: User, projection + join Article: projection
+        ssn = self.Session()
+        user = mq_user.query(project=('name',),
+                             join={'articles': dict(project=('title',))}).with_session(ssn).end().first()
+
+        user  # don't test user again ; it's pretty clear
+
+        article = user.articles[0]
+        self.assertRaiseloadWorked(
+            article,
+            loaded={'id', 'title',  # PK loaded
+                    },
+            raiseloaded={'uid', 'theme', 'data',  # columns raiseloaded
+                         'user', 'comments'},
+            unloaded={}
+        )
+
+        # === Test: User, projection + join Article: projection + join Comment: projection
+        ssn = self.Session()
+        user = mq_user.query(project=('name',),
+                             join={'articles': dict(project=('title',),
+                                                    join={'comments': dict(project=('text',),
+                                                                           join=('user',))})})\
+            .with_session(ssn).end().first()
+
+        article = user.articles[0]
+        self.assertRaiseloadWorked(
+            article,
+            loaded={'id', 'title',  # PK loaded
+                    'comments',  # relationship loaded
+                    },
+            raiseloaded={'uid', 'theme', 'data',  # columns raiseloaded
+                         'user'},
+            unloaded={}
+        )
+
+        comment = article.comments[0]
+        self.assertRaiseloadWorked(
+            comment,
+            loaded={'id', 'text',  # PK loaded
+                    'user'},
+            raiseloaded={'aid', 'uid',  # columns raiseloaded
+                         'article'},
+            unloaded={}
+        )

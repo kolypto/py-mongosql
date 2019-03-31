@@ -27,39 +27,6 @@ def q2sql(q):
     return stmt2sql(q.statement)
 
 
-class QueryLogger(list):
-    """ Log raw SQL queries on the given engine """
-
-    def __init__(self, engine):
-        super(QueryLogger, self).__init__()
-        self.engine = engine
-
-    # Logging
-
-    def _after_cursor_execute_event_handler(self, **kw):
-        # Compile, append
-        self.append(_insert_query_params(kw['statement'], kw['parameters'], kw['context']))
-
-    def start_logging(self):
-        event.listen(self.engine, "after_cursor_execute", self._after_cursor_execute_event_handler, named=True)
-
-    def stop_logging(self):
-        event.remove(self.engine, "after_cursor_execute", self._after_cursor_execute_event_handler)
-
-    # Context manager
-
-    def __enter__(self):
-        self.start_logging()
-        return self
-
-    def __exit__(self, *exc):
-        self.stop_logging()
-        if exc != (None, None, None):
-            for i, q in enumerate(self):
-                print('='*5, ' Query #{}'.format(i))
-                print(q)
-        return False
-
 
 class TestQueryStringsMixin(object):
     """ unittest mixin that will help testing query strings """
@@ -133,4 +100,71 @@ class TestQueryStringsMixin(object):
         except:
             print(qs)
             raise
+
+
+
+class QueryCounter(object):
+    """ Counts the number of queries """
+
+    def __init__(self, engine):
+        super(QueryCounter, self).__init__()
+        self.engine = engine
+        self.n = 0
+
+    def start_logging(self):
+        event.listen(self.engine, "after_cursor_execute", self._after_cursor_execute_event_handler, named=True)
+
+    def stop_logging(self):
+        event.remove(self.engine, "after_cursor_execute", self._after_cursor_execute_event_handler)
+        self._done()
+
+    def _done(self):
+        """ Handler executed when logging is stopped """
+
+    def _after_cursor_execute_event_handler(self, **kw):
+        self.n += 1
+
+    def print(self):
+        pass  # nothing to do
+
+    # Context manager
+
+    def __enter__(self):
+        self.start_logging()
+        return self
+
+    def __exit__(self, *exc):
+        self.stop_logging()
+        if exc != (None, None, None):
+            self.print()
+        return False
+
+
+class QueryLogger(QueryCounter, list):
+    """ Log raw SQL queries on the given engine """
+
+    def _after_cursor_execute_event_handler(self, **kw):
+        super(QueryLogger, self)._after_cursor_execute_event_handler()
+        # Compile, append
+        self.append(_insert_query_params(kw['statement'], kw['parameters'], kw['context']))
+
+    def print(self):
+        for i, q in enumerate(self):
+            print('=' * 5, ' Query #{}'.format(i))
+            print(q)
+
+
+class ExpectedQueryCounter(QueryLogger):
+    """ A QueryLogger that expects a certain number of queries, raises an error otherwise """
+
+    def __init__(self, engine, expected_queries, comment):
+        super(ExpectedQueryCounter, self).__init__(engine)
+        self.expected_queries = expected_queries
+        self.comment = comment
+
+    def _done(self):
+        if self.n != self.expected_queries:
+            self.print()
+            raise AssertionError('{} (expected {} queries, actually had {})'
+                                 .format(self.comment, self.expected_queries, self.n))
 

@@ -1,9 +1,18 @@
+from sqlalchemy.orm.path_registry import EntityRegistry
 from sqlalchemy.orm.strategy_options import loader_option, _UnboundLoad, sa_exc
 from sqlalchemy.orm.strategies import properties, LoaderStrategy
 
 
 @loader_option()
 def raiseload_col(loadopt, *attrs):
+    # Note that if a PK is not undefer()ed, it will be raiseload_col()ed!
+    # And that's alright, because this is how defer() works: no failsafe mechanism at all.
+
+    # In case you want to undefer() PKs manually right here,
+    # try to experiment with this thingie:
+    # cloned.undefer(*(c.key for c in loadopt.path.entity.primary_key))
+    # See the source code for load_only() for more info.
+
     return loadopt.set_column_strategy(
         attrs, {"raiseload_col": True}
     )

@@ -180,7 +180,7 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Put a raiseload() on every other relationship!
         if self.raiseload:
-            as_relation.raiseload('*')
+            query = query.options(as_relation.raiseload('*'))
 
         return query
 
