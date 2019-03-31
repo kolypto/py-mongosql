@@ -1,11 +1,14 @@
 from __future__ import absolute_import
 
+import weakref
+from copy import copy, deepcopy
 from sqlalchemy import inspect
-from sqlalchemy.orm.util import object_state
+from sqlalchemy import event
+from sqlalchemy.orm import Session
 from sqlalchemy.orm.base import DEFAULT_STATE_ATTR
-import copy
-
 from sqlalchemy.orm.state import InstanceState
+
+from mongosql.bag import ModelPropertyBags
 
 
 class ModelHistoryProxy(object):
@@ -30,37 +33,83 @@ class ModelHistoryProxy(object):
     """
 
     def __init__(self, instance):
-        # First, save the information that we'll definitely need
-        self.__instance = instance  # the object
-        self.__inspect = inspect(instance)  # its inspection info
-        self.__relations = frozenset(self.__inspect.mapper.relationships.keys())  # relationship names
+        # Save the information that we'll definitely need
+        self.__instance = instance
+        self.__model = self.__instance.__class__
+        self.__bags = ModelPropertyBags.for_model(self.__model)  # type: ModelPropertyBags
+        self.__inspect = inspect(instance)  # type: InstanceState
+        self.__ssn = Session.object_session(instance)  # type: Session
 
-        self.__copy_instance_to(instance)
-        # TODO: Introduce two modes to MongoSQL: explicit eager-loading (only those excplicitly
-        #  specified, with raiseload() or noload() on everything else),
-        #  or an "i-agree-that-it-will-be-slow", in which case this object also takes the slow
-        #  and painful path.
+        # When Session.flush() is called, all history is reset.
+        # We have to handle this situation: install a handler that will rescue the history just before it gets erased
+        # It's important to have it *fire only once*: otherwise it will destroy the history it was supposed to save.
+        event.listen(self.__ssn, "before_flush", weakref(self.__before_history_is_destroyed), named=True, once=True)
 
-    def __copy_instance_to(self, instance):
+        # Composite types are mutable, and our history won't be able to detect it.
+        # Copy them onto ourselves anyway so that we can retain a copy
+        self.__copy_mutable_fields_from_instance(instance)
+
+        # Enable accessing relationships through our proxy
+        self.__install_instance_state(instance)
+
+    def __before_history_is_destroyed(self, session, flush_context, instances):
+        """ Rescue the situation when the attribute history is about to be destroyed """
+        self.__copy_from_instance(self.__instance)
+
+    def __copy_mutable_fields_from_instance(self, instance):
+        """ Copy mutable values onto `self` """
+        # TODO: maybe we don't have to copy them, but can somehow track the changes?
+        #   Maybe, this will help? https://docs.sqlalchemy.org/en/latest/orm/extensions/mutable.html#api-reference
+        columns = self.__bags.columns
+
+        # JSON and ARRAY columns
+        mutable_columns = [column_name
+                           for column_name in columns.names
+                           if columns.is_column_json(column_name) or columns.is_column_array(column_name)]
+
+        # Copy columns
+        self.__copy_columns_from_instance(instance, mutable_columns)
+
+    def __copy_from_instance(self, instance):
         """ Copy all attributes of `instance` to `self`
 
-        Alright, this code renders the whole point of having ModelHistory void.
+        Alright, this code renders the whole point of having ModelHistoryProxy void.
         There is an issue with model history:
-        "Each time the Session is flushed, the history of each attribute is reset to empty.
-         The Session by default autoflushes each time a Query is invoked"
+
+            "Each time the Session is flushed, the history of each attribute is reset to empty.
+             The Session by default autoflushes each time a Query is invoked"
+             https://docs.sqlalchemy.org/en/latest/orm/internals.html#sqlalchemy.orm.state.AttributeState.history
+
         This means that as soon as you load a relationship, model history is reset.
         To solve this, we have to make a copy of this model.
         All attributes are set on `self`, so accessing `self.attr` will not trigger `__getattr__()`
         """
-        # Copy all values onto `self`
-        for key, val in self.__inspect.attrs.items():
-            if key not in self.__relations:  # skip relationships
-                # Get the historical value
-                # Deep copy will copy JSON values as well
-                hist_val = copy.deepcopy(_get_historical_value(val))
-                # Remove the value onto `self`: we're the proxy now
-                setattr(self, key, hist_val)
+        self.__copy_columns_from_instance(instance,
+                                          # All columns
+                                          self.__bags.columns.names)
 
+    def __copy_columns_from_instance(self, instance, names):
+        """ Copy the given list of columns from the instance onto self """
+        insp = self.__inspect  # type: InstanceState
+
+        # Copy all values onto `self`
+        for column_name in names:
+            # Skip unloaded columns (because that would emit sql queries)
+            # Also skip the columns that were already copied (perhaps, mutable columns?)
+            if column_name not in insp.unloaded and column_name not in self.__dict__:
+                # The state
+                attr_state = insp.attrs[column_name]  # type: AttributeState
+
+                # Get the historical value
+                # deepcopy() ensures JSON and ARRAY values are copied in full
+                hist_val = deepcopy(_get_historical_value(attr_state))
+                print('copy', column_name, hist_val)
+
+                # Remove the value onto `self`: we're bearing the value now
+                setattr(self, column_name, hist_val)
+
+    def __install_instance_state(self, instance):
+        """ Install an InstanceState, so that relationship descriptors can work properly """
         # These lines install the internal SqlAlchemy's property on our proxy
         # This property mimics the original object.
         # This ensures that we can access relationship attributes through a ModelHistoryProxy object
@@ -74,21 +123,21 @@ class ModelHistoryProxy(object):
         setattr(self, DEFAULT_STATE_ATTR, my_state)
 
     def __getattr__(self, key):
-        # This method only handles those elements that were not already handled by __init__
-        # It is only possible if __copy_instance_to() was not called.
-
         # Get a relationship:
-        if key in self.__relations:
-            ent_class = self.__instance.__class__
-            prop = getattr(ent_class, key)
-            return prop.__get__(self, ent_class)
+        if key in self.__bags.relations:
+            return getattr(self.__instance, key)
+            relationship = getattr(self.__model, key)
+            return relationship.__get__(self, self.__model)
 
         # Get a property (@property)
-        if isinstance(getattr(self.__instance.__class__, key, None), property):
-            return getattr(self.__instance.__class__, key).fget(self)
+        if key in self.__bags.properties:
+            # Because properties may use other columns,
+            # we have to run it against our`self`, because only then it'll be able to get the original values.
+            return getattr(self.__model, key).fget(self)
 
-        # Get a value from the instance itself
-        return getattr(self.__instance, key)
+        # Every column attribute is accessed through history
+        attr = self.__inspect.attrs[key]
+        return _get_historical_value(attr)
 
 
 def _get_historical_value(attr):

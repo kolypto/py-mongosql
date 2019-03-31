@@ -7,7 +7,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from . import models
 from .crud_view import ArticlesView
 
-@unittest.skip('Not implemented yet')
+
 class CrudTest(unittest.TestCase):
     def setUp(self):
         # Init db
