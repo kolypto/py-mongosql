@@ -32,6 +32,7 @@ Thumbs.db
 .sass-cache/
 .coverage
 /.noseids
+/profile.*
 
 # Generated
 __pycache__

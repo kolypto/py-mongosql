@@ -172,7 +172,6 @@ class CrudTest(unittest.TestCase):
             })
 
             from pprint import pprint
-            pprint(rv.get_json())
             self.assertEqual(rv['article'], {
                 'id': 30,
                 'uid': 3,

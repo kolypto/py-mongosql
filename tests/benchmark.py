@@ -1,6 +1,9 @@
 from time import time
 from sqlalchemy.orm import joinedload, selectinload
 
+# Run me:
+# $ python -m cProfile -o profile.out tests/benchmark.py && gprof2dot -f pstats profile.out | dot -Tpng -o profile.png && gwenview profile.png
+
 from tests.models import *
 try:
     from mongosql.handlers import MongoJoin

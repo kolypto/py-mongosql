@@ -18,9 +18,12 @@ publish: README.rst
 	@twine upload dist/*
 
 
-.PHONY: test test-tox
+.PHONY: test test-tox test-profile
 test:
 	@# Before testing, run: $ docker-compose up -d
-	@nosetests
+	@nosetests tests/
 test-tox:
 	@tox
+test-profile:
+	@nosetests --with-cprofile --cprofile-stats-file=profile.out tests/
+	@gprof2dot -f pstats profile.out | dot -Tpng -o profile.png
