@@ -13,7 +13,7 @@ from .util import ExpectedQueryCounter
 row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
 
 
-class QueryTest(unittest.TestCase):
+class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
     """ Test MongoQuery """
 
     # Enable SQL query logging
@@ -210,8 +210,6 @@ class QueryTest(unittest.TestCase):
         self.assertEqual(row2dict(row), {'high': 3, 'max_rating': 6, 'a_is_none': 2})
 
         # Aggregate & Group
-
-    assertRaiseloadWorked = t_raiseload_col_test.RaiseloadColTest.assertRaiseloadWorked  # reuse
 
     def test_raise(self):
         # Prepare settings

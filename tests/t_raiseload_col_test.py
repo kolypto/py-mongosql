@@ -10,11 +10,7 @@ from mongosql import raiseload_col
 from . import models
 
 
-class RaiseloadColTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.engine, cls.Session = models.get_working_db_for_tests()
-
+class RaiseloadTesterMixin(object):
     def assertRaiseloadWorked(self, entity, loaded, raiseloaded, unloaded):
         """ Test columns and their load state
 
@@ -39,6 +35,12 @@ class RaiseloadColTest(unittest.TestCase):
             with ExpectedQueryCounter(self.engine, 1,
                                       'Expected one query while accessing column {}'.format(name)):
                 getattr(entity, name)
+
+
+class RaiseloadColTest(RaiseloadTesterMixin, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.engine, cls.Session = models.get_working_db_for_tests()
 
     def test_defer_pk(self):
         """ Test: we can't defer a PK """

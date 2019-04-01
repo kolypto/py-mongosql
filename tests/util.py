@@ -124,7 +124,7 @@ class QueryCounter(object):
     def _after_cursor_execute_event_handler(self, **kw):
         self.n += 1
 
-    def print(self):
+    def print_log(self):
         pass  # nothing to do
 
     # Context manager
@@ -136,7 +136,7 @@ class QueryCounter(object):
     def __exit__(self, *exc):
         self.stop_logging()
         if exc != (None, None, None):
-            self.print()
+            self.print_log()
         return False
 
 
@@ -148,7 +148,7 @@ class QueryLogger(QueryCounter, list):
         # Compile, append
         self.append(_insert_query_params(kw['statement'], kw['parameters'], kw['context']))
 
-    def print(self):
+    def print_log(self):
         for i, q in enumerate(self):
             print('=' * 5, ' Query #{}'.format(i))
             print(q)
@@ -164,7 +164,7 @@ class ExpectedQueryCounter(QueryLogger):
 
     def _done(self):
         if self.n != self.expected_queries:
-            self.print()
+            self.print_log()
             raise AssertionError('{} (expected {} queries, actually had {})'
                                  .format(self.comment, self.expected_queries, self.n))
 

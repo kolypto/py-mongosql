@@ -8,6 +8,7 @@ from . import models
 from .crud_view import ArticlesView
 
 
+@unittest.skip('not yet')
 class CrudTest(unittest.TestCase):
     def setUp(self):
         # Init db

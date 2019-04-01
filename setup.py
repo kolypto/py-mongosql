@@ -21,7 +21,7 @@ setup(
     entry_points={},
 
     install_requires=[
-        'sqlalchemy >= 1.2.0',
+        'sqlalchemy >= 1.2.0,!=1.2.9',
         'future',
     ],
     extras_require={},

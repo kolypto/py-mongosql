@@ -114,6 +114,10 @@ class HistoryTest(unittest.TestCase):
         # History is NOT broken
         self.assertEqual(old_user_hist.name, 'a')
 
+        # Undo
+        ssn.rollback()  # undo our changes
+        ssn.close()  # have to close(), or other queries might hang
+
 
     def test_model_history__both_classes(self):
         ssn = self.Session()
@@ -150,6 +154,9 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(old_user.age, 18)
         self.assertEqual(old_user.tags, ['1', 'a'])
 
+        # Undo
+        ssn.close()
+
     # Older tests
 
     def test_change_field(self):
@@ -162,6 +169,7 @@ class HistoryTest(unittest.TestCase):
         # This happens because History is reset on flush(), which happens with a query
         user = comment.user
         self.assertEqual(hist.text, old_text)
+        ssn.close()
 
         # Test for json fields
         ssn = self.Session()
@@ -173,11 +181,15 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(hist.data['rating'], old_rating)
         article.data = {'one': {'two': 2}}
         ssn.add(article)
-        ssn.commit()  # NOTE: one item changed!
+        ssn.flush()
         article = ssn.query(models.Article).get(10)
         hist = ModelHistoryProxy(article)
         article.data['one']['two'] = 10
         self.assertEqual(hist.data['one']['two'], 2)
+
+        # Undo
+        ssn.rollback()
+        ssn.close()
 
     def test_model_property(self):
         ssn = self.Session()
@@ -201,6 +213,9 @@ class HistoryTest(unittest.TestCase):
         # Current value
         self.assertEqual(comment.comment_calc, 'one')
 
+        # Undo
+        ssn.close()
+
     def test_relation(self):
         ssn = self.Session()
         comment = ssn.query(models.Comment).get(100)
@@ -219,3 +234,6 @@ class HistoryTest(unittest.TestCase):
         hist = ModelHistoryProxy(article)
         u = article.user  # load a relationship; see that history is not reset
         self.assertEqual(old_commensts, set([c.id for c in hist.comments]))
+
+        # Undo
+        ssn.close()

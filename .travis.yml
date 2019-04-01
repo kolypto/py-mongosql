@@ -27,7 +27,6 @@ matrix:
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.6}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.7}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.8}
-    - {python: 3.7-dev, env: TOXENV=py37-sa1.2.9}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.10}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.11}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.12}
