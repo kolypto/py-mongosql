@@ -5,6 +5,7 @@ from sqlalchemy.orm.base import InspectionAttr
 from .base import MongoQueryHandlerBase
 from ..bag import CombinedBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
+from ..util import Marker
 
 
 class MongoProject(MongoQueryHandlerBase):
@@ -62,7 +63,8 @@ class MongoProject(MongoQueryHandlerBase):
         """
         super(MongoProject, self).__init__(model)
 
-        self.default_projection = default_projection or None
+        self.default_projection = {k: Default(v)
+                                   for k, v in (default_projection or {}).items()}
         self.default_exclude = set(default_exclude) if default_exclude else None
         self.force_include = set(force_include) if force_include else None
         self.force_exclude = set(force_exclude) if force_exclude else None
@@ -123,7 +125,8 @@ class MongoProject(MongoQueryHandlerBase):
         if self.mode == self.MODE_EXCLUDE and self.default_exclude:
             # Add even more fields that are excluded by default
             # The only way to load them is to explicitly require them.
-            self._projection.update({k: 0 for k in self.default_exclude})
+            # The value is marked with Default(0) so that merge() won't use it to overwrite anything
+            self._projection.update({k: Default(0) for k in self.default_exclude})
 
         if self.force_include or self.force_exclude:
             self._input_process_force_include_exclude()
@@ -170,11 +173,11 @@ class MongoProject(MongoQueryHandlerBase):
         self.validate_properties(projection.keys())
 
         # Validate values
-        values_sum = sum(projection.values())
-        if values_sum == 0:
+        unique_values = set(projection.values())
+        if unique_values == {0} or unique_values == set():  # an empty dict
             # all values are 0
             mode = self.MODE_EXCLUDE
-        elif values_sum == len(projection):
+        elif unique_values == {1}:
             # all values are 1
             mode = self.MODE_INCLUDE
         else:
@@ -228,30 +231,6 @@ class MongoProject(MongoQueryHandlerBase):
                 if isinstance(c, InspectionAttr) else
                 c
                 for c in columns]
-
-    def include_columns(self, columns):
-        """ Include columns into the projection
-
-            Note: you can use column names, or the actual column attributes!
-            Make sure you don't use python @property: they don't have a name :(
-
-            :param columns: List of columns, or column names
-            :type columns: list[str, sqlalchemy.orm.Column]
-        """
-        column_names = self._columns2names(columns)
-        return self.merge(dict.fromkeys(column_names, 1))
-
-    def exclude_columns(self, columns):
-        """ Include columns into the projection
-
-            Note: you can use column names, or the actual column attributes!
-            Make sure you don't use python @property: they don't have a name :(
-
-            :param columns: List of columns, or column names
-            :type columns: list[str, sqlalchemy.orm.Column]
-        """
-        column_names = self._columns2names(columns)
-        return self.merge(dict.fromkeys(column_names, 0))
 
     def compile_columns(self):
         """ Get the list of columns to be included into the Query """
@@ -374,19 +353,28 @@ class MongoProject(MongoQueryHandlerBase):
         # We have to use the full projection object, and update it.
         if self.mode == mode:
             # Compatible modes: just merge
+            # Defaults won't override anything, because the values are the same anyway.
             self._projection.update(projection)
         elif mode == self.MODE_INCLUDE and self.mode == self.MODE_EXCLUDE:
             # merge(include) in self.exclude mode
             # These modes are incompatible. Got to use full projection
             self._projection = self.get_full_projection()
-            self._projection.update(projection)
+            self._projection.update({k: v
+                                     for k, v in projection.items()
+                                     # don't let defaults override solid values!
+                                     # If the value that's going to override is a Default(),
+                                     # and there used to be some value in the original projection,
+                                     # leave the original value
+                                     if not (isinstance(v, Default) and k in orig_projection)
+                                     })
             self.mode = self.MODE_MIXED
         elif mode == self.MODE_EXCLUDE and self.mode == self.MODE_INCLUDE:
             # merge(exclude) in self.include mode: just drop banned keys
             # this is a short-cut
             drop_keys = set(projection.keys()) & set(self._projection.keys())
             for k in drop_keys:
-                self._projection.pop(k)
+                if not isinstance(projection[k], Default):  # don't let defaults destroy solid values!
+                    self._projection.pop(k)
         else:
             raise AssertionError('Unknown combination of self.mode and mode')
 
@@ -425,6 +413,30 @@ class MongoProject(MongoQueryHandlerBase):
 
         # Done
         return self
+
+    def include_columns(self, columns):
+        """ Include more columns into the projection
+
+            Note: you can use column names, or the actual column attributes!
+            Make sure you don't use python @property: they don't have a name :(
+
+            :param columns: List of columns, or column names
+            :type columns: list[str, sqlalchemy.orm.Column]
+        """
+        column_names = self._columns2names(columns)
+        return self.merge(dict.fromkeys(column_names, 1))
+
+    def exclude_columns(self, columns):
+        """ Exclude more columns from the projection
+
+            Note: you can use column names, or the actual column attributes!
+            Make sure you don't use python @property: they don't have a name :(
+
+            :param columns: List of columns, or column names
+            :type columns: list[str, sqlalchemy.orm.Column]
+        """
+        column_names = self._columns2names(columns)
+        return self.merge(dict.fromkeys(column_names, 0))
 
     def get_full_projection(self):
         """ Generate a full, normalized projection for a model.
@@ -488,3 +500,36 @@ class MongoProject(MongoQueryHandlerBase):
                 if include
                 and key not in self.quietly_included}
 
+
+class Default(Marker):
+    """ A wrapper for dictionary keys which marks a value that was put there by default.
+
+        For instance, when `default_exclude` puts a key into the dictionary,
+        the value is wrapped with Default(). This way, whoever uses our projection,
+        can see that this specific value is a default value, not something inserted by the user.
+
+        By using a Marker, we also allow overrides: whenever anyone inserts another value into the dictionary,
+        the value wrapped with Default() gets replaced with a value that's not wrapped.
+
+        Why is this important?
+        We need it for the merge() method, which is sometimes called from MongoJoin.
+
+        Consider the following situation:
+            1. A relation has default_exclude=('column',)
+            2. Then you join to this relationship, specify a projection: project=('column',), because you want it.
+                Alright, you've overriden the default
+            3. Another piece of code does this: ensure_loaded(relation-name)
+            4. This triggers the creation of another implicit projection. An empty one.
+                It will use `default_exclude` by default, and contain {'column': 0}
+            5. This new projection is merge()ed into the original projection,
+                and your {'column': 1} gets replaced with a default coming from elsewhere.
+
+        By using markers on the values, we can enforce the following rule:
+        real values will have priority over Default() values,
+        and a merge() will never overwrite any existing value with a Default value.
+
+        Alternatives.
+        1. Teach MongoProject to keep track of default values
+        2. implement a dict() which keeps track of default values in a set.
+        Both of them seemed ugly. Therefore, markers.
+    """

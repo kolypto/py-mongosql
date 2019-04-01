@@ -347,8 +347,32 @@ class MongoQuery(object):
                self.handler_group.is_input_empty() and \
                self.handler_count.is_input_empty()
 
+    def result_is_scalar(self):
+        """ Test whether the result is a scalar value, like with count
+
+            In this case, you'll fetch it like this:
+
+                MongoQuery(...).end().scalar()
+
+            :rtype: bool
+        """
+        return not self.handler_count.is_input_empty()
+
+    def result_is_tuples(self):
+        """ Test whether the result is a list of keyed tuples, like with group_by
+
+            In this case, you might fetch it like this:
+
+                res = MongoQuery(...).end()
+                return [dict(zip(row.keys(), row)) for row in res], None
+
+            :rtype: bool
+        """
+        return not self.handler_aggregate.is_input_empty() or \
+               not self.handler_group.is_input_empty()
+
     def ensure_loaded(self, *cols):
-        """ Ensure the given columns and relationships are loaded
+        """ Ensure the given columns, relationships, and related columns are loaded
 
             Despite any projections and joins the user may be doing, make sure that the given `cols` are loaded.
             This will ensure that every column is loaded, every relationship is joined, and none of those is included
@@ -370,7 +394,7 @@ class MongoQuery(object):
 
             If all you need is just to know whether something is loaded or not, use MongoQuery.__contains__() instead.
 
-            :param cols: Column names
+            :param cols: Column names ('age'), Relation names ('articles'), or Related column names ('articles.name')
             :raises InvalidQueryError: cannot merge because the relationship has a filter on it
             :raises ValueError: invalid column or relationship name given.
                 It does not throw `InvalidColumnError` because that's likely your error, not an error of the API user :)
@@ -396,7 +420,8 @@ class MongoQuery(object):
                 # A column will just be loaded
                 columns.append(name)
             else:
-                raise ValueError(name)
+                raise ValueError('Invalid column or relation name given to ensure_loaded(): {!r}'
+                                 .format(name))
 
         # Load all them
         self.handler_project.merge(columns, quietly=True)

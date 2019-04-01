@@ -9,7 +9,6 @@ from sqlalchemy.sql.expression import cast
 from sqlalchemy.sql.functions import func
 
 from .base import MongoQueryHandlerBase
-from mongosql.util.reusable import Reusable
 from ..bag import CombinedBag
 from ..exc import InvalidQueryError, DisabledError, InvalidColumnError
 
@@ -211,13 +210,16 @@ class MongoAggregate(MongoQueryHandlerBase):
         # Get the column
         column = self._get_column_insecurely(column_name, for_label)
 
+        # Get the column name: strip dot-notation for security tests
+        column_name = self.bags.columns.get_column_name(column_name)
+
         # Now test whether it's allowed
         if column_name not in self.aggregate_columns:
-            raise DisabledError('Aggregate: aggregation is disabled for column `{}`'
-                                .format(column_name))
+            raise DisabledError('Aggregate: aggregation is disabled for column "{}.{}"'
+                                .format(self.bags.model_name, column_name))
         if for_label and not self.aggregate_labels:
-            raise DisabledError('Aggregate: labelling is disabled for column `{}`'
-                                .format(column_name))
+            raise DisabledError('Aggregate: labelling is disabled for column "{}.{}"'
+                                .format(self.bags.model_name, column_name))
 
         # Done
         return column

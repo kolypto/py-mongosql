@@ -8,7 +8,6 @@ from . import models
 from .crud_view import ArticlesView
 
 
-@unittest.skip('not yet')
 class CrudTest(unittest.TestCase):
     def setUp(self):
         # Init db
@@ -41,8 +40,8 @@ class CrudTest(unittest.TestCase):
             self.assertEqual(rv['articles'], [
                 # 2 items
                 # sort: id-
-                {'id': 30, 'uid': 3, 'theme': None, 'title': '30', 'data': {'o': {'z': False}},},
-                {'id': 21, 'uid': 2, 'theme': None, 'title': '21', 'data': {'rating': 4, 'o': {'z': True}},}
+                {'id': 30, 'uid': 3, 'theme': None, 'title': '30', 'data': {'o': {'z': False}}, 'calculated': 5, 'hybrid': False},
+                {'id': 21, 'uid': 2, 'theme': None, 'title': '21', 'data': {'rating': 4, 'o': {'z': True}}, 'calculated': 4, 'hybrid': False}
             ])
 
         # Query list
@@ -92,7 +91,7 @@ class CrudTest(unittest.TestCase):
                 'query': {
                     'count': 1
                 }})
-            self.assertEqual(rv['articles'], 6)  # `maxitems` shouldnt apply here
+            self.assertEqual(rv['articles'], 6)  # `maxitems` shouldnt apply here; therefore, we don't get a '2'
 
     def test_create(self):
         """ Test create() """
@@ -114,7 +113,6 @@ class CrudTest(unittest.TestCase):
                 'title': '999',
                 'theme': None,
                 'data': {'wow': True},
-                'theme': None,
             })
 
     def test_get(self):
@@ -138,13 +136,14 @@ class CrudTest(unittest.TestCase):
             rv = c.get('/article/30', json={
                 'query': {
                     'project': ['id', 'uid'],
-                    'join': ['user',]
+                    'join': ['user',],
                 }
             })
             self.assertEqual(rv['article'], {
                 'id': 30, 'uid': 3,
                 'user': {
-                    'id': 3, 'name': 'c',
+                    'id': 3,
+                    'name': 'c',
                     'age': 16,
                     'tags': ['3', 'a', 'b', 'c'],
                 }
@@ -171,6 +170,9 @@ class CrudTest(unittest.TestCase):
                     }
                 }
             })
+
+            from pprint import pprint
+            pprint(rv.get_json())
             self.assertEqual(rv['article'], {
                 'id': 30,
                 'uid': 3,

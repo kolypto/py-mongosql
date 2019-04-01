@@ -26,18 +26,25 @@ class MongoCount(MongoQueryHandlerBase):
         self.count = None
 
     def input_prepare_query_object(self, query_object):
+        # When we count, we don't care about certain things
         if query_object.get('count', False):
             # Performance: do not sort when counting
             query_object.pop('sort', None)
             # We don't care about projections either
             query_object.pop('project', None)
+            # Also, remove all skips & limits
+            query_object.pop('skip', None)
+            query_object.pop('limit', None)
+            # Finally, when we count, we have to remove `max_limit` setting from MongoLimit.
+            # Only MongoLimit can do it, and it will do it for us.
+            # See: MongoLimit.input_prepare_query_object
 
         return query_object
 
     def input(self, count=None):
         super(MongoCount, self).input(count)
-        if not isinstance(count, (bool, NoneType)):
-            raise InvalidQueryError('Count must be either true or false')
+        if not isinstance(count, (int, bool, NoneType)):
+            raise InvalidQueryError('Count must be either true or false. Or at least a 1, or a 0')
 
         # Done
         self.count = count

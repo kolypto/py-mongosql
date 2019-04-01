@@ -489,7 +489,7 @@ from [flask-jsontools](https://github.com/kolypto/py-flask-jsontools), CRUD cont
 CrudHelper
 ----------
 
-Source: [mongosql/crud.py](mongosql/crud.py)
+Source: [mongosql/crud.py](mongosql/crud/crudhelper.py)
 
 `CrudHelper` is a helper class that contains parts of CRUD logic that can be used in CRUD views.
 
@@ -519,7 +519,7 @@ and now the following methods are available:
 StrictCrudHelper
 ----------------
 
-Source: [mongosql/crud.py](mongosql/crud.py)
+Source: [mongosql/crud.py](mongosql/crud/crudhelper.py)
 
 Usually it's not safe to allow changing all fields, loading all relations, listing thousands of entities, etc.
 
@@ -584,7 +584,7 @@ Having the limits specified, just use [`CrudHelper`](#crudhelper) methods and en
 CrudViewMixin
 -------------
 
-Source: [mongosql/crud.py](mongosql/crud.py)
+Source: [mongosql/crud.py](mongosql/crud/crudhelper.py)
 
 [`CrudHelper`](#crudhelper) itself if not the end-product: you still need a view to manage your models.
 

@@ -312,13 +312,16 @@ def init_database(autoflush=True):
     Session = sessionmaker(autocommit=autoflush, autoflush=autoflush, bind=engine)
     return engine, Session
 
+
 def create_all(engine):
     """ Create all tables """
     Base.metadata.create_all(bind=engine)
 
+
 def drop_all(engine):
     """ Drop all tables """
     Base.metadata.drop_all(bind=engine)
+
 
 def content_samples():
     """ Generate content samples """

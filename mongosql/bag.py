@@ -249,7 +249,7 @@ class ColumnsBag(PropertiesBagBase):
         :type name: str
         :rtype: bool
         """
-        column_name = _dot_notation(name)[0]
+        column_name = get_plain_column_name(name)
         return column_name in self._array_column_names
 
     def is_column_json(self, name):
@@ -257,7 +257,7 @@ class ColumnsBag(PropertiesBagBase):
         :type name: str
         :rtype: bool
         """
-        column_name = _dot_notation(name)[0]
+        column_name = get_plain_column_name(name)
         return column_name in self._json_column_names
 
     @property
@@ -342,9 +342,13 @@ class DotColumnsBag(ColumnsBag):
                 raise KeyError(name)
         return col
 
+    def get_column_name(self, name):
+        """ Get a column name, not a JSON path """
+        return get_plain_column_name(name)
+
     def get_column(self, name):
         """ Get a column, not a JSON path """
-        return self[_dot_notation(name)[0]]
+        return self[get_plain_column_name(name)]
 
     def get_invalid_names(self, names):
         # First, validate easy names
@@ -485,7 +489,7 @@ class DotRelatedColumnsBag(ColumnsBag):
             This method accepts both relationship names and its column names.
             That is, both 'users' and 'users.id' will actually tell you about a relationship itself.
         """
-        rel_name = _dot_notation(col_name)[0]
+        rel_name = get_plain_column_name(col_name)
         return self._rel_bag.is_relationship_array(rel_name)
 
 
@@ -537,7 +541,7 @@ class CombinedBag(PropertiesBagBase):
         if name in self._names:
             return True
         # It might be a JSON column. Try it
-        if _dot_notation(name)[0] in self._json_column_names:
+        if get_plain_column_name(name) in self._json_column_names:
             return True
         # Nope. Nothing worked
         return False
@@ -559,7 +563,7 @@ class CombinedBag(PropertiesBagBase):
         # might be JSON columns' fields!
         invalid -= {name
                     for name in invalid
-                    if _dot_notation(name)[0] in self._json_column_names
+                    if get_plain_column_name(name) in self._json_column_names
                     }
         return invalid
 
@@ -643,6 +647,10 @@ def _dot_notation(name):
     """
     path = name.split('.')
     return path[0], path[1:]
+
+def get_plain_column_name(name):
+    """ Get a plain column name, dropping any dot-notation that may follow """
+    return name.split('.')[0]
 
 
 class DictOfAliasedColumns(object):

@@ -195,7 +195,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
 
         # Aggregate
         mq = Reusable(MongoQuery(models.Article, dict(
-            aggregate_columns=('data.rating', 'data.o.a'),
+            aggregate_columns=('data', 'data'),
             aggregate_labels=True
         )))
 

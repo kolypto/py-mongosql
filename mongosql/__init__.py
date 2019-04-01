@@ -25,10 +25,6 @@ from .sa import MongoSqlBase
 # Create/Read/Update/Delete
 from .crud import CrudHelper, StrictCrudHelper, CrudViewMixin
 
-# Finally, have a look at:
-# ./hist.py: an object that gives you access to model history (previous values of changed columns)
-
-
 # Helpers
 # Reusable query objects (so that you don't have to initialize them over and over again)
 from mongosql.util import Reusable

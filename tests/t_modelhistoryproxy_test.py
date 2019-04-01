@@ -3,7 +3,7 @@ from sqlalchemy.orm import load_only, lazyload
 
 from . import models
 from .util import ExpectedQueryCounter
-from mongosql.hist import ModelHistoryProxy
+from mongosql.util.history_proxy import ModelHistoryProxy
 
 
 class HistoryTest(unittest.TestCase):

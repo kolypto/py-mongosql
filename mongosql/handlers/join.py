@@ -68,8 +68,8 @@ class MongoJoin(MongoQueryHandlerBase):
         # Check it
         if self.allowed_relations is not None:
             if relation_name not in self.allowed_relations:
-                raise DisabledError('Join: joining is disabled for relationship `{}`'
-                                    .format(relation_name))
+                raise DisabledError('Join: joining is disabled for relationship `{}.{}`'
+                                    .format(self.bags.model_name, relation_name))
         # Yield it
         return relation
 
@@ -756,13 +756,11 @@ class MongoJoin(MongoQueryHandlerBase):
                     quietly=quietly
                 )
 
-                # Merge relations dict
-                # Merge project
+                # Merge relations dict, their 'project' and 'join' keys
                 if self.relations[relation_name] is None:
                     self.relations[relation_name] = {}
                 self.relations[relation_name]['project'] = current_mjp.nested_mongoquery.handler_project.projection
                 self.relations[relation_name]['join'] = current_mjp.nested_mongoquery.handler_join.relations
-
 
             # We don't have to re-initialize MongoQuery or anything, because we only support two handlers:
             # join, and project, and both have this 'merge' method

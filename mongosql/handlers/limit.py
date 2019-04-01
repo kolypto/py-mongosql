@@ -53,6 +53,12 @@ class MongoLimit(MongoQueryHandlerBase):
                                      query_object.pop('limit', None))
             if query_object['limit'] == (None, None):
                 query_object.pop('limit')  # remove it if it's actually empty
+
+        # When there is a 'count', we have to disable self.max_limit
+        # We can safely just alter ourselves, because we're a copy anyway
+        if query_object.get('count', False):
+            self.max_limit = None
+
         return query_object
 
     def input(self, skip=None, limit=None):

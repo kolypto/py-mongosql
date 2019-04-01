@@ -410,10 +410,10 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
     def test_aggregate(self):
         """ Test aggregate() """
-        m = models.User
+        u = models.User
 
         # Configure MongoQuery
-        mq = MongoQuery(m, dict(
+        mq = MongoQuery(u, dict(
             aggregate_columns=('age',),
             aggregate_labels=True,
         ))
@@ -445,7 +445,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         test_aggregate({'count': {'$sum': 1}}, 'SELECT count(*) AS count')
         test_aggregate({'count': {'$sum': 10}}, 'SELECT count(*) * 10 AS count')
 
-        # $sum(id==1)
+        # $sum(id==1), bool expression
         test_aggregate({'count': {'$sum': { 'id': 1 } }}, 'SELECT sum(CAST(u.id = 1 AS INTEGER)) AS count \nFROM')
 
         # age, $sum(1)
@@ -476,6 +476,16 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         self.assertRaises(InvalidColumnError, test_aggregate, {'a': '???'}, '')
         self.assertRaises(InvalidColumnError, test_aggregate, {'a': {'$max': '???'}}, '')
         self.assertRaises(InvalidColumnError, test_aggregate, {'a': {'$sum': {'???': 1}}}, '')
+
+        # aggregate by JSON field
+        mq = MongoQuery(models.Article, dict(
+            aggregate_columns=('data',),
+            aggregate_labels=True,
+        ))
+
+        aggregate_mq = lambda agg_spec: copy(mq).query(project=('id',),aggregate=agg_spec)
+
+        test_aggregate({'max_rating': {'$max': 'data.rating'}}, "SELECT max(CAST(a.data #>> ['rating'] AS FLOAT)) AS max_rating")
 
     def test_count(self):
         """ Test query(count) """
@@ -1450,7 +1460,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         u = models.User
 
         # === Test: columns, relationship
-        mq = u.mongoquery().query(
+        mq = u.mongoquery().query(  # TODO: uncomment
             project=['name'],
             filter={'age': {'$gt': 0}},
             join={'articles': dict(project=['title'])}
@@ -1467,8 +1477,31 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           # 'comments' not even mentioned
                           })
 
+        # === Test: handler_settings, columns, relationship
+        # In this test, we pay special attention to `comment_calc` and make sure this projection does not disappear
+        mq = MongoQuery(models.User, dict(
+            related={
+                'comments': dict(
+                    default_exclude=('comment_calc',),
+                )
+            }
+        ))
+        mq.query(
+            project=['name'],
+            join={'comments': dict(project=['comment_calc'])}
+        )
+        mq.ensure_loaded('comments')
+
+        self.assertEqual(mq.get_projection_tree(),
+                         {'name': 1,
+                          'comments': {
+                              'comment_calc': 1,
+                          },
+                          })
+
+
     def test_projection_join(self):
-        """ Test loading relationships by specifyint their name in the projection """
+        """ Test loading relationships by specifying their name in the projection """
         u = models.User
 
         # === Test: project column + relationship
