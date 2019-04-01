@@ -1,10 +1,7 @@
 from __future__ import absolute_import
 
-import weakref
-from copy import copy, deepcopy
+from copy import deepcopy
 from sqlalchemy import inspect
-from sqlalchemy import event
-from sqlalchemy.orm import Session
 from sqlalchemy.orm.base import DEFAULT_STATE_ATTR
 from sqlalchemy.orm.state import InstanceState
 
@@ -38,37 +35,12 @@ class ModelHistoryProxy(object):
         self.__model = self.__instance.__class__
         self.__bags = ModelPropertyBags.for_model(self.__model)  # type: ModelPropertyBags
         self.__inspect = inspect(instance)  # type: InstanceState
-        self.__ssn = Session.object_session(instance)  # type: Session
 
-        # When Session.flush() is called, all history is reset.
-        # We have to handle this situation: install a handler that will rescue the history just before it gets erased
-        # It's important to have it *fire only once*: otherwise it will destroy the history it was supposed to save.
-        event.listen(self.__ssn, "before_flush", weakref(self.__before_history_is_destroyed), named=True, once=True)
-
-        # Composite types are mutable, and our history won't be able to detect it.
-        # Copy them onto ourselves anyway so that we can retain a copy
-        self.__copy_mutable_fields_from_instance(instance)
+        # Copy every field onto ourselves
+        self.__copy_from_instance(self.__instance)
 
         # Enable accessing relationships through our proxy
         self.__install_instance_state(instance)
-
-    def __before_history_is_destroyed(self, session, flush_context, instances):
-        """ Rescue the situation when the attribute history is about to be destroyed """
-        self.__copy_from_instance(self.__instance)
-
-    def __copy_mutable_fields_from_instance(self, instance):
-        """ Copy mutable values onto `self` """
-        # TODO: maybe we don't have to copy them, but can somehow track the changes?
-        #   Maybe, this will help? https://docs.sqlalchemy.org/en/latest/orm/extensions/mutable.html#api-reference
-        columns = self.__bags.columns
-
-        # JSON and ARRAY columns
-        mutable_columns = [column_name
-                           for column_name in columns.names
-                           if columns.is_column_json(column_name) or columns.is_column_array(column_name)]
-
-        # Copy columns
-        self.__copy_columns_from_instance(instance, mutable_columns)
 
     def __copy_from_instance(self, instance):
         """ Copy all attributes of `instance` to `self`
@@ -84,26 +56,20 @@ class ModelHistoryProxy(object):
         To solve this, we have to make a copy of this model.
         All attributes are set on `self`, so accessing `self.attr` will not trigger `__getattr__()`
         """
-        self.__copy_columns_from_instance(instance,
-                                          # All columns
-                                          self.__bags.columns.names)
-
-    def __copy_columns_from_instance(self, instance, names):
         """ Copy the given list of columns from the instance onto self """
         insp = self.__inspect  # type: InstanceState
 
         # Copy all values onto `self`
-        for column_name in names:
+        for column_name in self.__bags.columns.names:
             # Skip unloaded columns (because that would emit sql queries)
             # Also skip the columns that were already copied (perhaps, mutable columns?)
-            if column_name not in insp.unloaded and column_name not in self.__dict__:
+            if column_name not in insp.unloaded:
                 # The state
                 attr_state = insp.attrs[column_name]  # type: AttributeState
 
                 # Get the historical value
                 # deepcopy() ensures JSON and ARRAY values are copied in full
                 hist_val = deepcopy(_get_historical_value(attr_state))
-                print('copy', column_name, hist_val)
 
                 # Remove the value onto `self`: we're bearing the value now
                 setattr(self, column_name, hist_val)
@@ -125,7 +91,6 @@ class ModelHistoryProxy(object):
     def __getattr__(self, key):
         # Get a relationship:
         if key in self.__bags.relations:
-            return getattr(self.__instance, key)
             relationship = getattr(self.__model, key)
             return relationship.__get__(self, self.__model)
 

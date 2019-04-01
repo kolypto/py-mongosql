@@ -154,7 +154,7 @@ class HistoryTest(unittest.TestCase):
 
     def test_change_field(self):
         ssn = self.Session()
-        comment = ssn.query(models.Comment).first()
+        comment = ssn.query(models.Comment).get(100)
         old_text = comment.text
         comment.text = 'Changed two'
         hist = ModelHistoryProxy(comment)
@@ -164,6 +164,7 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(hist.text, old_text)
 
         # Test for json fields
+        ssn = self.Session()
         article = ssn.query(models.Article).get(10)
         old_rating = article.data['rating']
         hist = ModelHistoryProxy(article)
@@ -172,7 +173,7 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(hist.data['rating'], old_rating)
         article.data = {'one': {'two': 2}}
         ssn.add(article)
-        ssn.commit()
+        ssn.commit()  # NOTE: one item changed!
         article = ssn.query(models.Article).get(10)
         hist = ModelHistoryProxy(article)
         article.data['one']['two'] = 10
