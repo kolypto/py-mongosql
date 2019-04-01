@@ -19,7 +19,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
         query_defaults=dict(
             sort=('id-',),
         ),
-        max_limit=2,
+        max_rows=2,
         # Related entities configuration
         allowed_relations=('user', 'comments'),
         related={

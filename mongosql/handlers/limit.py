@@ -18,17 +18,17 @@ class MongoLimit(MongoQueryHandlerBase):
 
     query_object_section_name = 'sort'
 
-    def __init__(self, model, max_limit=None):
+    def __init__(self, model, max_rows=None):
         """ Init a limit
 
         :param model: Sqlalchem model to work with
-        :param max_limit: Upper limit on `limit`: The value can never go any higher.
+        :param max_rows: Upper limit on `limit`: The value can never go any higher.
         """
         super(MongoLimit, self).__init__(model)
 
         # Config
-        self.max_limit = max_limit
-        assert self.max_limit is None or self.max_limit > 0
+        self.max_rows = max_rows
+        assert self.max_rows is None or self.max_rows > 0
 
         # On input
         self.skip = None
@@ -54,10 +54,10 @@ class MongoLimit(MongoQueryHandlerBase):
             if query_object['limit'] == (None, None):
                 query_object.pop('limit')  # remove it if it's actually empty
 
-        # When there is a 'count', we have to disable self.max_limit
+        # When there is a 'count', we have to disable self.max_rows
         # We can safely just alter ourselves, because we're a copy anyway
         if query_object.get('count', False):
-            self.max_limit = None
+            self.max_rows = None
 
         return query_object
 
@@ -81,8 +81,8 @@ class MongoLimit(MongoQueryHandlerBase):
         limit = None if limit is None or limit <= 0 else limit
 
         # Max limit
-        if self.max_limit:
-            limit = min(self.max_limit, limit or self.max_limit)
+        if self.max_rows:
+            limit = min(self.max_rows, limit or self.max_rows)
 
         # Done
         self.skip = skip

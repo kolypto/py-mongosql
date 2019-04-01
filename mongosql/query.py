@@ -54,7 +54,7 @@ class MongoQuery(object):
                     allowed_relations=None
                     banned_relations=None
                 # limit
-                    max_limit=None
+                    max_rows=None
                 # enabled handlers?
                     project=True
                     filter=True
