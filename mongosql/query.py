@@ -64,10 +64,50 @@ class MongoQuery(object):
                     sort=True
                     aggregate=True
                     limit=True
-                # Settings for queries on related models
+
+                # Settings for queries on related models, based on relationship name
+                # Custom settings will apply to queries made to related models.
+                # For instance, you may have one set of handler_settings for queries made on the `User` model directly,
+                # and a completely different set of settings for querying `User`s through a relationship.
                     related = dict(
-                        relation-name: dict
-                        relation-name: lambda: dict
+                        # handler_settings for nested queries may be configured per relationship
+                        relation-name: dict,
+                        relation-name: lambda: dict,
+                        relation-name: None,  # will fall back to '*'
+                        # The default
+                        # If there's no default, or gives None, `related_models` will be used
+                        '*': lambda relationship_name, target_model: dict | None,
+                    )
+                    or
+                    related = lambda: dict
+
+                # Automatically configure settings on related models, based on target model
+                # This is a back-up that's used instead of `related` if no custom configuration is available.
+                # `related_models` allows you to have one global dict that will define the `default` rules that apply
+                # to an entity, no matter now it's accessed.
+                    related_models = dict(
+                        # handler_settings for nested queries may be configured per model
+                        # note that you're supposed to use models, not their names!
+                        Model: dict,
+                        Model: lambda: dict,
+                        Model: None,  # will fall back to '*'
+                        # The default
+                        # If there's no default, or it yields None, the default handler_settings is used
+                        '*': lambda relationship_name, target_model: dict | None,
+                        # Example:
+                        '*': lambda *args: dict(join=False)  # disallow further joins
+                    )
+                    related_models = lambda: dict
+
+                    The right way to use it is to collect all your settings to one global dict:
+                    all_settings = {
+                        User: user_settings,
+                        Article: article_settings,
+                        Comment: comment_settings,
+                    }
+                    and reference to it from every model:
+                    user_settings = dict(
+                        related_models=lambda: all_settings
                     )
 
         :type handler_settings: dict | None
@@ -89,6 +129,7 @@ class MongoQuery(object):
             # This is for security so that one doesn't forget to disable them both.
             handler_settings['joinf'] = False
         self._handler_settings = QuerySettings(handler_settings)
+        self._handler_settings.validate_related_settings(self._bags)
 
         # Initialized later
         self._query = None  # type: Query | None
@@ -547,7 +588,7 @@ class MongoQuery(object):
         target_model = self._bags.relations.get_target_model(relationship_name)
 
         # Make a new MongoQuery
-        handler_settings = self._handler_settings.settings_for_nested_mongoquery(relationship_name)
+        handler_settings = self._handler_settings.settings_for_nested_mongoquery(relationship_name, target_model)
         mongoquery = self.__class__(target_model, handler_settings)
 
         # Done

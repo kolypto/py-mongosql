@@ -966,6 +966,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'a.uid',  # TODO: FIXME: this column was included by SqlAlchemy? It's not supposed to be here
                                    )
 
+
+
+        # ====
+        # Test typos, and [*], and lambda functions in handler_settings
+
         # === Test: typo in settings
         with self.assertRaises(KeyError):
             MongoQuery(u, dict(
@@ -973,6 +978,89 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                 # a typo
                 allowed_Relations=(),
             ))
+
+        # === Test: related[*]
+        def test_settings_for(mq, relation_name, target_model, expected_settings):
+            handler_settings = mq._handler_settings.settings_for_nested_mongoquery(relation_name, target_model)
+            self.assertEqual(handler_settings, expected_settings)
+
+        mq = MongoQuery(u, dict(
+            related={
+                '*': lambda relation_name, target_model: dict(join=False) if relation_name == 'articles' else None,
+            }
+        ))
+
+        test_settings_for(mq, 'articles', models.Article,
+                          expected_settings=dict(join=False))
+
+        # === Test: related_models
+        mq = MongoQuery(u, dict(
+            related_models={
+                models.User: user_settings,
+                models.Article: article_settings,
+                models.Comment: lambda: comment_settings,  # callable
+                '*': lambda relation_name, target_model: dict(join=False),  # no more
+            }
+        ))
+
+        test_settings_for(mq, 'articles', models.Article,
+                          expected_settings=article_settings)
+
+        test_settings_for(mq, 'comments', models.Comment,
+                          expected_settings=comment_settings)
+
+        test_settings_for(mq, 'roles', models.Role,
+                          expected_settings=dict(join=False))
+
+        # === Test: typo in "related" names
+        with self.assertRaises(KeyError):
+            MongoQuery(u, dict(
+                related={
+                    'UNK': None,
+                }
+            ))
+
+        # === Test: using non-models in "related_models"
+        with self.assertRaises(KeyError):
+            MongoQuery(u, dict(
+                related_models={
+                    'User': None,
+                }
+            ))
+
+        with self.assertRaises(KeyError):
+            MongoQuery(u, dict(
+                related={
+                    object: None,
+                }
+            ))
+
+        # === Test: using related_models to configure a global registry
+        user_settings = dict(
+            allowed_relations=('articles',),
+            related_models=lambda: model_settings,
+        )
+        article_settings = dict(
+            allowed_relations=('user',),
+            related_models=lambda: model_settings,
+        )
+        comment_settings = dict(
+            allowed_relations=(),
+            related_models=lambda: model_settings,
+        )
+
+        model_settings = {
+            models.User: user_settings,
+            models.Article: article_settings,
+            models.Comment: comment_settings,
+        }
+
+        mq = MongoQuery(u, user_settings)
+
+        test_settings_for(mq, 'articles', models.Article,
+                          expected_settings=article_settings)
+        test_settings_for(mq, 'comments', models.Comment,
+                          expected_settings=comment_settings)
 
     @unittest.skipIf(SA_12, 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently')
     def test_selectinquery(self):

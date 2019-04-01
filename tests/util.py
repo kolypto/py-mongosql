@@ -27,7 +27,6 @@ def q2sql(q):
     return stmt2sql(q.statement)
 
 
-
 class TestQueryStringsMixin(object):
     """ unittest mixin that will help testing query strings """
 
@@ -100,7 +99,6 @@ class TestQueryStringsMixin(object):
         except:
             print(qs)
             raise
-
 
 
 class QueryCounter(object):

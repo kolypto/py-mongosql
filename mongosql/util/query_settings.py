@@ -1,4 +1,5 @@
 import inspect
+from sqlalchemy.ext.declarative import DeclarativeMeta
 
 from ..exc import DisabledError
 
@@ -37,8 +38,34 @@ class QuerySettings(object):
         #: disabled handler names
         self._disabled_handlers = set()
 
+        #: Nested MongoQuery settings (for relations)
+        self._nested_relation_settings = call_if_callable(self._settings.get('related', {}))
+
         #: Nested MongoQuery settings (for related models)
-        self._nested_settings = self._settings.get('related', {})
+        self._nested_model_settings = call_if_callable(self._settings.get('related_models', {}))
+
+    def validate_related_settings(self, bags):
+        """ Validate the settings for related entities.
+
+            This method only validates the keys for "related" and "related_models".
+
+            :type bags: mongosql.bag.ModelPropertyBags
+            :raises KeyError: Invalid keys
+        """
+        # Validate "related": all keys must be relationship names
+        invalid_keys = set(self._nested_relation_settings.keys()) - bags.relations.names - {'*'}
+        if invalid_keys:
+            raise KeyError('Invalid relationship name provided to "related": {!r}'
+                           .format(list(invalid_keys)))
+
+        # Validated "related_models": all keys must be models, not names
+        invalid_keys = set(v
+                           for v in self._nested_model_settings.keys()
+                           if not isinstance(v, DeclarativeMeta))
+        invalid_keys -= {'*'}
+        if invalid_keys:
+            raise KeyError('Invalid related model object provided to "related_models": {!r}'
+                           .format(list(invalid_keys)))
 
     def get_settings(self, handler_name, handler_cls):
         """ Get settings for the given handler
@@ -101,7 +128,7 @@ class QuerySettings(object):
         # Known keys
         handler_names = set(self._handler_kwargs.keys())
         valid_kwargs = set(self._kwarg_defaults.keys())
-        other_known_keys = {'related'}
+        other_known_keys = {'related', 'related_models'}
 
         # Merge all known keys into one
         all_known_keys = handler_names | valid_kwargs | other_known_keys
@@ -117,22 +144,67 @@ class QuerySettings(object):
             raise KeyError('Invalid settings were provided for MongoQuery: {}'
                            .format(','.join(invalid_keys)))
 
-    def settings_for_nested_mongoquery(self, relation_name):
-        # No explicit configuration: return an empty dict
-        if relation_name not in self._nested_settings:
-            return {}
+    def _get_settings(self, store, key, star_lambda_args):
+        """ Get settings from `store`, which is "related" or "related_models"
 
-        # Explicit configuration
-        sets = self._nested_settings[relation_name]
+        handler_settings may be stored in two dict keys:
+        * `related` is keyed by relation_name
+        * `related_models` is keyed by target_model
+        * Both map the key either a dict, or a lambda: dict | None,
+        * Both have the default catch-all '*'
+        * Both keep looking when a `None` is discovered
 
-        # It may be a dict, or a callable
+        Because of these similarities, this method handles them both.
+
+        :param store: `self._nested_relation_settings` or `self._nested_model_settings`
+        :param key: `relation_name`, or `target_model`
+        :param args: Arguments passed to '*' lambda-handler
+        :return: dict | None
+        """
+        # Try to get it by key
+        sets = store.get(key, None)
+
+        # callable?
         if callable(sets):
-            # Call it, and store the result back into our dict
-            sets = self._nested_settings[relation_name] = sets()
+            sets = sets() if key != '*' else sets(*star_lambda_args)
+
+        # Found?
+        if sets is not None:
+            return sets
+
+        # Fallback: '*'
+        if key != '*':
+            return self._get_settings(store, '*', star_lambda_args)
+        else:
+            # Not found
+            return None
+
+    def settings_for_nested_mongoquery(self, relation_name, target_model):
+        """ Get settings for a nested MongoQuery
+
+        Tries in turn:
+        related[relation-name]
+        related[*]
+        related_models[target-model]
+        related_models[*]
+
+        :param relation_name:
+        :param target_model:
+        :return:
+        """
+        # Try "related"
+        sets = self._get_settings(self._nested_relation_settings, relation_name, (relation_name, target_model))
+
+        # Try "related_models"
+        if sets is None:
+            sets = self._get_settings(self._nested_model_settings, target_model, (relation_name, target_model))
 
         # Done
-        # Return a copy, because we don't want our copy to be modified
         return sets
 
     def __repr__(self):
         return repr('{}({})'.format(self.__class__.__name__, self._settings))
+
+
+
+call_if_callable = lambda v: v() if callable(v) else v
