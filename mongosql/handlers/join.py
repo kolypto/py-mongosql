@@ -31,9 +31,9 @@ class MongoJoin(MongoQueryHandlerBase):
         # Security
         if allowed_relations is not None and banned_relations is not None:
             raise AssertionError('Cannot use both `allowed_relations` and `banned_relations`')
-        elif allowed_relations:
+        elif allowed_relations is not None:
             self.allowed_relations = set(allowed_relations)
-        elif banned_relations:
+        elif banned_relations is not None:
             self.allowed_relations = self.bags.relations.names - set(banned_relations)
         else:
             self.allowed_relations = None

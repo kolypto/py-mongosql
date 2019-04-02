@@ -175,7 +175,7 @@ class MongoAggregate(MongoQueryHandlerBase):
         super(MongoAggregate, self).__init__(model)
 
         # Security
-        self.aggregate_columns = set(aggregate_columns)
+        self.aggregate_columns = set(aggregate_columns or ())
         self.aggregate_labels = aggregate_labels
 
         # On input

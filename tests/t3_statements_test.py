@@ -8,7 +8,7 @@ from sqlalchemy import __version__ as SA_VERSION
 from sqlalchemy import inspect
 from sqlalchemy.orm import aliased
 
-from mongosql import handlers, MongoQuery, Reusable
+from mongosql import handlers, MongoQuery, Reusable, MongoQuerySettingsDict
 from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
 
 
@@ -413,7 +413,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         u = models.User
 
         # Configure MongoQuery
-        mq = MongoQuery(u, dict(
+        mq = MongoQuery(u, MongoQuerySettingsDict(
             aggregate_columns=('age',),
             aggregate_labels=True,
         ))
@@ -478,7 +478,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         self.assertRaises(InvalidColumnError, test_aggregate, {'a': {'$sum': {'???': 1}}}, '')
 
         # aggregate by JSON field
-        mq = MongoQuery(models.Article, dict(
+        mq = MongoQuery(models.Article, MongoQuerySettingsDict(
             aggregate_columns=('data',),
             aggregate_labels=True,
         ))
@@ -797,9 +797,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # === Initialize the settings
         # It will have plenty of configuration
-        article_settings = dict(
+        article_settings = MongoQuerySettingsDict(
             force_exclude=('data',),  # projection won't be able to get it
-            aggregate=False,  # aggregation disabled
+            aggregate_enabled=False,  # aggregation disabled
             # Configure queries on related models
             related={
                 'user': lambda: user_settings,  # recursively reuse the same configuration
@@ -807,7 +807,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             }
         )
 
-        user_settings = dict(
+        user_settings = MongoQuerySettingsDict(
             aggregate_columns=('age',),  # can aggregate on this column
             force_include=('name',),  # 'name' is always included
             banned_relations=('roles',),  # a relation is banned
@@ -819,15 +819,15 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             },
         )
 
-        comment_settings = dict(
+        comment_settings = MongoQuerySettingsDict(
             # Joins disabled, aggregation disabled
-            join=False,
+            join_enabled=False,
             # joinf=False, # implicitly disabled. don't have to do it
-            aggregate=False
+            aggregate_enabled=False
             # Everything else is allowed
         )
 
-        edit_settings = dict(
+        edit_settings = MongoQuerySettingsDict(
             # When loading users through the edit, restrictions apply
             # Imagine that we want to exclude `password`, or something sensitive like this
             related={
@@ -955,7 +955,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # In this case, MongoJoin will use a different method: pure sqlalchemy loader option.
         # Will it forget to apply our settings?
 
-        special_articles_settings = dict(
+        special_articles_settings = MongoQuerySettingsDict(
             force_exclude=('data',),
             related={
                 'user': dict(
@@ -984,7 +984,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # === Test: typo in settings
         with self.assertRaises(KeyError):
             MongoQuery(u, dict(
-                aggregate=False,
+                aggregate_enabled=False,
                 # a typo
                 allowed_Relations=(),
             ))
@@ -994,7 +994,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             handler_settings = mq._handler_settings.settings_for_nested_mongoquery(relation_name, target_model)
             self.assertEqual(handler_settings, expected_settings)
 
-        mq = MongoQuery(u, dict(
+        mq = MongoQuery(u, MongoQuerySettingsDict(
             related={
                 '*': lambda relation_name, target_model: dict(join=False) if relation_name == 'articles' else None,
             }
@@ -1004,7 +1004,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           expected_settings=dict(join=False))
 
         # === Test: related_models
-        mq = MongoQuery(u, dict(
+        mq = MongoQuery(u, MongoQuerySettingsDict(
             related_models={
                 models.User: user_settings,
                 models.Article: article_settings,
@@ -1046,15 +1046,15 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             ))
 
         # === Test: using related_models to configure a global registry
-        user_settings = dict(
+        user_settings = MongoQuerySettingsDict(
             allowed_relations=('articles',),
             related_models=lambda: model_settings,
         )
-        article_settings = dict(
+        article_settings = MongoQuerySettingsDict(
             allowed_relations=('user',),
             related_models=lambda: model_settings,
         )
-        comment_settings = dict(
+        comment_settings = MongoQuerySettingsDict(
             allowed_relations=(),
             related_models=lambda: model_settings,
         )

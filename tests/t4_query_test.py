@@ -3,7 +3,7 @@ import unittest
 from sqlalchemy import inspect
 from sqlalchemy.orm import Load
 
-from mongosql import Reusable, MongoQuery
+from mongosql import Reusable, MongoQuery, MongoQuerySettingsDict
 
 from . import t_raiseload_col_test
 from . import models
@@ -137,7 +137,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
         """ Test aggregate() """
         ssn = self.db
 
-        mq = Reusable(MongoQuery(models.User, dict(
+        mq = Reusable(MongoQuery(models.User, MongoQuerySettingsDict(
             aggregate_columns=('age',),
             aggregate_labels=True
         )))
@@ -194,7 +194,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
         self.assertEqual([None, 6, 5.5, 5, 4.5, 4], [a.data.get('rating', None) for a in articles])
 
         # Aggregate
-        mq = Reusable(MongoQuery(models.Article, dict(
+        mq = Reusable(MongoQuery(models.Article, MongoQuerySettingsDict(
             aggregate_columns=('data', 'data'),
             aggregate_labels=True
         )))

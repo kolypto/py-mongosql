@@ -8,11 +8,16 @@ from sqlalchemy.orm import Query, Load, defaultload
 from .bag import ModelPropertyBags
 from . import handlers
 from .exc import InvalidQueryError
-from .util import QuerySettings
+from .util import MongoQuerySettingsHandler
 
+# TODO: Run a query with a LIMIT/OFFSET and also get the total number of rows?
+#   https://stackoverflow.com/questions/28888375/
 
 class MongoQuery(object):
     """ MongoDB-style queries """
+
+    # The class to use for getting structural data from a model
+    _MODEL_PROPERTY_BAGS_CLS = ModelPropertyBags
 
     def __init__(self, model, handler_settings=None):
         """ Init a MongoDB-style query
@@ -23,7 +28,7 @@ class MongoQuery(object):
             These are just plain kwargs names for every handler object's __init__ method.
             Address the relevant documentation.
             Note that you don't have to specify which object receives which kwarg:
-            the `QuerySettings` object does that automatically.
+            the `MongoQuerySettingsHandler` object does that automatically.
 
             To disable a handler, give its name mapped to a `False`.
             Example:
@@ -54,16 +59,17 @@ class MongoQuery(object):
                     allowed_relations=None
                     banned_relations=None
                 # limit
-                    max_rows=None
+                    max_items=None
                 # enabled handlers?
-                    project=True
-                    filter=True
-                    join=True
-                    joinf=True
-                    group=True
-                    sort=True
-                    aggregate=True
-                    limit=True
+                    project_enabled=True
+                    filter_enabled=True
+                    join_enabled=True
+                    joinf_enabled=True
+                    group_enabled=True
+                    sort_enabled=True
+                    aggregate_enabled=True
+                    limit_enabled=True
+                    count_enabled=True
 
                 # Settings for queries on related models, based on relationship name
                 # Custom settings will apply to queries made to related models.
@@ -110,7 +116,7 @@ class MongoQuery(object):
                         related_models=lambda: all_settings
                     )
 
-        :type handler_settings: dict | None
+        :type handler_settings: dict | MongoQuerySettingsDict | None
         """
         # Aliases?
         if inspect(model).is_aliased_class:
@@ -120,16 +126,10 @@ class MongoQuery(object):
 
         # Init with the model
         self._model = model  # model, or its alias (when used with self.aliased())
-        self._bags = ModelPropertyBags.for_model(self._model)
+        self._bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(self._model)
 
-        # Get the settings
-        handler_settings = handler_settings or {}
-        if handler_settings.get('join', True) is False:
-            # If 'join' is explicitly disabled, disable 'joinf' as well
-            # This is for security so that one doesn't forget to disable them both.
-            handler_settings['joinf'] = False
-        self._handler_settings = QuerySettings(handler_settings)
-        self._handler_settings.validate_related_settings(self._bags)
+        # Initialize the settings
+        self._handler_settings = self._init_handler_settings(handler_settings or {})
 
         # Initialized later
         self._query = None  # type: Query | None
@@ -587,6 +587,21 @@ class MongoQuery(object):
     # endregion
 
     # region Internals
+
+    def _init_handler_settings(self, handler_settings):
+        """ Initialize: handler settings """
+        # A special case for 'join'
+        if handler_settings.get('join_enabled', True) is False:
+            # If 'join' is explicitly disabled, disable 'joinf' as well
+            # This is for security so that one doesn't forget to disable them both.
+            handler_settings['joinf_enabled'] = False
+
+        # Create the object
+        hso = MongoQuerySettingsHandler(handler_settings)
+        hso.validate_related_settings(self._bags)
+
+        # Done
+        return hso
 
     def _from_query(self):
         """ Get the query to work with, or initialize one

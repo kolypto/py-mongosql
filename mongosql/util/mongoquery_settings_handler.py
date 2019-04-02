@@ -4,7 +4,7 @@ from sqlalchemy.ext.declarative import DeclarativeMeta
 from ..exc import DisabledError
 
 
-class QuerySettings(object):
+class MongoQuerySettingsHandler(object):
     """ Settings keeper for MongoQuery
 
         This is essentially a helper which will feed the correct kwargs to every class.
@@ -39,10 +39,10 @@ class QuerySettings(object):
         self._disabled_handlers = set()
 
         #: Nested MongoQuery settings (for relations)
-        self._nested_relation_settings = call_if_callable(self._settings.get('related', {}))
+        self._nested_relation_settings = call_if_callable(self._settings.get('related', None)) or {}
 
         #: Nested MongoQuery settings (for related models)
-        self._nested_model_settings = call_if_callable(self._settings.get('related_models', {}))
+        self._nested_model_settings = call_if_callable(self._settings.get('related_models', None))or {}
 
     def validate_related_settings(self, bags):
         """ Validate the settings for related entities.
@@ -82,7 +82,7 @@ class QuerySettings(object):
         """
         # Now we know the handler name
         # See if it's actually disabled
-        if not self._settings.get(handler_name, True):
+        if not self._settings.get('{}_enabled'.format(handler_name), True):
             self._disabled_handlers.add(handler_name)
 
         # Analyze its __init__() method's kwargs
@@ -126,7 +126,8 @@ class QuerySettings(object):
             :raises: KeyError: Invalid settings provided
         """
         # Known keys
-        handler_names = set(self._handler_kwargs.keys())
+        handler_names = set('{}_enabled'.format(handler_name)
+                            for handler_name in self._handler_kwargs.keys())
         valid_kwargs = set(self._kwarg_defaults.keys())
         other_known_keys = {'related', 'related_models'}
 

@@ -35,7 +35,7 @@ class MongoCount(MongoQueryHandlerBase):
             # Also, remove all skips & limits
             query_object.pop('skip', None)
             query_object.pop('limit', None)
-            # Finally, when we count, we have to remove `max_rows` setting from MongoLimit.
+            # Finally, when we count, we have to remove `max_items` setting from MongoLimit.
             # Only MongoLimit can do it, and it will do it for us.
             # See: MongoLimit.input_prepare_query_object
 

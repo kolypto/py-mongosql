@@ -81,30 +81,56 @@ class ModelPropertyBags(object):
         self.model = model
         self.model_name = model.__name__
 
-        #: Column properties
-        self.columns = DotColumnsBag(_get_model_columns(model, insp))
+        # Init bags
+        self.columns = self._init_columns(model, insp)
+        self.properties = self._init_properties(model, insp)
+        self.hybrid_properties = self._init_hybrid_properties(model, insp)
+        self.relations = self._init_relations(model, insp)
+        self.related_columns = self._init_related_columns(model, insp)
+        self.pk = self._init_primary_key(model, insp)
+        self.nullable = self._init_nullable_columns(model, insp)
 
-        #: Calculated properties: @property
-        self.properties = PropertiesBag(_get_model_properties(model, insp))
+    # region: Initialize bags
 
-        #: Hybrid properties
-        self.hybrid_properties = HybridPropertiesBag(_get_model_hybrid_properties(model, insp))
+    # A bunch of initialization methods
+    # This way, you can override the way Bags is initialized
+    def _init_columns(self, model, insp):
+        """ Initialize: Column properties """
+        return DotColumnsBag(_get_model_columns(model, insp))
 
+    def _init_properties(self, model, insp):
+        """ Initialize: Calculated properties: @property """
+        return PropertiesBag(_get_model_properties(model, insp))
+
+    def _init_hybrid_properties(self, model, insp):
+        """ Initialize: Hybrid properties """
+        return HybridPropertiesBag(_get_model_hybrid_properties(model, insp))
+
+    def _init_relations(self, model, insp):
+        """ Initialize: Relationships and related columns """
         #: Relationship properties
         relationships_dict = _get_model_relationships(model, insp)
-        self.relations = RelationshipsBag(relationships_dict)
+        return RelationshipsBag(relationships_dict)
 
-        #: Primary key properties
-        self.pk = PrimaryKeyBag({c.name: self.columns[c.name]
-                                 for c in insp.primary_key})
-
-        #: Nullable properties
-        self.nullable = ColumnsBag({name: c
-                                    for name, c in self.columns
-                                    if c.nullable})
-
+    def _init_related_columns(self, model, insp):
         #: Related column properties
-        self.related_columns = DotRelatedColumnsBag(relationships_dict)
+        relationships_dict = _get_model_relationships(model, insp)
+        return DotRelatedColumnsBag(relationships_dict)
+
+    def _init_primary_key(self, model, insp):
+        """ Initialize: Primary key columns """
+        #: Primary key columns
+        return PrimaryKeyBag({c.name: self.columns[c.name]
+                              for c in insp.primary_key})
+
+    def _init_nullable_columns(self, model, insp):
+        """ Initialize: Nullable columns """
+        #: Nullable columns
+        return ColumnsBag({name: c
+                           for name, c in self.columns
+                           if c.nullable})
+
+    # endregion
 
     def aliased(self, aliased_class):
         # Copy the class
@@ -121,6 +147,14 @@ class ModelPropertyBags(object):
 
         # Done
         return result
+
+    @property
+    def all_names(self):
+        """ Get the names of all properties defined for the model """
+        return self.columns.names | \
+               self.properties.names | \
+               self.hybrid_properties.names | \
+               self.relations.names
 
 
 class PropertiesBagBase(object):
@@ -592,14 +626,16 @@ def _get_model_hybrid_properties(model, ins):
     """ Get a dict of model hybrid properties and regular properties """
     return {name: getattr(model, name)
             for name, c in ins.all_orm_descriptors.items()
-            if isinstance(c, hybrid_property)}
+            if not name.startswith('_')
+            and isinstance(c, hybrid_property)}
 
 
 def _get_model_properties(model, ins):
     """ Get a dict of model properties (calculated properies) """
     return {name: None  # we don't need the property itself
             for name in dir(model)
-            if isinstance(getattr(model, name), property)}
+            if not name.startswith('_')
+            and isinstance(getattr(model, name), property)}
 
 
 def _get_model_relationships(model, ins):
@@ -647,6 +683,7 @@ def _dot_notation(name):
     """
     path = name.split('.')
     return path[0], path[1:]
+
 
 def get_plain_column_name(name):
     """ Get a plain column name, dropping any dot-notation that may follow """

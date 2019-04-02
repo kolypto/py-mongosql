@@ -31,7 +31,7 @@ class CrudViewMixin(object):
     """
 
     #: Set the CRUD helper object at the class level
-    crudhelper = None  # type: CrudHelper | StrictCrudHelper
+    crudhelper = None  # type: Union[CrudHelper, StrictCrudHelper]
 
     #: List of columns and relationships that must be loaded with MongoQuery.ensure_loaded()
     ensure_loaded = ()

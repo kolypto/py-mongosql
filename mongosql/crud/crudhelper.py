@@ -30,7 +30,7 @@ class CrudHelper(object):
         self.bags = ModelPropertyBags.for_model(model)
         self.reusable_mongoquery = Reusable(MongoQuery(self.model, handler_settings))
 
-    def query_model(self, query_obj, from_query=None):
+    def query_model(self, query_obj=None, from_query=None):
         """ Make a MongoQuery using the provided Query Object
 
             Note that you have to provide the MongoQuery yourself.
@@ -111,7 +111,8 @@ class CrudHelper(object):
             :type instance: DeclarativeMeta
             :return: New instance, updated
             :rtype: DeclarativeMeta
-            :raises AssertionError: validation errors
+            :raises InvalidQueryError: validation errors
+            :raises InvalidColumnError: invalid column
         """
         # Validate
         if not isinstance(entity_dict, dict):
@@ -151,31 +152,36 @@ class StrictCrudHelper(CrudHelper):
         - Defaults for Query Object provide the default values for every query, unless overridden
     """
 
-    def __init__(self, model, ro_fields=(), rw_fields=(), query_defaults=None, **handler_settings):
+    def __init__(self, model, ro_fields=None, rw_fields=None, query_defaults=None, **handler_settings):
         """ Init a strict CRUD helper
+
+            Note: use a **StrictCrudHelperSettingsDict() to help you with the argument names and their docs!
 
             :param model: The model to work with
             :param ro_fields: List of read-only property names, or a callable which gives the list
-            :type ro_fields: Iterable[str] | Callable
+            :type ro_fields: Iterable[str] | Callable | None
             :param rw_fields: List of writable property names, or a callable which gives the list
-            :type rw_fields: Iterable[str] | Callable
-            :param query_defaults: The default Query Object, if any
+            :type rw_fields: Iterable[str] | Callable | None
+            :param query_defaults: Defaults for every Query Object: Query Object will be merged into it.
             :type query_defaults: dict | None
             :param handler_settings: Settings for the MongoQuery used to make queries
         """
         super(StrictCrudHelper, self).__init__(model, **handler_settings)
 
         # ro_fields
-        self.ro_fields = self._init_ro_rw_fields(ro_fields, rw_fields)
+        self.ro_fields = self._init_ro_rw_fields(ro_fields, rw_fields)  # type: set[str]
 
-        # Default Query Object
-        self.default_query = query_defaults or {}
+        # Defaults for the Query Object
+        self.query_defaults = query_defaults or {}  # type: dict
 
         # Validate the Default Query Object
-        MongoQuery(self.model).query(**self.default_query)
+        MongoQuery(self.model).query(**self.query_defaults)
 
     def _init_ro_rw_fields(self, ro_fields, rw_fields):
-        """ Initialize ro_fields and rw_fields """
+        """ Initialize ro_fields and rw_fields
+
+            :rtype: set[str]
+        """
         # Read-only fields
         assert not (ro_fields and rw_fields), 'Use either ro_fields or rw_fields, but not both'
         ro_fields = set(call_if_callable(ro_fields) or ())
@@ -210,8 +216,8 @@ class StrictCrudHelper(CrudHelper):
 
     def _query_model(self, query_obj, from_query=None):
         # Default Query Object
-        if self.default_query:
-            query_obj = shallow_merge_dicts(self.default_query, query_obj or {})
+        if self.query_defaults:
+            query_obj = shallow_merge_dicts(self.query_defaults, query_obj or {})
 
         # Super
         return super(StrictCrudHelper, self)._query_model(query_obj, from_query=from_query)

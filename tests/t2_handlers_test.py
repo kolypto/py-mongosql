@@ -590,14 +590,14 @@ class HandlersTest(unittest.TestCase):
         l = MongoLimit(User).input(limit=10)
         self.assertEqual((l.skip, l.limit), (None, 10))
 
-        # Test: max_rows
-        l = MongoLimit(User, max_rows=10).input()
+        # Test: max_items
+        l = MongoLimit(User, max_items=10).input()
         self.assertEqual((l.skip, l.limit), (None, 10))
 
-        l = MongoLimit(User, max_rows=10).input(limit=20)
+        l = MongoLimit(User, max_items=10).input(limit=20)
         self.assertEqual((l.skip, l.limit), (None, 10))
 
-        l = MongoLimit(User, max_rows=10).input(limit=5)
+        l = MongoLimit(User, max_items=10).input(limit=5)
         self.assertEqual((l.skip, l.limit), (None, 5))
 
     def test_join(self):

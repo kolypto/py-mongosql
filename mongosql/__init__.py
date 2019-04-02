@@ -32,3 +32,5 @@ from mongosql.util import Reusable
 from mongosql.util import raiseload_col
 # selectinquery() relationship loader that supports custom queries
 from mongosql.util import selectinquery
+# Settings objects for MongoQuery and StrictCrudHelper
+from mongosql.util import MongoQuerySettingsDict, StrictCrudHelperSettingsDict

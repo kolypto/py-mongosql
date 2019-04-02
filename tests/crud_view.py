@@ -1,4 +1,4 @@
-from mongosql import CrudViewMixin, StrictCrudHelper
+from mongosql import CrudViewMixin, StrictCrudHelper, StrictCrudHelperSettingsDict
 
 from . import models
 from flask import request, g
@@ -12,37 +12,39 @@ class ArticlesView(RestfulView, CrudViewMixin):
     crudhelper = StrictCrudHelper(
         # The model to work with
         models.Article,
-        # Read-only fields, as a callable (just because)
-        ro_fields=lambda: ('id', 'uid',),
-        # MongoQuery settings
-        aggregate_columns=('id', 'data',),  # have to explicitly enable aggregation for columns
-        query_defaults=dict(
-            sort=('id-',),
-        ),
-        max_rows=2,
-        # Related entities configuration
-        allowed_relations=('user', 'comments'),
-        related={
-            'user': dict(
-                # Exclude @property by default
-                default_exclude=('user_calculated',),
-                allowed_relations=('comments',),
-                related={
-                    'comments': dict(
-                        # Exclude @property by default
-                        default_exclude=('comment_calc',),
-                        # No further joins
-                        join=False,
-                    )
-                }
+        **StrictCrudHelperSettingsDict(
+            # Read-only fields, as a callable (just because)
+            ro_fields=lambda: ('id', 'uid',),
+            # MongoQuery settings
+            aggregate_columns=('id', 'data',),  # have to explicitly enable aggregation for columns
+            query_defaults=dict(
+                sort=('id-',),
             ),
-            'comments': dict(
-                # Exclude @property by default
-                default_exclude=('comment_calc',),
-                # No further joins
-                join=False,
-            ),
-        },
+            max_items=2,
+            # Related entities configuration
+            allowed_relations=('user', 'comments'),
+            related={
+                'user': dict(
+                    # Exclude @property by default
+                    default_exclude=('user_calculated',),
+                    allowed_relations=('comments',),
+                    related={
+                        'comments': dict(
+                            # Exclude @property by default
+                            default_exclude=('comment_calc',),
+                            # No further joins
+                            join_enabled=False,
+                        )
+                    }
+                ),
+                'comments': dict(
+                    # Exclude @property by default
+                    default_exclude=('comment_calc',),
+                    # No further joins
+                    join_enabled=False,
+                ),
+            },
+        )
     )
 
     # ensure_loaded: always load these columns and relationships
