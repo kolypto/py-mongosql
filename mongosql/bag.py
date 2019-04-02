@@ -515,9 +515,10 @@ def _get_model_hybrid_properties(model, ins):
 
 def _get_model_properties(model, ins):
     """ Get a dict of model properties (calculated properies) """
-    return {name: prop
-            for name, prop in model.__dict__.items()
-            if isinstance(prop, property)}
+    return {name: None  # Note: the property itself is not returned, because PropertiesBag doesn't need it
+            for name in dir(model)
+            if not name.startswith('_') and  # ignore protected properties
+            isinstance(getattr(model, name), property)}
 
 def _is_column_array(col):
     """ Is the column a PostgreSql ARRAY column?
