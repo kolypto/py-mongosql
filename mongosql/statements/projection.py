@@ -84,6 +84,7 @@ class MongoProjection(_MongoQueryStatementBase):
             col=self.bags.columns,
             hybrid=self.bags.hybrid_properties,
             prop=self.bags.properties,
+            rels=self.bags.relations,
         )
 
     #: MongoSQL projection statement operation modes
