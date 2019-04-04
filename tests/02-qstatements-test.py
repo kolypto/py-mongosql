@@ -498,7 +498,8 @@ class QueryStatementsTest(unittest.TestCase):
             self.assertEqual(_get_project(query), project)
 
         _check_query({'project': ['id', 'name']}, {'id': 1, 'name': 1})
-        _check_query({'project': {'id': 0, 'name': 0}}, {'id': 0, 'tags': 1, 'age': 1, 'name': 0, 'user_calculated': 1})
+        _check_query({'project': {'id': 0, 'name': 0}}, {'id': 0, 'tags': 1, 'age': 1, 'name': 0, 'user_calculated': 1,
+                                                         'articles': 0, 'comments': 0, 'roles': 0})
         _check_query({'project': {}}, {'id': 1, 'tags': 1, 'age': 1, 'name': 1})
 
         _check_query({'project': ['id', 'name'], 'join': ['roles']},
@@ -510,7 +511,7 @@ class QueryStatementsTest(unittest.TestCase):
         _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': ['comments']}}},
                      {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1, 'id': 1, 'uid': 1, 'text': 1}}})
         _check_query({'project': ['id', 'name'], 'join': {'articles': {'project': ['title'], 'join': {'comments': {'project': {'uid': 0, 'text': 0}}}}}},
-                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1,  'id': 1,  'uid': 0,  'text': 0,  'comment_calc': 1}}})
+                     {'id': 1, 'name': 1, 'articles': {'title': 1, 'comments': {'aid': 1,  'id': 1,  'uid': 0,  'text': 0,  'comment_calc': 1, 'user': 0, 'article': 0}}})
         _check_query({'join': ['roles']},
                      {'id': 1, 'tags': 1, 'age': 1, 'name': 1, 'roles': {'id': 1, 'uid': 1, 'title': 1, 'description': 1}})
 

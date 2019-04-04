@@ -51,6 +51,9 @@ class StatementsTest(unittest.TestCase):
                                 theme=0, data=0,
                                 # Properties excluded
                                 calculated=0, hybrid=0,
+                                # Relationships
+                                user=0,
+                                comments=0
                                 )
 
         # === Test: Valid projection, dict, include mode
@@ -58,21 +61,29 @@ class StatementsTest(unittest.TestCase):
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
 
-        test_by_full_projection(p, # basically, the same thing
+        test_by_full_projection(p,  # basically, the same thing
                                 id=1, uid=1, title=1,
                                 theme=0, data=0,
                                 calculated=0, hybrid=0,
+                                # Relationships
+                                user=0,
+                                comments=0
                                 )
 
         # === Test: Valid projection, dict, exclude mode
         p = MongoProjection(Article).input(dict(theme=0, data=0))
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
-        self.assertEqual(p.projection, dict(theme=0, data=0))
+        self.assertEqual(p.projection, dict(theme=0, data=0,
+                                            # Relationships
+                                            user=0, comments=0))
 
         test_by_full_projection(p,
                                 id=1, uid=1, title=1,
                                 theme=0, data=0,
                                 calculated=1, hybrid=1,
+                                # Relationships
+                                user=0,
+                                comments=0,
                                 )
 
         # === Test: `default_exclude` in exclude mode
@@ -81,12 +92,17 @@ class StatementsTest(unittest.TestCase):
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(theme=0, data=0,
                                             # Extra stuff
-                                            calculated=0, hybrid=0))
+                                            calculated=0, hybrid=0,
+                                            # Relationships
+                                            user=0, comments=0,
+                                            ))
 
         test_by_full_projection(p,
                                 id=1, uid=1, title=1,
                                 theme=0, data=0,
                                 calculated=0, hybrid=0,  # now excluded
+                                # Relationships
+                                user=0, comments=0,
                                 )
 
         # === Test: `default_exclude` in include mode (no effect)
@@ -99,6 +115,8 @@ class StatementsTest(unittest.TestCase):
                                 id=1, uid=0, title=0,
                                 theme=0, data=0,
                                 calculated=1, hybrid=0,  # one included, one excluded
+                                # Relationships
+                                user=0, comments=0,
                                 )
 
         # === Test: default_projection
@@ -125,7 +143,10 @@ class StatementsTest(unittest.TestCase):
         self.assertEqual(p.projection, dict(id=1,  # force included
                                             uid=1, title=1, theme=1,
                                             data=0,  # excluded by request
-                                            calculated=1, hybrid=1))
+                                            calculated=1, hybrid=1,
+                                            # Relationships
+                                            user=0, comments=0,
+                                            ))
 
         # === Test: force_exclude
         pr = Reusable(MongoProjection(Article, force_exclude=('data',)))
@@ -142,6 +163,8 @@ class StatementsTest(unittest.TestCase):
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(theme=0,  # excluded by request
                                             data=0,  # force excluded
+                                            # Relationships
+                                            user=0, comments=0,
                                             ))
 
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
@@ -178,7 +201,10 @@ class StatementsTest(unittest.TestCase):
         # === Test: A mixed object is only acceptable when it mentions EVERY column
         # No error
         MongoProjection(Article).input(dict(id=1, uid=1, title=1, theme=1, data=0,
-                                            calculated=1, hybrid=1))
+                                            calculated=1, hybrid=1,
+                                            # Relationships
+                                            user=0, comments=0,
+                                            ))
 
     def test_sort(self):
         sr = Reusable(MongoSort(Article))

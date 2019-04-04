@@ -84,6 +84,7 @@ class MongoProjection(_MongoQueryStatementBase):
             col=self.bags.columns,
             hybrid=self.bags.hybrid_properties,
             prop=self.bags.properties,
+            rels=self.bags.relations,
         )
 
     #: MongoSQL projection statement operation modes
@@ -146,12 +147,25 @@ class MongoProjection(_MongoQueryStatementBase):
         else:
             # The only case when we allow mixing 1-s and 0-s -- is a full projection
             # A full projection includes all fields.
-            is_full_projection = set(projection.keys()) == self.supported_bags.names
+            full_projection_keys = set(projection.keys())
+            full_projection_keys |= set(self.default_exclude or ())
+            full_projection_keys |= set(self.force_include or ())
+            full_projection_keys |= set(self.force_exclude or ())
+
+            # Test if it's a full projection
+            is_full_projection = full_projection_keys == self.supported_bags.names
             if is_full_projection:
                 mode = self.MODE_MIXED
             else:
                 raise InvalidQueryError('Dict projection values shall be all 0s or all 1s, '
                                         'or a full projection object')
+
+        # Special treatment for relations: when the projection is in the exclude mode,
+        # we don't want relations to get a default value of 1.
+        # You have to explicitly request them.
+        if mode == self.MODE_EXCLUDE and projection != {}:
+            for relation_name in self.bags.relations.names:
+                projection.setdefault(relation_name, 0)
 
         # default_exclude
         if mode == self.MODE_EXCLUDE and self.default_exclude:
