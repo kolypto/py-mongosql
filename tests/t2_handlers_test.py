@@ -44,7 +44,7 @@ class HandlersTest(unittest.TestCase):
         # === Test: No input
         p = MongoProject(Article).input(None)
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
-        self.assertEqual(p.projection, dict())
+        self.assertEqual(p.projection, dict(calculated=0, hybrid=0))
 
         # === Test: Valid projection, array
         p = MongoProject(Article).input(['id', 'uid', 'title'])
@@ -74,12 +74,12 @@ class HandlersTest(unittest.TestCase):
         # === Test: Valid projection, dict, exclude mode
         p = MongoProject(Article).input(dict(theme=0, data=0))
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
-        self.assertEqual(p.projection, dict(theme=0, data=0))
+        self.assertEqual(p.projection, dict(theme=0, data=0, calculated=0, hybrid=0))
 
         test_by_full_projection(p,
                                 id=1, uid=1, title=1,
                                 theme=0, data=0,
-                                calculated=1, hybrid=1,
+                                calculated=0, hybrid=0,
                                 )
 
         # === Test: `default_exclude` in exclude mode
@@ -133,7 +133,7 @@ class HandlersTest(unittest.TestCase):
         # Originally exclude, merge exclude
         pr = mk_pr(0).merge(dict(data=0))
         self.assertEqual(pr.mode, pr.MODE_EXCLUDE)
-        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
+        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0, calculated=0, hybrid=0,
                                              # One new appended
                                              data=0))
 
@@ -147,7 +147,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(pr.mode, pr.MODE_MIXED)
         self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
                                              # Full projection in mixed mode
-                                             theme=1, data=1, calculated=1, hybrid=1))
+                                             theme=1, data=1, calculated=0, hybrid=0))
 
         # === Test: merge, quiet mode
         # Originally include, merge include
@@ -158,7 +158,7 @@ class HandlersTest(unittest.TestCase):
         # Originally exclude, merge include (conflict, results in full projection)
         pr = mk_pr(0).merge(dict(title=1), quietly=True)
         self.assertEqual(pr.get_full_projection(),
-                         dict(id=0, uid=0, title=0, theme=1, data=1, calculated=1, hybrid=1))  # not 'title'
+                         dict(id=0, uid=0, title=0, theme=1, data=1, calculated=0, hybrid=0))  # not 'title'
 
         # === Test: force_include
         pr = Reusable(MongoProject(Article, force_include=('id',)))
@@ -173,7 +173,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(p.projection, dict(id=1,  # force included
                                             uid=1, title=1, theme=1,
                                             data=0,  # excluded by request
-                                            calculated=1, hybrid=1))
+                                            calculated=0, hybrid=0))
 
         # === Test: force_exclude
         pr = Reusable(MongoProject(Article, force_exclude=('data',)))
@@ -190,6 +190,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(theme=0,  # excluded by request
                                             data=0,  # force excluded
+                                            calculated=0, hybrid=0
                                             ))
 
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
@@ -651,10 +652,11 @@ class HandlersTest(unittest.TestCase):
 
         j.merge(('articles',))
         j.merge(('articles',))  # no problem twice
-        self.assertEqual(j.get_projection_tree(), {'articles': {}})
+        self.assertEqual(j.get_projection_tree(), {'articles': {'hybrid': 0, 'calculated': 0}})
 
         j.merge(('comments',))
-        self.assertEqual(j.get_projection_tree(), {'articles': {}, 'comments': {}})
+        self.assertEqual(j.get_projection_tree(), {'articles': {'hybrid': 0, 'calculated': 0},
+                                                   'comments': {'comment_calc': 0}})
 
         # Test plain relations with a nested projection
         j = mj.input({'articles': dict(project=('title',))})
@@ -680,7 +682,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1, 'data': 1,  # + 'data'
                                                                 'comments': {'text': 1, 'id': 1,  # +'id'
                                                                              # + 'user':
-                                                                             'user': {}
+                                                                             'user': {'user_calculated': 0}
                                                                              },
                                                                 # + 'user':
                                                                 'user': {'id': 1}
@@ -738,7 +740,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(mq.pluck_instance(u), dict(name='a', user_calculated=28))
 
         mq = User.mongoquery().query(project={'tags': 0})
-        self.assertEqual(mq.pluck_instance(u), dict(id=1, name='a', age=18, user_calculated=28))
+        self.assertEqual(mq.pluck_instance(u), dict(id=1, name='a', age=18))  # note: no @property!
 
         # === Test: pluck user, articles
         # Now we have a join to a one-to-many relationship.
@@ -757,9 +759,10 @@ class HandlersTest(unittest.TestCase):
                          dict(name='a',
                               articles=[
                                   # Everything
-                                  dict(id=1, uid=1, title='a', theme='s', data={}, calculated=2, hybrid=False),
-                                  dict(id=2, uid=1, title='b', theme='s', data={}, calculated=2, hybrid=False),
-                                  dict(id=3, uid=1, title='c', theme='s', data={}, calculated=2, hybrid=False),
+                                  # Note: no @property, no @hybrid_property!
+                                  dict(id=1, uid=1, title='a', theme='s', data={}),
+                                  dict(id=2, uid=1, title='b', theme='s', data={}),
+                                  dict(id=3, uid=1, title='c', theme='s', data={}),
                               ]))
 
         # Join with projection

@@ -41,6 +41,7 @@ class MongoProject(MongoQueryHandlerBase):
 
     def __init__(self, model, default_projection=None,
                  default_exclude=None,
+                 default_exclude_properties=True,
                  force_include=None, force_exclude=None,
                  raiseload=False):
         """ Init projection
@@ -53,6 +54,8 @@ class MongoProject(MongoQueryHandlerBase):
             something like {id: 0, text: 0}, and the query would include a lot of fields,
             but you still want some of them removed by default.
             Use this for properties that contain a lot of data.
+        :param default_exclude_properties: By default, exclude @property and @hybrid_property attributes.
+            This is a handy shortcut. Use `force_include` to overrule, or `default_exclude` manually to fine-tune.
         :param force_include: A list of column names to include into the output always
         :param force_exclude: A list of column names to exclude from the output always
         :param raiseload: Install a raiseload_col() option on all fields excluded by projection.
@@ -63,12 +66,19 @@ class MongoProject(MongoQueryHandlerBase):
         """
         super(MongoProject, self).__init__(model)
 
+        # Settings
         self.default_projection = {k: Default(v)
                                    for k, v in (default_projection or {}).items()}
         self.default_exclude = set(default_exclude) if default_exclude else None
         self.force_include = set(force_include) if force_include else None
         self.force_exclude = set(force_exclude) if force_exclude else None
+        self.default_exclude_properties = None
         self.raiseload = raiseload
+
+        if default_exclude_properties:
+            self.default_exclude_properties = self.bags.properties.names | self.bags.hybrid_properties.names
+            # Merge `properties` and `hybrid_properties` into `default_exclude`
+            self.default_exclude = (self.default_exclude or set()) | self.default_exclude_properties
 
         # On input
         #: Projection mode: self.MODE_INCLUDE, self.MODE_EXCLUDE, self.MODE_MIXED
@@ -98,7 +108,9 @@ class MongoProject(MongoQueryHandlerBase):
         return CombinedBag(
             col=self.bags.columns,
             hybrid=self.bags.hybrid_properties,
-            prop=self.bags.properties
+            prop=self.bags.properties,
+            # NOTE: please do not add `self.bags.relations` here: relations are handled separately:
+            # _input_process() plucks them out, and _pass_relations_to_mongojoin() forwards them to MongoJoin.
         )
 
     #: MongoSQL projection handler operation modes
@@ -261,10 +273,20 @@ class MongoProject(MongoQueryHandlerBase):
 
             Load options are chained from the `as_relation` load interface
         """
-        # Short-circuit: empty projection
-        # (by default, with input(None), mode=exclude, and project={}
-        if self.mode == self.MODE_EXCLUDE and not self._projection:
-            return ()  # no restrictions
+        # Short-circuit
+        if self.mode == self.MODE_EXCLUDE:
+            empty = [as_relation.raiseload_col('*')]  # TODO: rm, replace ()
+            empty = ()
+
+            # Short-circuit: empty projection
+            # (by default, with input(None), mode=exclude, and project={}
+            if not self._projection:
+                return empty  # no restrictions: all fields are to be loaded
+
+            # Short-circuit: projection not empty, but only contains @property and @hybrid_property attributes:
+            # Those that are going to be ignored anyway
+            if set(self._projection) == self.default_exclude_properties:
+                return empty  # no restrictions: all fields are to be loaded
 
         # load_only() all those columns
         load_only_columns = self.compile_columns()

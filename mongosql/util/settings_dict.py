@@ -23,6 +23,7 @@ class MongoQuerySettingsDict(dict):
                  # --- project
                  default_projection=None,
                  default_exclude=None,
+                 default_exclude_properties=True,
                  force_include=None,
                  force_exclude=None,
                  # --- project & join & joinf

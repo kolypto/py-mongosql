@@ -41,8 +41,8 @@ class CrudTest(unittest.TestCase):
             self.assertEqual(rv['articles'], [
                 # 2 items
                 # sort: id-
-                {'id': 30, 'uid': 3, 'theme': None, 'title': '30', 'data': {'o': {'z': False}}, 'calculated': 5, 'hybrid': False},
-                {'id': 21, 'uid': 2, 'theme': None, 'title': '21', 'data': {'rating': 4, 'o': {'z': True}}, 'calculated': 4, 'hybrid': False}
+                {'id': 30, 'uid': 3, 'theme': None, 'title': '30', 'data': {'o': {'z': False}}},
+                {'id': 21, 'uid': 2, 'theme': None, 'title': '21', 'data': {'rating': 4, 'o': {'z': True}}}
             ])
 
         # Query list

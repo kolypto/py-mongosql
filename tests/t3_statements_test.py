@@ -189,9 +189,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         _check_query(dict(project=['id', 'name']),
                      {'id': 1, 'name': 1, 'age': 0, 'tags': 0, 'user_calculated': 0})
         _check_query(dict(project={'id': 0, 'name': 0}),
-                     {'id': 0, 'tags': 1, 'age': 1, 'name': 0, 'user_calculated': 1})
+                     {'id': 0, 'tags': 1, 'age': 1, 'name': 0, 'user_calculated': 0})
         _check_query(dict(project={}),
-                     {'id': 1, 'tags': 1, 'age': 1, 'name': 1, 'user_calculated': 1})
+                     {'id': 1, 'tags': 1, 'age': 1, 'name': 1, 'user_calculated': 0})
 
     def test_sort(self):
         """ Test sort() """
@@ -487,6 +487,39 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         test_aggregate({'max_rating': {'$max': 'data.rating'}}, "SELECT max(CAST(a.data #>> ['rating'] AS FLOAT)) AS max_rating")
 
+    def test_invalid__aggregate_with_projection(self):
+        """ Invalid combination: aggregate + project """
+        u = models.User
+
+        # === Test: aggregate + project
+        # It is invalid to use projections with aggregate, because regular columns are not available with projections!
+        mq = u.mongoquery().query(  # no error
+            aggregate={'n': {'$sum': 1}},
+            project=('name',)
+        )
+        self.assertNotIn('name', q2sql(mq.end()))  # not mentioned
+
+        # === Test: aggregate + settings: force_include
+        # Note that when aggregation is used, there may be no projections.
+        # The user may understand that; but handler settings may still make it do something.
+        # Let's hope this setting will not ruin everything
+        # Expected result: MongoProject won't put any options() on the query
+        # Possible result:
+        #       ArgumentError: Query has only expression-based entities - can't find property named 'articles'.
+        mq_user = Reusable(MongoQuery(
+            models.User,
+            dict(
+                force_include=('name',)
+            )
+        ))
+
+        # === Test: aggregate, joinf, filter
+        mq = mq_user.query(  # no error
+            aggregate={'n': {'$sum': 1}},
+            group=('id',),
+        )
+        self.assertNotIn('name', q2sql(mq.end()))  # not mentioned
+
     def test_count(self):
         """ Test query(count) """
         u = models.User
@@ -495,15 +528,23 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         mq = u.mongoquery().query(filter={'age': {'$gt': 18}},
                                   sort=['age-'],
                                   count=True)
+        # qs = self.assertQuery(mq.end(),  # No more subquery ; see MongoCount.alter_query
+        #                       # Count
+        #                       'SELECT count(1) AS count_1',
+        #                       # from subquery
+        #                       'FROM (SELECT u.',
+        #                       # From User table
+        #                       'FROM u ',
+        #                       # condition
+        #                       'WHERE u.age > 18) AS anon_1',
+        #                       )
         qs = self.assertQuery(mq.end(),
                               # Count
                               'SELECT count(1) AS count_1',
-                              # from subquery
-                              'FROM (SELECT u.',
-                              # From User table
+                              # from table, directly
                               'FROM u ',
-                              # condition in a subquery
-                              'WHERE u.age > 18) AS anon_1',
+                              # condition
+                              'WHERE u.age > 18',
                               )
         self.assertNotIn('ORDER BY', qs)  # 'count' removed for performance
 
@@ -512,15 +553,24 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                   join={'articles': dict(project=['id'],
                                                          filter={'theme': 'sci-fi'})},
                                   count=True)
+        # self.assertQuery(mq.end(),  # No more subquery ; see MongoCount.alter_query
+        #                  # Count
+        #                  'SELECT count(1) AS count_1',
+        #                  # Subquery
+        #                  'FROM (SELECT u.',
+        #                  # Join
+        #                  'FROM u LEFT OUTER JOIN a AS a_1 ON u.id = a_1.uid AND a_1.theme = sci-fi',
+        #                  # Filter
+        #                  'WHERE u.age > 18) AS anon_1')
         self.assertQuery(mq.end(),
                          # Count
                          'SELECT count(1) AS count_1',
-                         # Subquery
-                         'FROM (SELECT u.',
+                         # From table
+                         'FROM u',
                          # Join
                          'FROM u LEFT OUTER JOIN a AS a_1 ON u.id = a_1.uid AND a_1.theme = sci-fi',
                          # Filter
-                         'WHERE u.age > 18) AS anon_1')
+                         'WHERE u.age > 18')
 
     # ---------- DREADED JOIN LINE ----------
     # Everything below this line is about joins.
@@ -1508,7 +1558,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         mq = u.mongoquery().query(
             project=['name', 'articles'],
         )
-        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'articles': {}})
+        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'articles': {'calculated': 0, 'hybrid': 0}})
 
     # region: Older tests
 

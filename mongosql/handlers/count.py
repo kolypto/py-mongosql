@@ -62,7 +62,8 @@ class MongoCount(MongoQueryHandlerBase):
     def alter_query(self, query, as_relation=None):
         """ Apply offset() and limit() to the query """
         if self.count:
-            query = query.from_self(func.count(1))
+            # query = query.from_self(func.count(1))  # no more subquery
+            query = query.with_entities(func.count(1))
         return query
 
 
