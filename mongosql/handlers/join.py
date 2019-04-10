@@ -642,6 +642,12 @@ class MongoJoin(MongoQueryHandlerBase):
                 for mjp in self.mjps
                 if not mjp.quietly_included}
 
+    def get_full_projection_tree(self):
+        """ Get a projection tree where every column is mapped to either 1 or 0 """
+        return {mjp.relationship_name: mjp.nested_mongoquery.get_full_projection_tree()
+                for mjp in self.mjps
+                if not mjp.quietly_included}
+
     def get_full_projection(self):
         """ Get a full projection-like dict from the join handler
 

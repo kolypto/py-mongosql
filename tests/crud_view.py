@@ -60,6 +60,9 @@ class ArticlesView(RestfulView, CrudViewMixin):
     entity_name = 'article'
     entity_names = 'articles'
 
+    # Can save relationships
+    saves_relations = ('comments',)
+
     # This is our helper method that extracts the QueryObject from the request
     # No interface requires this ; this is purely for our pleasure
     @property
@@ -108,6 +111,10 @@ class ArticlesView(RestfulView, CrudViewMixin):
         # This is just our good manners: if the client has requested certain fields, we return only those they requested.
         # Even if our code loads some more columns (and it does!), the client will always get what they requested.
         return list(map(self._return_instance, entities))
+
+    def _save_relations(self, new, prev=None, comments=None):
+        pass  # TODO: unit-test saving relationships
+
 
     def get(self, id):
         item = self._method_get(self._query_object, id=id)

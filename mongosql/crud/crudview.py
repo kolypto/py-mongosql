@@ -36,8 +36,11 @@ class CrudViewMixin(object):
     #: List of columns and relationships that must be loaded with MongoQuery.ensure_loaded()
     ensure_loaded = ()
 
+    #: The names of relationships that this View is capable of saving. They will be given to _save_relations() as kwargs
+    saves_relations = ()
+
     def __init__(self):
-        #: The MongoQuery for this request
+        #: The MongoQuery for this request, if it was indeed initialized by _mquery()
         self._mongoquery = None  # type: MongoQuery
 
     def _get_db_session(self):
@@ -72,6 +75,23 @@ class CrudViewMixin(object):
             :type prev: ModelHistoryProxy | None
         """
         pass
+
+    def _save_relations(self, new, prev=None, **relations):
+        """ A hook that implements saving related models.
+
+        Whenever a relationship is named in the 'saves_relations' class attribute,
+        they are plucked out of the incoming JSON dict, and after an entity is created,
+        it is passed to this hook.
+
+        Saving a relationship is always a custom procedure; that's why it is implemented through this method.
+
+        :param new: The new instance
+        :type new: DeclarativeMeta
+        :param prev: Previously persisted version (is provided only when updating).
+        :type prev: ModelHistoryProxy | None
+        :param relations: Values for every relation
+        """
+        raise NotImplementedError('Saving relations is not yet implemented for this view')
 
     # NOTE: there's no delete hook. Override _method_delete() to implement it.
 
@@ -145,7 +165,7 @@ class CrudViewMixin(object):
             :type entities: Iterable[DeclarativeMeta]
             :rtype: Iterable[DeclarativeMeta]
         """
-        return entities
+        return list(entities)  # because it may be an iterable
 
     def _method_list_result__groups(self, dicts):
         """ Handle _method_list() result when it's a list of dicts: the one you get from GROUP BY
@@ -178,7 +198,12 @@ class CrudViewMixin(object):
             :raises exc.InvalidQueryError: Query Object errors made by the user
         """
         # Create a new instance
-        instance = self.crudhelper.create_model(entity_dict)
+        # (wrapped with a relationship saver)
+        instance = self._handle_saving_relationships(
+            entity_dict,
+            None,
+            lambda entity_dict: self.crudhelper.create_model(entity_dict)
+        )
 
         # Run the hook
         self._save_hook(instance, None)
@@ -207,15 +232,18 @@ class CrudViewMixin(object):
         """
         # Load the instance
         instance = self._get_one(CRUD_METHOD.UPDATE, None, *filter, **filter_by)
+        old_instance = ModelHistoryProxy(instance)
 
         # Update it
-        instance = self.crudhelper.update_model(entity_dict, instance)
+        # (wrapped with a relationship saver)
+        instance = self._handle_saving_relationships(
+            entity_dict,
+            old_instance,
+            lambda entity_dict: self.crudhelper.update_model(entity_dict, instance)
+        )
 
         # Run the hook
-        self._save_hook(
-            instance,
-            ModelHistoryProxy(instance)
-        )
+        self._save_hook(instance, old_instance)
 
         # Done
         # We don't save anything here
@@ -309,5 +337,33 @@ class CrudViewMixin(object):
 
         # Result
         return query.one()
+
+    def _handle_saving_relationships(self, entity_dict, prev_instance, wrapped_method):
+        """ A helper wrapper that will save relationships of an instance while it's being created or updated.
+
+            The idea is that this method will pluck `self.saves_relations` relatioships from the entity_dict,
+            and then pass them to the `_save_relations()` handler.
+
+            Args:
+                entity_dict:
+                    A dict that has come from the user that's going to save an entity
+                old_instance:
+                    The previous version of the instance (if available)
+                wrapped_method:
+                    The method wrapped with this helper.
+        """
+        # Pluck relations out of the entity dict
+        relations_to_be_saved = {k: entity_dict.pop(k, None)
+                                 for k in self.saves_relations}
+
+        # Update it
+        new_instance = wrapped_method(entity_dict)
+
+        # Save relations
+        if relations_to_be_saved:
+            self._save_relations(new_instance, prev_instance, **relations_to_be_saved)
+
+        # Done
+        return new_instance
 
     # endregion

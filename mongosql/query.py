@@ -341,7 +341,8 @@ class MongoQuery(object):
         return self
 
     def get_projection_tree(self):
-        """ Get a projection-like dict that maps every included column to 1, and every relationship to a nested projection dict.
+        """ Get a projection-like dict that maps every included column to 1,
+            and every relationship to a nested projection dict.
 
             Example:
 
@@ -353,6 +354,16 @@ class MongoQuery(object):
         """
         ret = {}
         ret.update(self.handler_project.projection)
+        ret.update(self.handler_join.get_projection_tree())
+        ret.update(self.handler_joinf.get_projection_tree())
+        return ret
+
+    def get_full_projection_tree(self):
+        """ Get a full projection tree that mentions every column, but only those relationships that are loaded
+            :rtype: dict
+        """
+        ret = {}
+        ret.update(self.handler_project.get_full_projection())
         ret.update(self.handler_join.get_projection_tree())
         ret.update(self.handler_joinf.get_projection_tree())
         return ret
