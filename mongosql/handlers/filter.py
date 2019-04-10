@@ -579,7 +579,7 @@ class MongoFilter(MongoQueryHandlerBase):
             query = query.filter(self.compile_statement())
 
         # Apply force_filter if it was a callable
-        if self.force_filter_callable:
+        if self.force_filter_callable:  # TODO: force it onto a relationship?
             query = self.force_filter_callable(query, self.model, as_relation)
 
         # Done

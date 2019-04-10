@@ -22,8 +22,8 @@ class MongoLimit(MongoQueryHandlerBase):
         """ Init a limit
 
         :param model: Sqlalchem model to work with
-        :param max_items: Upper limit on `limit`: The value can never go any higher.
-            Moreover, it's forced onto every query.
+        :param max_items: The maximum number of items that can be loaded with this query.
+            The user can never go any higher than that, and this value is forced onto every query.
         """
         super(MongoLimit, self).__init__(model)
 

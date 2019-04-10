@@ -43,7 +43,7 @@ class MongoProject(MongoQueryHandlerBase):
                  default_exclude=None,
                  default_exclude_properties=True,
                  force_include=None, force_exclude=None,
-                 raiseload=False):
+                 raiseload_col=False):
         """ Init projection
 
         :param model: SQLalchemy model
@@ -53,15 +53,15 @@ class MongoProject(MongoQueryHandlerBase):
             This only affects projections in exclusion mode: when the user has specified
             something like {id: 0, text: 0}, and the query would include a lot of fields,
             but you still want some of them removed by default.
-            Use this for properties that contain a lot of data.
+            Use this for properties that contain a lot of data, or require extra queries.
         :param default_exclude_properties: By default, exclude @property and @hybrid_property attributes.
             This is a handy shortcut. Use `force_include` to overrule, or `default_exclude` manually to fine-tune.
         :param force_include: A list of column names to include into the output always
         :param force_exclude: A list of column names to exclude from the output always
-        :param raiseload: Install a raiseload_col() option on all fields excluded by projection.
+        :param raiseload_col: Install a raiseload_col() option on all fields excluded by projection.
             This is a performance safeguard: when your custom code uses certain fields, but a
             projection has excluded them, the situation will result in a LOT of extra queries!
-            Solution: `raiseload=True` will raise an exception every time a deferred loading occurs;
+            Solution: `raiseload_col=True` will raise an exception every time a deferred loading occurs;
             Make sure you manually do `.options(undefer())` on all the columns you need.
         """
         super(MongoProject, self).__init__(model)
@@ -73,7 +73,7 @@ class MongoProject(MongoQueryHandlerBase):
         self.force_include = set(force_include) if force_include else None
         self.force_exclude = set(force_exclude) if force_exclude else None
         self.default_exclude_properties = None
-        self.raiseload = raiseload
+        self.raiseload_col = raiseload_col
 
         if default_exclude_properties:
             self.default_exclude_properties = self.bags.properties.names | self.bags.hybrid_properties.names
@@ -292,7 +292,7 @@ class MongoProject(MongoQueryHandlerBase):
         ret = [as_relation.load_only(*load_only_columns)]
 
         # raiseload_col() on all the rest (if requested)
-        if self.raiseload:
+        if self.raiseload_col:
             ret.append(as_relation.raiseload_col('*'))
 
             # Undefer PKs (otherwise, raiseload_col() will get them)
@@ -317,8 +317,8 @@ class MongoProject(MongoQueryHandlerBase):
             return as_relation.undefer(column)
 
         # Not included
-        if self.raiseload:
-            # raiseload
+        if self.raiseload_col:
+            # raiseload_rel
             return as_relation.raiseload_col(column)
         else:
             # deferred

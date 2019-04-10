@@ -6,10 +6,9 @@ from .marker import Marker
 
 
 import sys
-if sys.version_info[0] == 3:
+if sys.version_info >= (3, 5, 0):  # That's when `typing` module became available
     from .settings_dict import MongoQuerySettingsDict, StrictCrudHelperSettingsDict
 else:
-    # Python 2
-    # TODO: REMOVE ME IN PYTHON 3!
+    # Python 2, 3.4
     MongoQuerySettingsDict = dict
     StrictCrudHelperSettingsDict = dict

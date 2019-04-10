@@ -24,98 +24,7 @@ class MongoQuery(object):
 
         :param model: SqlAlchemy model to make a MongoSQL query for.
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
-        :param handler_settings: Settings for Query Object handlers.
-            These are just plain kwargs names for every handler object's __init__ method.
-            Address the relevant documentation.
-            Note that you don't have to specify which object receives which kwarg:
-            the `MongoQuerySettingsHandler` object does that automatically.
-
-            To disable a handler, give its name mapped to a `False`.
-            Example:
-
-                project=False
-
-            A special key, `related`, lets you specify the settings for queries on related models.
-            For example, a MongoQuery(Article) can specify settings for queries made with joins to a related User model:
-
-                related={'author': { default_exclude=('password',) } }
-
-            The list of all settings:
-                # project
-                    default_projection=None
-                    default_exclude=None
-                    force_include=None
-                    force_exclude=None
-                # project & join & joinf
-                    raiseload=False
-                # aggregate
-                    aggregate_columns=()
-                    aggregate_labels=False
-                # filter
-                    force_filter=None
-                    scalar_operators=None
-                    array_operators=None
-                # join & joinf
-                    allowed_relations=None
-                    banned_relations=None
-                # limit
-                    max_items=None
-                # enabled handlers?
-                    project_enabled=True
-                    filter_enabled=True
-                    join_enabled=True
-                    joinf_enabled=True
-                    group_enabled=True
-                    sort_enabled=True
-                    aggregate_enabled=True
-                    limit_enabled=True
-                    count_enabled=True
-
-                # Settings for queries on related models, based on relationship name
-                # Custom settings will apply to queries made to related models.
-                # For instance, you may have one set of handler_settings for queries made on the `User` model directly,
-                # and a completely different set of settings for querying `User`s through a relationship.
-                    related = dict(
-                        # handler_settings for nested queries may be configured per relationship
-                        relation-name: dict,
-                        relation-name: lambda: dict,
-                        relation-name: None,  # will fall back to '*'
-                        # The default
-                        # If there's no default, or gives None, `related_models` will be used
-                        '*': lambda relationship_name, target_model: dict | None,
-                    )
-                    or
-                    related = lambda: dict
-
-                # Automatically configure settings on related models, based on target model
-                # This is a back-up that's used instead of `related` if no custom configuration is available.
-                # `related_models` allows you to have one global dict that will define the `default` rules that apply
-                # to an entity, no matter now it's accessed.
-                    related_models = dict(
-                        # handler_settings for nested queries may be configured per model
-                        # note that you're supposed to use models, not their names!
-                        Model: dict,
-                        Model: lambda: dict,
-                        Model: None,  # will fall back to '*'
-                        # The default
-                        # If there's no default, or it yields None, the default handler_settings is used
-                        '*': lambda relationship_name, target_model: dict | None,
-                        # Example:
-                        '*': lambda *args: dict(join=False)  # disallow further joins
-                    )
-                    related_models = lambda: dict
-
-                    The right way to use it is to collect all your settings to one global dict:
-                    all_settings = {
-                        User: user_settings,
-                        Article: article_settings,
-                        Comment: comment_settings,
-                    }
-                    and reference to it from every model:
-                    user_settings = dict(
-                        related_models=lambda: all_settings
-                    )
-
+        :param handler_settings: Settings for Query Object handlers. See MongoQuerySettingsDict
         :type handler_settings: dict | MongoQuerySettingsDict | None
         """
         # Aliases?
@@ -595,6 +504,15 @@ class MongoQuery(object):
             # If 'join' is explicitly disabled, disable 'joinf' as well
             # This is for security so that one doesn't forget to disable them both.
             handler_settings['joinf_enabled'] = False
+
+        # A special case for 'raiseload'
+        if handler_settings.pop('raiseload', False):
+            # Can't combine
+            assert 'raiseload_col' not in handler_settings
+            assert 'raiseload_rel' not in handler_settings
+            # Both True
+            handler_settings['raiseload_col'] = True
+            handler_settings['raiseload_rel'] = True
 
         # Create the object
         hso = MongoQuerySettingsHandler(handler_settings)

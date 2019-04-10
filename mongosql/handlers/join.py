@@ -18,12 +18,12 @@ class MongoJoin(MongoQueryHandlerBase):
 
     query_object_section_name = 'join'
 
-    def __init__(self, model, allowed_relations=None, banned_relations=None, raiseload=False):
+    def __init__(self, model, allowed_relations=None, banned_relations=None, raiseload_rel=False):
         """ Init a join expression
 
         :param allowed_relations: List of relations that can be joined
         :param banned_relations: List of relations that can't be joined to
-        :param raiseload: Install a raiseload() option on all relations not explicitly loaded.
+        :param raiseload_rel: Install a raiseload() option on all relations not explicitly loaded.
             This is a performance safeguard for the cases when your code might use them.
         """
         super(MongoJoin, self).__init__(model)
@@ -39,7 +39,7 @@ class MongoJoin(MongoQueryHandlerBase):
             self.allowed_relations = None
 
         # Raiseload?
-        self.raiseload = raiseload
+        self.raiseload_rel = raiseload_rel
 
         # Validate
         if self.allowed_relations:
@@ -178,8 +178,8 @@ class MongoJoin(MongoQueryHandlerBase):
         for mjp in self.mjps:
             query = self._load_relationship(query, as_relation, mjp)
 
-        # Put a raiseload() on every other relationship!
-        if self.raiseload:
+        # Put a raiseload_rel() on every other relationship!
+        if self.raiseload_rel:
             query = query.options(as_relation.raiseload('*'))
 
         return query
@@ -341,7 +341,7 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Since there's no Query Object, there's no projection nor join provided.
         # This means that the user does not want sub-relations, so we don't load them.
-        if self.raiseload:
+        if self.raiseload_rel:
             rel_load.raiseload('*')
         else:
             rel_load.lazyload('*')  # deferred loading upon request

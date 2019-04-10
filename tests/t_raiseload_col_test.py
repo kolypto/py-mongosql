@@ -65,7 +65,7 @@ class RaiseloadColTest(RaiseloadTesterMixin, unittest.TestCase):
 
     def test_raiseload_col(self):
         """ raiseload_col() on a single column """
-        # raiseload() some columns
+        # raiseload_rel() some columns
         ssn = self.Session()
         u = ssn.query(models.User).options(
             Load(models.User).load_only(models.User.name),
@@ -123,7 +123,7 @@ class RaiseloadColTest(RaiseloadTesterMixin, unittest.TestCase):
                         'articles', 'comments'}
         )
 
-        # === Test: raiseload()
+        # === Test: raiseload_rel()
         ssn = self.Session()
         user = ssn.query(models.User).options(
             Load(models.User).load_only('name', 'age'),  # only these two
@@ -138,7 +138,7 @@ class RaiseloadColTest(RaiseloadTesterMixin, unittest.TestCase):
             unloaded={'tags'}
         )
 
-        # === Test: raiseload() + raiseload_col()
+        # === Test: raiseload_rel() + raiseload_col()
         ssn = self.Session()
         user = ssn.query(models.User).options(
             Load(models.User).load_only('name', 'age'),  # only these two

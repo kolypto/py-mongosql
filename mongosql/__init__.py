@@ -28,7 +28,7 @@ from .crud import CrudHelper, StrictCrudHelper, CrudViewMixin
 # Helpers
 # Reusable query objects (so that you don't have to initialize them over and over again)
 from mongosql.util import Reusable
-# raiseload() that can be applied to columns, not only relationships
+# raiseload_col() that can be applied to columns, not only relationships
 from mongosql.util import raiseload_col
 # selectinquery() relationship loader that supports custom queries
 from mongosql.util import selectinquery
