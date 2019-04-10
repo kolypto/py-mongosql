@@ -130,7 +130,8 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
         ssn = self.db
 
         # Test: count()
-        n = models.User.mongoquery(ssn).query(count=True).end().scalar()
+        q = models.User.mongoquery(ssn).query(count=True).end()
+        n = q.scalar()
         self.assertEqual(3, n)
 
     def test_aggregate(self):

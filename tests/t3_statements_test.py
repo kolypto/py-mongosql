@@ -487,6 +487,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         test_aggregate({'max_rating': {'$max': 'data.rating'}}, "SELECT max(CAST(a.data #>> ['rating'] AS FLOAT)) AS max_rating")
 
+        # aggregate + filter
+
+
     def test_invalid__aggregate_with_projection(self):
         """ Invalid combination: aggregate + project """
         u = models.User
@@ -524,7 +527,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         """ Test query(count) """
         u = models.User
 
-        # === Test: simple count
+        # === Test: just count
+        mq = u.mongoquery().query(count=True)
+        self.assertQuery(mq.end(),
+                         # The FROM clause must not be missing
+                         'FROM u')
+
+        # === Test: count + filter + sort
         mq = u.mongoquery().query(filter={'age': {'$gt': 18}},
                                   sort=['age-'],
                                   count=True)
@@ -540,7 +549,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         #                       )
         qs = self.assertQuery(mq.end(),
                               # Count
-                              'SELECT count(1) AS count_1',
+                              'SELECT count(*)',
                               # from table, directly
                               'FROM u ',
                               # condition
@@ -564,7 +573,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         #                  'WHERE u.age > 18) AS anon_1')
         self.assertQuery(mq.end(),
                          # Count
-                         'SELECT count(1) AS count_1',
+                         'SELECT count(*)',
                          # From table
                          'FROM u',
                          # Join

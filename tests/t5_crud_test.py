@@ -92,7 +92,7 @@ class CrudTest(unittest.TestCase):
                 'query': {
                     'count': 1
                 }})
-            self.assertEqual(rv['articles'], 6)  # `maxitems` shouldnt apply here; therefore, we don't get a '2'
+            self.assertEqual(rv['articles'], 6)  # `max_rows` shouldn't apply here; therefore, we don't get a '2'
 
     def test_create(self):
         """ Test create() """

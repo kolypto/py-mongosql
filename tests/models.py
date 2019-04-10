@@ -66,6 +66,8 @@ class User(Base):
     def user_calculated(self):
         return self.age + 10
 
+    def __repr__(self):
+        return 'User(id={}, name={!r})'.format(self.id, self.name)
 
 class Article(Base):
     __tablename__ = 'a'

@@ -275,7 +275,6 @@ class MongoProject(MongoQueryHandlerBase):
         """
         # Short-circuit
         if self.mode == self.MODE_EXCLUDE:
-            empty = [as_relation.raiseload_col('*')]  # TODO: rm, replace ()
             empty = ()
 
             # Short-circuit: empty projection

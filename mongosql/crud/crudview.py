@@ -264,8 +264,11 @@ class CrudViewMixin(object):
         # because later on, MongoSQL may put a LIMIT, or something worse, and no filter() will be possible anymore.
         q = Query(self.crudhelper.model)
 
-        # Filters
-        q = q.filter(*filter).filter_by(**filter_by)
+        # Filters: only apply when necessary
+        if filter:
+            q = q.filter(*filter)
+        if filter_by:
+            q = q.filter_by(**filter_by)
 
         # MongoQuery
         self._mongoquery = self.crudhelper.query_model(query_object, from_query=q)  # type: MongoQuery

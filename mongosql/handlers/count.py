@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 from sqlalchemy import func
+from sqlalchemy import exc as sa_exc
 
 from .base import MongoQueryHandlerBase
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
@@ -62,8 +63,31 @@ class MongoCount(MongoQueryHandlerBase):
     def alter_query(self, query, as_relation=None):
         """ Apply offset() and limit() to the query """
         if self.count:
-            # query = query.from_self(func.count(1))  # no more subquery
-            query = query.with_entities(func.count(1))
+            # Previously, we used to do counts like this:
+            # >>> query = query.with_entities(func.count())
+            # However, when there's no WHERE clause set on a Query, it's left without any reference to the target table.
+            # In this case, SqlAlchemy will actually generate a query without a FROM clause, which gives a wrong count!
+            # Therefore, we have to make sure that there will always be a FROM clause.
+            #
+            # Normally, we just do the following:
+            # >>> query = query.select_from(self.model)
+            # This is supposed to indicate which table to select from.
+            # However, it can only be applied when there's no FROM nor ORDER BY clauses present.
+            #
+            # But wait a second... didn't we just assume that there would be no FROM clause?
+            # Have a look at this ugly duckling:
+            # >>> Query(User).filter_by().select_from(User)
+            # This filter_by() would actually create an EMPTY condition, which will break select_from()'s assertions!
+            # This is reported to SqlAlchemy:
+            # https://github.com/sqlalchemy/sqlalchemy/issues/4606
+            # And (is fixed in version x.x.x | is not going to be fixed)
+            #
+            # Therefore, we'll try to do it the nice way ; and if it fails, we'll have to do something else.
+            try:
+                query = query.with_entities(func.count()).select_from(self.model)
+            except sa_exc.InvalidRequestError:
+                query = query.from_self(func.count())
+
         return query
 
 
