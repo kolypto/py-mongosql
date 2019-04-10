@@ -7,6 +7,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from . import models
 from .crud_view import ArticlesView
+from mongosql import StrictCrudHelper, StrictCrudHelperSettingsDict
 
 
 class CrudTest(unittest.TestCase):
@@ -30,6 +31,48 @@ class CrudTest(unittest.TestCase):
 
     def tearDown(self):
         self.db.close()  # Reset session
+
+    def test_crudhelper(self):
+        """ Test crudhelper configuration """
+        # === Test: ro_fields
+        ch = StrictCrudHelper(
+            models.Article,
+            **StrictCrudHelperSettingsDict(
+                ro_fields=('id',),  # everything else must be RW
+            )
+        )
+        self.assertEqual(ch.ro_fields, {'id',})
+
+        # === Test: ro_fields=()
+        ch = StrictCrudHelper(
+            models.Article,
+            **StrictCrudHelperSettingsDict(
+                ro_fields=(),  # everything is RW
+            )
+        )
+        self.assertEqual(ch.ro_fields, set())
+
+        # === Test: rw_fields
+        ch = StrictCrudHelper(
+            models.Article,
+            **StrictCrudHelperSettingsDict(
+                rw_fields=('data',),  # everything else must be RO
+            )
+        )
+        self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme'})
+
+        # === Test: rw_fields=()
+        ch = StrictCrudHelper(
+            models.Article,
+            **StrictCrudHelperSettingsDict(
+                rw_fields=(),  # everything is RO
+            )
+        )
+        self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme', 'data'})
+
+        # === Test: defaults
+        ch = StrictCrudHelper(models.Article)
+        self.assertEqual(ch.ro_fields, set())
 
     def test_list(self):
         """ Test list() """

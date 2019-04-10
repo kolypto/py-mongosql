@@ -197,6 +197,9 @@ class MongoQuerySettingsDict(dict):
                     user_settings = dict(
                         related_models=lambda: all_settings
                     )
+
+                Be careful, though: if every model inherits its `allowed_relations`,
+                it would be possible to get almost any object through a series of nested joins!
         """
         super(MongoQuerySettingsDict, self).__init__()
         self.update({k: v

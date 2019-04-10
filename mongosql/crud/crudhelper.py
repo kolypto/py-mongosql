@@ -182,21 +182,25 @@ class StrictCrudHelper(CrudHelper):
 
             :rtype: set[str]
         """
-        # Read-only fields
-        assert not (ro_fields and rw_fields), 'Use either ro_fields or rw_fields, but not both'
-        ro_fields = set(call_if_callable(ro_fields) or ())
-        rw_fields = set(call_if_callable(rw_fields) or ())
+        # Usage
+        assert not (ro_fields is not None and rw_fields is not None), 'Use either ro_fields or rw_fields, but not both'
+
+        # Read-only and Read-Write fields
+        ro_fields = set(call_if_callable(ro_fields)) if ro_fields is not None else None
+        rw_fields = set(call_if_callable(rw_fields)) if rw_fields is not None else None
 
         # Validate
-        self._validate_columns(ro_fields, 'ro_fields')
-        self._validate_columns(rw_fields, 'rw_fields')
+        if ro_fields:
+            self._validate_columns(ro_fields, 'ro_fields')
+        if rw_fields:
+            self._validate_columns(rw_fields, 'rw_fields')
 
         # Rw fields
-        if rw_fields:
+        if rw_fields is not None:
             ro_fields = set(self.bags.columns.names - rw_fields)
 
         # Done
-        return ro_fields
+        return ro_fields or set()
 
     def _create_model(self, entity_dict):
         # Remove ro fields
