@@ -1,6 +1,6 @@
 from typing import *
-from sqlalchemy.orm import Query, Load
 from sqlalchemy.ext.declarative import DeclarativeMeta
+from sqlalchemy.sql.elements import BinaryExpression
 
 
 class MongoQuerySettingsDict(dict):
@@ -44,7 +44,7 @@ class MongoQuerySettingsDict(dict):
                  aggregate_columns: Iterable[str] = None,
                  aggregate_labels: bool = False,
                  # --- filter
-                 force_filter: Union[dict, Callable[[Query, DeclarativeMeta, Load], Query]] = None,
+                 force_filter: Union[dict, Callable[[DeclarativeMeta], Union[list, BinaryExpression]]] = None,
                  scalar_operators: Mapping[str, Callable] = None,
                  array_operators: Mapping[str, Callable] = None,
                  # --- join & joinf
@@ -111,7 +111,7 @@ class MongoQuerySettingsDict(dict):
                 but exists here to complete compatilibility with MongoDB queries.
             force_filter (dict | Callable): (for: filter)
                 A dictionary with a filter that will be forced onto every request;
-                or a Python `callable([Query, model, Load])` that applies custom filter to a Query.
+                or a Python `callable(model)` that returns a filtering condition for Query.filter().
             scalar_operators (dict[str, Callable]): (for: filter)
                 A dict of additional operators for scalar columns.
                 A better way to declare global operators would be to subclass MongoFilter

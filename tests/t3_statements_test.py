@@ -891,7 +891,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Imagine that we want to exclude `password`, or something sensitive like this
             related={
                 'user': dict(
-                    force_filter=lambda query, model, load: query.filter(model.age >= 18),  # whatever you do, you can only get older users
+                    force_filter=lambda model: [model.age >= 18],  # whatever you do, you can only get older users
                     force_exclude=('tags',),  # sensitive data not allowed
                 ),
                 'creator': dict(
@@ -996,18 +996,21 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                         join={'user': dict(# exclude id, name ; left: tags, age
                                            project={'id': 0, 'name': 0}
                                            )})
-        self.assertSelectedColumns(mq.end(),
+        qs = mq.end()
+        self.assertSelectedColumns(qs,
                                    'e.id', 'e.description',  # PK, project
                                    'u_1.id', 'u_1.age',  # +PK ; -tags
                                    )
 
         # === Test: Edit: user -> force_filter, callable
-        self.assertQuery(mq.end(),
+        self.assertQuery(qs,
                          'FROM e '
-                         'LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid',
-                         # Callable installed the condition on the whole clause
-                         # It is properly aliased.
-                         'WHERE u_1.age >= 18')
+                         'LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid '
+                         # Callable installed the condition into the ON clause, thus not distorting the results
+                         'AND u_1.age >= 18',)
+
+        # === Test: calling mq.end() twice gives you the same result
+        self.assertEqual(str(qs), str(mq.end()))
 
         # === Test: Articles: user: simple join, force_exclude=('data',)
         # Let's see what happens when we load a relationship with restricted columns without a filter.

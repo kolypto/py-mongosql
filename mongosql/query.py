@@ -239,7 +239,8 @@ class MongoQuery(object):
 
         # Apply every handler
         for handler_name, handler in self._handlers_ordered_for_end_method():
-            q = handler.alter_query(q, as_relation=self._as_relation)
+            if not handler.skip_this_handler:
+                q = handler.alter_query(q, as_relation=self._as_relation)
 
         return q
 

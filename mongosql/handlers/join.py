@@ -485,8 +485,8 @@ class MongoJoin(MongoQueryHandlerBase):
         )
 
         # Because we've already used the filter statement into the ON clause,
-        # we have to remove it from MongoQuery!
-        nested_mq.handler_filter.expressions = []  # reset!
+        # we have to make sure that the same condition won't be applied again.
+        nested_mq.handler_filter.skip_this_handler = True
 
         # Now, nested MongoQuery may contain additional statements
         # Projection, sorting, etc.

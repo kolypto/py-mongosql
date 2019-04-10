@@ -17,6 +17,9 @@ from ..exc import InvalidQueryError, DisabledError, InvalidColumnError
 
 class AggregateExpressionBase(object):
     """ Represents a computed field with a label """
+
+    __slots__ = ('label',)
+
     def __init__(self, label):
         self.label = label
 
@@ -36,6 +39,9 @@ class AggregateLabelledColumn(AggregateExpressionBase):
         The following case is handled here:
         { labeled_column: 'age' }
     """
+
+    __slots__ = ('column_name', 'column',)
+
     def __init__(self, label, column_name, column):
         super(AggregateLabelledColumn, self).__init__(label)
         self.column_name = column_name
@@ -55,6 +61,9 @@ class AggregateColumnOperator(AggregateExpressionBase):
         { minimal_age: { $min: 'age' }}
         operator=$min, column_name='age', column=User.age, label='minimal_age'
     """
+
+    __slots__ = ('operator', 'column_name', 'column', 'is_column_json',)
+
     def __init__(self, label, operator, column_name, column, is_column_json):
         super(AggregateColumnOperator, self).__init__(label)
         self.operator = operator
@@ -95,6 +104,8 @@ class AggregateBooleanCount(AggregateExpressionBase):
         { count_ripe_age: { $sum: { age: { $gt: 18 } } }}
         operator=$sum, expression={ age: { $gt: 18 } }, label='count_ripe_age'
     """
+
+    __slots__ = ('expression',)
 
     def __init__(self, label, expression):
         """ Init a count over a boolean expression

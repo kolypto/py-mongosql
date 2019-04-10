@@ -19,6 +19,8 @@ def _is_array(value):
 class FilterExpressionBase(object):
     """ An expression from the MongoFilter object """
 
+    __slots__ = ('operator_str', 'value')
+
     def __init__(self, operator_str, value):
         self.operator_str = operator_str
         self.value = value
@@ -44,6 +46,24 @@ class FilterExpressionBase(object):
         cc = and_(*conditions)
         # Put parentheses around it, if necessary
         return cc.self_group() if len(conditions) > 1 else cc
+
+
+class LiteralExpression(FilterExpressionBase):
+    """ An expression that is already compiled and ready to be used
+
+        This is used for expressions that were already compiled by the user; e.g. force_filter expressions.
+    """
+    __slots__ = ('expression',)
+
+    def __init__(self, expression):
+        # no super()
+        self.expression = expression  # type: BinaryExpression
+
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, str(self.expression))
+
+    def compile_expression(self):
+        return self.expression
 
 
 class FilterBooleanExpression(FilterExpressionBase):
@@ -110,6 +130,9 @@ class FilterColumnExpression(FilterExpressionBase):
 
         Consists of: an operator ($eq, etc), a column, and a value to compare the column to
     """
+
+    __slots__ = ('bag', 'column_name', 'column', 'real_column', 'operator_lambda', 'column_expression', 'value_expression')
+
     def __init__(self,
                  bag, column_name, column,
                  operator_str, operator_lambda,
@@ -192,6 +215,8 @@ class FilterColumnExpression(FilterExpressionBase):
 class FilterRelatedColumnExpression(FilterColumnExpression):
     """ An expression involving a related column (dot-notation: 'users.age') """
 
+    __slots__ = ('relation', 'relation_name')
+
     def __init__(self,
                  bag, relation_name, relation,
                  column_name, column,
@@ -256,11 +281,8 @@ class MongoFilter(MongoQueryHandlerBase):
         :param force_filter: A filtering condition that will be forcefully applied to the query.
             Can be:
                 * a dict, which will become ANDed to every request ;
-                * a `lambda query, model, load`: which can alter the query in any arbitrary way.
+                * a `lambda model:`: a callable that may generate any expression Query.filter() can handle.
                     `model` argument is the model class, which may be aliased.
-                    `load` is the load interface, in case you're going to load any relationships.
-                  NOTE: when you use a callable for filtering relationships, you are likely to distort the results
-                        of the original query! See 'joinf' handler for an explanation.
         :param scalar_operators: A dict of additional operators for scalar columns to recognize.
             A mapping: {'$operator': lambda}. See class body for examples.
         :type scalar_operators: dict[str, lambda]
@@ -277,17 +299,18 @@ class MongoFilter(MongoQueryHandlerBase):
         self._extra_array_ops = array_operators or {}
 
         # Extra configuraion: force_filter
-        self.force_filter_dict = None
-        self.force_filter_callable = None
-
-        if callable(force_filter):
+        if force_filter is None:
+            self.force_filter = None
+        elif callable(force_filter):
             # When a callable, just store it
-            self.force_filter_callable = force_filter
+            self.force_filter = force_filter
         elif isinstance(force_filter, dict):
             # When a dict, store it, and validate it
-            self.force_filter_dict = force_filter
+            self.force_filter = force_filter
             # just for the sake of validation
-            self._parse_criteria(force_filter)  # validate force_filter
+            self._parse_criteria(self.force_filter)  # validate force_filter
+        else:
+            raise ValueError(force_filter)
 
     def _get_supported_bags(self):
         return CombinedBag(
@@ -377,9 +400,25 @@ class MongoFilter(MongoQueryHandlerBase):
         super(MongoFilter, self).input(criteria)
         self.expressions = self._parse_criteria(criteria)
 
-        # Apply force_filter if it was a dict
-        if self.force_filter_dict:
-            self.expressions.extend(self._parse_criteria(self.force_filter_dict))
+        # Any additional filtering goes here
+        extra_filter = None
+
+        # Apply force_filter
+        if isinstance(self.force_filter, dict):
+            # Dict. Parse it, add it (because the results will be ANDed together anyway)
+            extra_filter = self._parse_criteria(self.force_filter)
+        if callable(self.force_filter):
+            # Invoke the callable
+            extra_filter = self.force_filter(self.model)
+            # Make sure it's a list
+            if not isinstance(extra_filter, (list, tuple)):
+                extra_filter = list(extra_filter)
+            # Convert every item of the list into LiteralExpression
+            extra_filter = map(LiteralExpression, extra_filter)
+
+        # Extra filters?
+        if extra_filter:
+            self.expressions.extend(extra_filter)
 
         return self
 
@@ -577,10 +616,6 @@ class MongoFilter(MongoQueryHandlerBase):
         # and we want it looking nice :)
         if self.expressions:
             query = query.filter(self.compile_statement())
-
-        # Apply force_filter if it was a callable
-        if self.force_filter_callable:  # TODO: force it onto a relationship?
-            query = self.force_filter_callable(query, self.model, as_relation)
 
         # Done
         return query

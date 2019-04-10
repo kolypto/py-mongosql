@@ -36,6 +36,11 @@ class MongoQueryHandlerBase(object):
         # This is important because it can't be done again, or undone.
         self.is_aliased = False
 
+        # Should this handler's alter_query() be skipped by MongoQuery?
+        # This is used by MongoJoin when it removes a filtering condition into the ON-clause,
+        # and does not want the original filter to be executed.
+        self.skip_this_handler = False
+
         #: MongoQuery bound to this object. It may remain uninitialized.
         self.mongoquery = None
 
