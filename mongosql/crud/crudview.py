@@ -63,6 +63,28 @@ class CrudViewMixin(object):
         """
         return mongoquery
 
+    def _save_relations(self, new, prev=None, **relations):
+        """ A hook that implements saving related models.
+
+        Whenever a relationship is named in the 'saves_relations' class attribute,
+        they are plucked out of the incoming JSON dict, and after an entity is created,
+        it is passed to this hook.
+
+        Saving a relationship is always a custom procedure; that's why it is implemented through this method.
+
+        In addition to saving relationships, this method can be used to save any custom properties:
+        they're plucked out, and handled manually anyway.
+
+        NOTE: this method is executed before _save_hook() is.
+
+        :param new: The new instance
+        :type new: DeclarativeMeta
+        :param prev: Previously persisted version (is provided only when updating).
+        :type prev: ModelHistoryProxy | None
+        :param relations: Values for every relation
+        """
+        raise NotImplementedError('Saving relations is not yet implemented for this view')
+
     def _save_hook(self, new, prev=None):
         """ Hook into create(), update() methods, before an entity is saved.
 
@@ -75,23 +97,6 @@ class CrudViewMixin(object):
             :type prev: ModelHistoryProxy | None
         """
         pass
-
-    def _save_relations(self, new, prev=None, **relations):
-        """ A hook that implements saving related models.
-
-        Whenever a relationship is named in the 'saves_relations' class attribute,
-        they are plucked out of the incoming JSON dict, and after an entity is created,
-        it is passed to this hook.
-
-        Saving a relationship is always a custom procedure; that's why it is implemented through this method.
-
-        :param new: The new instance
-        :type new: DeclarativeMeta
-        :param prev: Previously persisted version (is provided only when updating).
-        :type prev: ModelHistoryProxy | None
-        :param relations: Values for every relation
-        """
-        raise NotImplementedError('Saving relations is not yet implemented for this view')
 
     # NOTE: there's no delete hook. Override _method_delete() to implement it.
 
@@ -275,6 +280,10 @@ class CrudViewMixin(object):
 
     # region Helpers
 
+    def _query(self):
+        """ Make the initial Query object to work with """
+        return self._get_db_session().query(self.crudhelper.model)
+
     def _mquery(self, crud_method, query_object=None, *filter, **filter_by):
         """ Use a MongoQuery to make a Query, with the Query Object, and initial custom filtering applied.
 
@@ -290,7 +299,7 @@ class CrudViewMixin(object):
         """
         # We have to make a Query object and filter it in advance,
         # because later on, MongoSQL may put a LIMIT, or something worse, and no filter() will be possible anymore.
-        q = Query(self.crudhelper.model)
+        q = self._query()
 
         # Filters: only apply when necessary
         if filter:
@@ -306,7 +315,7 @@ class CrudViewMixin(object):
             self._mongoquery.ensure_loaded(*self.ensure_loaded)
 
         # Session
-        self._mongoquery.with_session(self._get_db_session())
+        self._mongoquery.with_session(self._get_db_session())  # not really necessary, because _query() does it already
 
         # MongoQuery hook
         self._mongoquery = self._mongoquery_hook(self._mongoquery, crud_method)

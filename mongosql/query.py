@@ -364,8 +364,8 @@ class MongoQuery(object):
         """
         ret = {}
         ret.update(self.handler_project.get_full_projection())
-        ret.update(self.handler_join.get_projection_tree())
-        ret.update(self.handler_joinf.get_projection_tree())
+        ret.update(self.handler_join.get_full_projection_tree())
+        ret.update(self.handler_joinf.get_full_projection_tree())
         return ret
 
     def pluck_instance(self, instance):
