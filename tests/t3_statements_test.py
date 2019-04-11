@@ -576,8 +576,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          'SELECT count(*)',
                          # From table
                          'FROM u',
-                         # Join
-                         'FROM u LEFT OUTER JOIN a AS a_1 ON u.id = a_1.uid AND a_1.theme = sci-fi',
+                         # NOTE: no joins
                          # Filter
                          'WHERE u.age > 18')
 
@@ -846,6 +845,46 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          "AND a_1.theme = sci-fi "
                          "AND c_1.text IS NOT NULL"
                          )
+
+    def test_model_with_lazy_relationships(self):
+        """ Test how querying a model with relationship(lazy=joined) works """
+        ll = models.ConfiguredLazyloadModel
+
+        # === Test: plain query, nothing special
+        mq = ll.mongoquery().query()
+
+        self.assertQuery(mq.end(),
+                         'FROM ll '
+                         'LEFT OUTER JOIN u AS u_1 ON u_1.id = ll.user_id '
+                         'LEFT OUTER JOIN a AS a_1 ON a_1.id = ll.article_id')
+
+        # === Test: with LIMIT and a join
+        # Since a LIMIT uses from_self(), we have to test that all these relationships are loaded correctly
+        mq = ll.mongoquery().query(join={'comment': dict(project=('text',))},
+                                   limit=10)
+
+        self.assertQuery(mq.end(),
+                         # Proper subquery
+                         'FROM (SELECT ll.id AS ll_id,',
+                         'LIMIT 10) AS anon_1',
+                         # All LEFT JOINs use aliased subquery: anon_1
+                         'LEFT OUTER JOIN c AS c_1 ON c_1.id = anon_1.ll_comment_id '
+                         'LEFT OUTER JOIN u AS u_1 ON u_1.id = anon_1.ll_user_id '
+                         'LEFT OUTER JOIN a AS a_1 ON a_1.id = anon_1.ll_article_id',
+                         )
+
+        # === Test: with LIMIT
+        # See how it respects other joins: it's supposed to use from_self()
+        # TODO: this test case currently fails: MongoSQL does not support putting a LIMIT on queries with joinedload()
+        #   eager loading. Have to implement it inside the LIMIT handler: if there are LEFT JOINs, the LIMIT has to use 
+        #   from_self().
+        #   However, another option would be to limit using LEFT JOIN only to one-to-one relationships (as we do it now),
+        #   and then a LIMIT clause can safely be put onto it.
+        # mq = ll.mongoquery().query(limit=10)
+        #
+        # self.assertQuery(mq.end(),
+        #                  # Has to be a subquery, because of other joins put on the query outside of us
+        #                  'LIMIT 10) as anon')
 
     def test_mongoquery_settings(self):
         """ Test nested MongoQuery settings """
@@ -1560,7 +1599,6 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                               'comment_calc': 1,
                           },
                           })
-
 
     def test_projection_join(self):
         """ Test loading relationships by specifying their name in the projection """

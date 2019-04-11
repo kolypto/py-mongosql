@@ -301,6 +301,23 @@ class ElectricCar(Cars):
     }
 
 
+class ConfiguredLazyloadModel(Base):
+    """ A model with relationhips configured to lazy=joined """
+    __tablename__ = 'll'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("u.id"))
+    article_id = Column(Integer, ForeignKey("a.id"))
+
+    # lazy
+    user = relationship(User, foreign_keys=user_id, lazy='joined')
+    article = relationship(Article, foreign_keys=article_id, lazy='joined')
+
+    # not lazy
+    comment_id = Column(Integer, ForeignKey("c.id"))
+    comment = relationship(Comment, foreign_keys=comment_id)
+
+
 
 
 

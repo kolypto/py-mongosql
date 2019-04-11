@@ -102,6 +102,9 @@ class MongoLimit(MongoQueryHandlerBase):
     def limit_groups_over_columns(self, fk_columns):
         """ Instead of the usual limit, use a window function over the given columns.
 
+        This method is used by MongoJoin when doing a custom selectinquery() to load a limited number of related
+        items per every primary entity.
+
         Instead of using LIMIT, LimitHandler will group rows over `fk_columns`, and impose a limit per group.
         This is used to load related models with selectinquery(), where you can now put a limit per group:
         that is, a limit on the number of related entities per primary entity.

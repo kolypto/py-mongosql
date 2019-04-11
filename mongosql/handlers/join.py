@@ -901,7 +901,8 @@ class MongoJoinParams(object):
         return '<MongoJoinParams(' \
                'model_name={0.bags.model_name}, ' \
                'relationship_name={0.relationship_name}, ' \
-               'target_model={0.target_model}, ' \
+               'loading_strategy={0.loading_strategy}, ' \
+               'target_model={0.target_model.__name__}, ' \
                'target_model_aliased={0.target_model_aliased}, ' \
                'query_object={0.query_object!r}, ' \
                ')>'.format(self)
