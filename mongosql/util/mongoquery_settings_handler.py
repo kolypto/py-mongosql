@@ -1,6 +1,6 @@
-import inspect
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
+from mongosql.util.inspect import pluck_kwargs_from
 from ..exc import DisabledError
 
 
@@ -30,10 +30,14 @@ class MongoQuerySettingsHandler(object):
         #: Settings dict
         self._settings = settings  # we don't make a copy, because we don't modify it
 
-        #: kwarg names for every handler
-        self._handler_kwargs = {}
-        #: kwarg default values
-        self._kwarg_defaults = {}
+        #: Handler names
+        self._handler_names = set()
+
+        #: kwarg names for every handler: dict[handler] = set()
+        self._handler_kwargs_names = {}
+
+        #: all kwargs names (to identify invalid ones)
+        self._all_known_kwargs_names = set()
 
         #: disabled handler names
         self._disabled_handlers = set()
@@ -85,26 +89,17 @@ class MongoQuerySettingsHandler(object):
         if not self._settings.get('{}_enabled'.format(handler_name), True):
             self._disabled_handlers.add(handler_name)
 
-        # Analyze its __init__() method's kwargs
-        argspec = inspect.getargspec(handler_cls.__init__)  # TODO: use signature() in Python 3.3
+        # Analyze a function, pluck the arguments that it needs
+        kwargs = pluck_kwargs_from(self._settings, for_func=handler_cls.__init__)
+        kwargs_names = kwargs.keys()  # always all of them
 
-        # Get the names of the kwargs
-        # We assume that every handler receives 2 positional arguments; the rest are kwargs
-        n_args = len(argspec.args) - len(argspec.defaults or ())
-        handler_kwargs_names = frozenset(argspec.args[n_args:])
-        self._handler_kwargs[handler_name] = handler_kwargs_names
-
-        # Get defaults for kwargs
-        self._kwarg_defaults.update(
-            # Put together argument names + default values
-            zip(argspec.args[n_args:], argspec.defaults or ()))
-
-        # Get the values for these kwargs
-        handler_kwargs = {k: self._settings.get(k, self._kwarg_defaults[k])
-                          for k in handler_kwargs_names}
+        # Store the data that we'll need
+        self._handler_kwargs_names[handler_name] = set(kwargs_names)
+        self._handler_names.add(handler_name)
+        self._all_known_kwargs_names.update(kwargs_names)
 
         # Done
-        return handler_kwargs
+        return kwargs  # for the handler's __init__()
 
     def is_handler_enabled(self, handler_name):
         """ Test if the handler is enabled in the configuration """
@@ -116,7 +111,7 @@ class MongoQuerySettingsHandler(object):
             raise DisabledError('Query handler "{}" is disabled for "{}"'
                                 .format(handler_name, model_name))
 
-    def raise_if_invalid_handler_settings(self):
+    def raise_if_invalid_handler_settings(self, mongoquery):
         """ Check whether there were any typos in setting names
 
             After all handlers were initialized, we've had a chance to analyze all their keyword arguments.
@@ -127,8 +122,8 @@ class MongoQuerySettingsHandler(object):
         """
         # Known keys
         handler_names = set('{}_enabled'.format(handler_name)
-                            for handler_name in self._handler_kwargs.keys())
-        valid_kwargs = set(self._kwarg_defaults.keys())
+                            for handler_name in self._handler_names)
+        valid_kwargs = set(self._all_known_kwargs_names)
         other_known_keys = {'related', 'related_models'}
 
         # Merge all known keys into one
@@ -142,10 +137,10 @@ class MongoQuerySettingsHandler(object):
 
         # Raise?
         if invalid_keys:
-            raise KeyError('Invalid settings were provided for MongoQuery: {}'
-                           .format(','.join(invalid_keys)))
+            raise KeyError('Invalid settings were provided for MongoQuery {!r}: {}'
+                           .format(mongoquery, ','.join(invalid_keys)))
 
-    def _get_settings(self, store, key, star_lambda_args):
+    def _get_nested_settings_from_store_attr(self, store, key, star_lambda_args):
         """ Get settings from `store`, which is "related" or "related_models"
 
         handler_settings may be stored in two dict keys:
@@ -175,7 +170,7 @@ class MongoQuerySettingsHandler(object):
 
         # Fallback: '*'
         if key != '*':
-            return self._get_settings(store, '*', star_lambda_args)
+            return self._get_nested_settings_from_store_attr(store, '*', star_lambda_args)
         else:
             # Not found
             return None
@@ -194,11 +189,11 @@ class MongoQuerySettingsHandler(object):
         :return:
         """
         # Try "related"
-        sets = self._get_settings(self._nested_relation_settings, relation_name, (relation_name, target_model))
+        sets = self._get_nested_settings_from_store_attr(self._nested_relation_settings, relation_name, (relation_name, target_model))
 
         # Try "related_models"
         if sets is None:
-            sets = self._get_settings(self._nested_model_settings, target_model, (relation_name, target_model))
+            sets = self._get_nested_settings_from_store_attr(self._nested_model_settings, target_model, (relation_name, target_model))
 
         # Done
         return sets

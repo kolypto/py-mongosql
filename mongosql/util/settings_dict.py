@@ -1,6 +1,7 @@
 from typing import *
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.sql.elements import BinaryExpression
+from .inspect import pluck_kwargs_from
 
 
 class MongoQuerySettingsDict(dict):
@@ -205,6 +206,22 @@ class MongoQuerySettingsDict(dict):
         self.update({k: v
                      for k, v in locals().items()
                      if k not in {'__class__', 'self'}})
+
+    def and_more(self, **settings):
+        """ Copy the object and add more settings to it """
+        return self.__class__(**{**self, **settings})
+
+    @classmethod
+    def pluck_from(cls, dict):
+        """ Initialize the class by plucking kwargs from a dictionary.
+
+            This is useful when you have a dict with configuration for multiple classes, and you want to initialize
+            this one by getting only the keys you need.
+
+            Example: pluck MongoQuerySettingsDict from a StrictCrudHelperSettingsDict.
+        """
+        kwargs = pluck_kwargs_from(dict, for_func=cls.__init__)
+        return cls(**kwargs)
 
 
 class StrictCrudHelperSettingsDict(MongoQuerySettingsDict):

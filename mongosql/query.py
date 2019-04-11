@@ -498,7 +498,7 @@ class MongoQuery(object):
                     )
 
         # Check settings
-        self._handler_settings.raise_if_invalid_handler_settings()
+        self._handler_settings.raise_if_invalid_handler_settings(self)
 
     def _init_handler(self, handler_name, handler_cls):
         """ Init a handler, and load its settings """

@@ -28,6 +28,10 @@ class CrudViewMixin(object):
         For an example on how to use CrudViewMixin, see this implementation:
 
             tests/crud_view.py
+
+        Attrs:
+            _mongoquery (MongoQuery):
+                The MongoQuery object used to process this query.
     """
 
     #: Set the CRUD helper object at the class level
@@ -50,6 +54,8 @@ class CrudViewMixin(object):
         """
         raise NotImplementedError('_get_db_session() not implemented on {}'
                                   .format(type(self)))
+
+    # region Hooks
 
     def _mongoquery_hook(self, mongoquery, crud_method):
         """ A hook invoked in _mquery() to modify MongoQuery, if necessary
@@ -97,6 +103,8 @@ class CrudViewMixin(object):
             :type prev: ModelHistoryProxy | None
         """
         pass
+
+    # endregion
 
     # NOTE: there's no delete hook. Override _method_delete() to implement it.
 
@@ -284,6 +292,10 @@ class CrudViewMixin(object):
         """ Make the initial Query object to work with """
         return self._get_db_session().query(self.crudhelper.model)
 
+    def _mquery_end(self, mongoquery):
+        """ Finalize a MongoQuery and generate a Query """
+        return mongoquery.end()
+
     def _mquery(self, crud_method, query_object=None, *filter, **filter_by):
         """ Use a MongoQuery to make a Query, with the Query Object, and initial custom filtering applied.
 
@@ -321,8 +333,7 @@ class CrudViewMixin(object):
         self._mongoquery = self._mongoquery_hook(self._mongoquery, crud_method)
 
         # Query
-        q = self._mongoquery.end()
-        # NOTE: if you want to capture a query string, that's the place to do it.
+        q = self._mquery_end(self._mongoquery)
 
         # Done
         return q
