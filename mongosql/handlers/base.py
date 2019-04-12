@@ -12,7 +12,7 @@ class MongoQueryHandlerBase(object):
     #: Name of the QueryObject section that this object is capable of handling
     query_object_section_name = None
 
-    def __init__(self, model):
+    def __init__(self, model, bags):
         """ Initialize the Query Object section handler with a model.
 
         This method does *not* receive any input data just yet, with the purpose of having an
@@ -20,11 +20,17 @@ class MongoQueryHandlerBase(object):
 
         :param model: The sqlalchemy model it's being applied to
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
+        :param bags: Model bags.
+            We have to have `bags` provided to us, because then someone may subclass MongoQuery,
+            use a different MongoPropertyBags, and customize the way a model is analyzed.
+        :type bags: ModelPropertyBags
+
+        NOTE: Any arguments that have default values will be treated as handler settings!!
         """
         #: The model to handle the Query Object for
         self.model = model  # the model, ot its alias (when used with self.aliased())
         #: Model property bags: because we need access to the lists of its properties
-        self.bags = ModelPropertyBags.for_model(model)
+        self.bags = bags
         #: A CombinedBag() that allows to handle properties of multiple types (e.g. columns + hybrid properties)
         self.supported_bags = self._get_supported_bags()
 

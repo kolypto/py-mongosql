@@ -274,10 +274,11 @@ class MongoFilter(MongoQueryHandlerBase):
 
     query_object_section_name = 'filter'
 
-    def __init__(self, model, force_filter=None, scalar_operators=None, array_operators=None):
+    def __init__(self, model, bags, force_filter=None, scalar_operators=None, array_operators=None):
         """ Init a filter expression
 
-        :param model: SqlAlchemy model to filter
+        :param model: Sqlalchemy model to work with
+        :param bags: Model bags
         :param force_filter: A filtering condition that will be forcefully applied to the query.
             Can be:
                 * a dict, which will become ANDed to every request ;
@@ -289,7 +290,7 @@ class MongoFilter(MongoQueryHandlerBase):
         :param array_operators: A dict of additional operators for array columns to recognize
         :type array_operators: dict[str, lambda]
         """
-        super(MongoFilter, self).__init__(model)
+        super(MongoFilter, self).__init__(model, bags)
 
         # On input
         self.expressions = None

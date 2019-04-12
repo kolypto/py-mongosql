@@ -39,14 +39,16 @@ class MongoProject(MongoQueryHandlerBase):
 
     query_object_section_name = 'project'
 
-    def __init__(self, model, default_projection=None,
+    def __init__(self, model, bags,
+                 default_projection=None,
                  default_exclude=None,
                  default_exclude_properties=True,
                  force_include=None, force_exclude=None,
                  raiseload_col=False):
         """ Init projection
 
-        :param model: SQLalchemy model
+        :param model: Sqlalchemy model to work with
+        :param bags: Model bags
         :param default_projection: The default projection to use in the absence of any value
         :param default_exclude: A list of column names that are excluded even in exclusion mode.
             You can only get these properties if you request them explicitly.
@@ -64,7 +66,7 @@ class MongoProject(MongoQueryHandlerBase):
             Solution: `raiseload_col=True` will raise an exception every time a deferred loading occurs;
             Make sure you manually do `.options(undefer())` on all the columns you need.
         """
-        super(MongoProject, self).__init__(model)
+        super(MongoProject, self).__init__(model, bags)
 
         # Settings
         self.default_projection = {k: Default(v)
@@ -91,7 +93,7 @@ class MongoProject(MongoQueryHandlerBase):
         # Validate
         if self.default_projection:
             # just for the sake of validation
-            MongoProject(self.model).input(default_projection)
+            MongoProject(self.model, self.bags).input(default_projection)
         if self.default_exclude:
             self.validate_properties(self.default_exclude, where='project:default_exclude')
         if self.force_include:

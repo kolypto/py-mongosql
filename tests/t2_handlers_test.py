@@ -2,7 +2,7 @@ import unittest
 from collections import OrderedDict
 from sqlalchemy.orm import Load
 
-from mongosql import Reusable, MongoQuery
+from mongosql import Reusable, MongoQuery, ModelPropertyBags
 from mongosql.handlers import *
 from mongosql.exc import InvalidColumnError, DisabledError, InvalidQueryError, InvalidRelationError
 from .models import *
@@ -16,6 +16,8 @@ class HandlersTest(unittest.TestCase):
     maxDiff = None
 
     def test_projection(self):
+        Article_project = lambda **kw: MongoProject(Article, ModelPropertyBags.for_model(Article), **kw)
+
         def test_by_full_projection(p, **expected_full_projection):
             """ Test:
                 * get_full_projection()
@@ -39,15 +41,15 @@ class HandlersTest(unittest.TestCase):
 
         # === Test: input() can be called only once
         with self.assertRaises(RuntimeError):
-            MongoProject(Article).input(None).input(None)
+            Article_project().input(None).input(None)
 
         # === Test: No input
-        p = MongoProject(Article).input(None)
+        p = Article_project().input(None)
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(calculated=0, hybrid=0))
 
         # === Test: Valid projection, array
-        p = MongoProject(Article).input(['id', 'uid', 'title'])
+        p = Article_project().input(['id', 'uid', 'title'])
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
 
@@ -61,7 +63,7 @@ class HandlersTest(unittest.TestCase):
                                 )
 
         # === Test: Valid projection, dict, include mode
-        p = MongoProject(Article).input(dict(id=1, uid=1, title=1))
+        p = Article_project().input(dict(id=1, uid=1, title=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
 
@@ -72,7 +74,7 @@ class HandlersTest(unittest.TestCase):
                                 )
 
         # === Test: Valid projection, dict, exclude mode
-        p = MongoProject(Article).input(dict(theme=0, data=0))
+        p = Article_project().input(dict(theme=0, data=0))
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(theme=0, data=0, calculated=0, hybrid=0))
 
@@ -83,7 +85,7 @@ class HandlersTest(unittest.TestCase):
                                 )
 
         # === Test: `default_exclude` in exclude mode
-        p = MongoProject(Article, default_exclude=('calculated', 'hybrid'))\
+        p = Article_project(default_exclude=('calculated', 'hybrid'))\
             .input(dict(theme=0, data=0))
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(theme=0, data=0,
@@ -97,7 +99,7 @@ class HandlersTest(unittest.TestCase):
                                 )
 
         # === Test: `default_exclude` in include mode (no effect)
-        p = MongoProject(Article, default_exclude=('calculated', 'hybrid')) \
+        p = Article_project(default_exclude=('calculated', 'hybrid')) \
             .input(dict(id=1, calculated=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, calculated=1))
@@ -109,7 +111,7 @@ class HandlersTest(unittest.TestCase):
                                 )
 
         # === Test: default_projection
-        pr = Reusable(MongoProject(Article, default_projection=dict(id=1, title=1)))
+        pr = Reusable(Article_project(default_projection=dict(id=1, title=1)))
 
         p = pr.input(None)
         self.assertEqual(p.mode, p.MODE_INCLUDE)
@@ -121,7 +123,7 @@ class HandlersTest(unittest.TestCase):
 
         # === Test: merge
 
-        mk_pr = lambda mode: MongoProject(Article).input(dict.fromkeys(['id', 'uid', 'title'], mode))
+        mk_pr = lambda mode: Article_project().input(dict.fromkeys(['id', 'uid', 'title'], mode))
 
         # Originally include, merge include
         pr = mk_pr(1).merge(dict(data=1))
@@ -161,7 +163,7 @@ class HandlersTest(unittest.TestCase):
                          dict(id=0, uid=0, title=0, theme=1, data=1, calculated=0, hybrid=0))  # not 'title'
 
         # === Test: force_include
-        pr = Reusable(MongoProject(Article, force_include=('id',)))
+        pr = Reusable(Article_project(force_include=('id',)))
 
         # Include mode
         p = pr.input(dict(title=1))
@@ -176,7 +178,7 @@ class HandlersTest(unittest.TestCase):
                                             calculated=0, hybrid=0))
 
         # === Test: force_exclude
-        pr = Reusable(MongoProject(Article, force_exclude=('data',)))
+        pr = Reusable(Article_project(force_exclude=('data',)))
         # Include mode
         p = pr.input(dict(id=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
@@ -195,27 +197,27 @@ class HandlersTest(unittest.TestCase):
 
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
         with self.assertRaises(InvalidColumnError):
-            MongoProject(Article, default_projection=dict(id=1, INVALID=1))
+            Article_project(default_projection=dict(id=1, INVALID=1))
         with self.assertRaises(InvalidQueryError):
-            MongoProject(Article, default_projection=dict(id=1, title=0))
+            Article_project(default_projection=dict(id=1, title=0))
 
         with self.assertRaises(InvalidColumnError):
-            MongoProject(Article, default_exclude='id')
+            Article_project(default_exclude='id')
         with self.assertRaises(InvalidColumnError):
-            MongoProject(Article, default_exclude=('INVALID',))
+            Article_project(default_exclude=('INVALID',))
 
         with self.assertRaises(InvalidColumnError):
-            MongoProject(Article, force_exclude='id')
+            Article_project(force_exclude='id')
         with self.assertRaises(InvalidColumnError):
-            MongoProject(Article, force_exclude=('INVALID',))
+            Article_project(force_exclude=('INVALID',))
 
         with self.assertRaises(InvalidColumnError):
-            MongoProject(Article, force_include='id')
+            Article_project(force_include='id')
         with self.assertRaises(InvalidColumnError):
-            MongoProject(Article, force_include=('INVALID',))
+            Article_project(force_include=('INVALID',))
 
         # === Test: Invalid projection, dict, problem: 1s and 0s
-        pr = Reusable(MongoProject(Article))
+        pr = Reusable(Article_project())
 
         with self.assertRaises(InvalidQueryError):
             pr.input(dict(id=1, title=0))
@@ -226,12 +228,12 @@ class HandlersTest(unittest.TestCase):
 
         # === Test: A mixed object is only acceptable when it mentions EVERY column
         # No error
-        MongoProject(Article).input(dict(id=1, uid=1, title=1, theme=1, data=0,
+        Article_project().input(dict(id=1, uid=1, title=1, theme=1, data=0,
                                          calculated=1, hybrid=1))
 
         # === Test: pluck_instance()
         a = Article(id=100, uid=10, title='title', theme='theme', data=dict(a=1), user=User(age=21))
-        pr = MongoProject(Article).input(dict(id=1, uid=1, calculated=1))
+        pr = Article_project().input(dict(id=1, uid=1, calculated=1))
 
         d = pr.pluck_instance(a)
         self.assertEqual(d, dict(id=100, uid=10, calculated=15))
@@ -239,14 +241,15 @@ class HandlersTest(unittest.TestCase):
         # === Test: dry run of compile_*()
         # No errors
         for input_value in (None, ('id',), {'id': 1}, {'id': 0}):
-            MongoProject(Article).input(input_value).compile_options(Load(Article))
+            Article_project().input(input_value).compile_options(Load(Article))
 
     def test_sort(self):
-        sr = Reusable(MongoSort(Article))
+        Article_sort = lambda: MongoSort(Article, ModelPropertyBags.for_model(Article))
+        sr = Reusable(Article_sort())
 
         # === Test: input() can be called only once
         with self.assertRaises(RuntimeError):
-            MongoSort(Article).input(None).input(None)
+            Article_sort().input(None).input(None)
 
         # === Test: no input
         s = sr.input(None)
@@ -285,30 +288,34 @@ class HandlersTest(unittest.TestCase):
         # === Test: dry run of compile_*()
         # No errors
         for input_value in (None, ('id',), {'id': +1}):
-            MongoSort(Article).input(input_value).compile_columns()
+            Article_sort().input(input_value).compile_columns()
 
     def test_group(self):
+        Article_group = lambda: MongoGroup(Article, ModelPropertyBags.for_model(Article))
+
         # === Test: input() can be called only once
         with self.assertRaises(RuntimeError):
-            MongoGroup(Article).input(None).input(None)
+            Article_group().input(None).input(None)
 
         # === Test: list
-        g = MongoGroup(Article).input(['uid'])
+        g = Article_group().input(['uid'])
         self.assertEqual(g.group_spec, OrderedDict(uid=+1))
 
-        g = MongoGroup(Article).input(['uid-'])
+        g = Article_group().input(['uid-'])
         self.assertEqual(g.group_spec, OrderedDict(uid=-1))
 
     def test_filter(self):
+        Article_filter = lambda **kw: MongoFilter(Article, ModelPropertyBags.for_model(Article))
+
         # === Test: input() can be called only once
         with self.assertRaises(RuntimeError):
-            MongoFilter(Article).input(None).input(None)
+            Article_filter().input(None).input(None)
 
         # === Test: empty
-        f = MongoFilter(Article).input(None)  # no problem
+        f = Article_filter().input(None)  # no problem
 
         # === Test: simple key=value object
-        f = MongoFilter(Article).input(OrderedDict([
+        f = Article_filter().input(OrderedDict([
             ('id', 1),
             ('hybrid', True),  # No error
             ('data.rating', 10),  # Accessing JSON column
@@ -340,7 +347,8 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(e.compile_expression()), "CAST((a.data #>> ['rating']) AS INTEGER) = 10")  # proper typecasting
 
         # === Test: scalar operators
-        f = MongoFilter(ManyFieldsModel).input(OrderedDict([
+        ManyFieldsModel_filter = lambda: MongoFilter(ManyFieldsModel, ModelPropertyBags.for_model(ManyFieldsModel))
+        f = ManyFieldsModel_filter().input(OrderedDict([
             ('a', {'$lt': 100}),
             ('b', {'$lte': 100}),
             ('c', {'$ne': 100}),
@@ -391,7 +399,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(e.compile_expression()), 'm.i IS NULL')
 
         # === Test: array operators
-        f = MongoFilter(ManyFieldsModel).input(OrderedDict([
+        f = ManyFieldsModel_filter().input(OrderedDict([
             ('aa', {'$eq': 1}),
             ('bb', {'$eq': [1, 2, 3]}),
             ('cc', {'$ne': 1}),
@@ -452,7 +460,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(e.compile_expression()), 'array_length(m.kk, 1) = 99')
 
         # === Test: operators on JSON columns
-        f = MongoFilter(ManyFieldsModel).input(OrderedDict([
+        f = ManyFieldsModel_filter().input(OrderedDict([
             ('j_a.rating', {'$lt': 100}),
             ('j_b.rating', {'$in': [1, 2, 3]}),
         ]))
@@ -468,7 +476,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(e.compile_expression()), "CAST((m.j_b #>> ['rating']) AS TEXT) IN (1, 2, 3)")
 
         # === Test: boolean expression
-        f = MongoFilter(ManyFieldsModel).input({
+        f = ManyFieldsModel_filter().input({
             '$and': [
                 OrderedDict([ ('a', 1), ('b', 2) ]),
                 {'c': 3},
@@ -493,7 +501,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(e.compile_expression()),
                          '((m.a = 1 AND m.b = 2) AND m.c = 3 AND m.g > 18)')
 
-        f = MongoFilter(ManyFieldsModel).input({
+        f = ManyFieldsModel_filter().input({
             '$or': [
                 {'a': 1},
                 {'b': 1},
@@ -502,7 +510,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(f.compile_statement()),
                          '(m.a = 1 OR m.b = 1)')
 
-        f = MongoFilter(ManyFieldsModel).input({
+        f = ManyFieldsModel_filter().input({
             '$nor': [
                 {'a': 1},
                 {'b': 1},
@@ -511,7 +519,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(f.compile_statement()),
                          'NOT (m.a = 1 OR m.b = 1)')
 
-        f = MongoFilter(ManyFieldsModel).input({
+        f = ManyFieldsModel_filter().input({
             '$not': {
                 'c': {'$gt': 18},
             }
@@ -520,7 +528,7 @@ class HandlersTest(unittest.TestCase):
                          'm.c <= 18')  # wow, clever sqlalchemy!
 
         # === Test: nested boolean expression
-        f = MongoFilter(ManyFieldsModel).input({
+        f = ManyFieldsModel_filter().input({
             '$not': OrderedDict([
                 ('a', 1),
                 ('$and', [
@@ -537,7 +545,7 @@ class HandlersTest(unittest.TestCase):
                          'NOT (m.a = 1 AND (m.a = 1 AND m.b = 1 AND (m.a > 18 OR m.b = 1)))')
 
         # === Test: related columns
-        f = MongoFilter(Article).input(OrderedDict([
+        f = Article_filter().input(OrderedDict([
             # These two will be put together into a single subquery
             ('comments.id', 1),
             ('comments.uid', {'$gt': 18}),
@@ -570,38 +578,42 @@ class HandlersTest(unittest.TestCase):
                          "WHERE u.id = a.uid AND u.id = 1 AND u.name NOT IN (a, b)))", s)
 
         # === Test: Hybrid Properties
-        f = MongoFilter(Article).input(dict(hybrid=1))
+        f = Article_filter().input(dict(hybrid=1))
         self.assertIn('(a.id > 10 AND (EXISTS (SELECT 1 \nFROM u', stmt2sql(f.compile_statement()))
 
         # === Test: dry run of compile_*()
         # No errors
         for input_value in (None, {'id': 1}):
-            MongoFilter(Article).input(input_value).compile_statement()
+            Article_filter().input(input_value).compile_statement()
 
     def test_limit(self):
+        User_limit = lambda **kw: MongoLimit(User, ModelPropertyBags.for_model(User), **kw)
+
         # Test: empty value
-        l = MongoLimit(User).input()
+        l = User_limit().input()
         self.assertEqual((l.skip, l.limit), (None, None))
 
         # Test: skip
-        l = MongoLimit(User).input(skip=10)
+        l = User_limit().input(skip=10)
         self.assertEqual((l.skip, l.limit), (10, None))
 
         # Test: limit
-        l = MongoLimit(User).input(limit=10)
+        l = User_limit().input(limit=10)
         self.assertEqual((l.skip, l.limit), (None, 10))
 
         # Test: max_items
-        l = MongoLimit(User, max_items=10).input()
+        l = User_limit(max_items=10).input()
         self.assertEqual((l.skip, l.limit), (None, 10))
 
-        l = MongoLimit(User, max_items=10).input(limit=20)
+        l = User_limit(max_items=10).input(limit=20)
         self.assertEqual((l.skip, l.limit), (None, 10))
 
-        l = MongoLimit(User, max_items=10).input(limit=5)
+        l = User_limit(max_items=10).input(limit=5)
         self.assertEqual((l.skip, l.limit), (None, 5))
 
     def test_join(self):
+        User_join = lambda **kw: MongoJoin(User, ModelPropertyBags.for_model(User), **kw)
+
         def test_mjp(mjp, relname, qo):
             self.assertEqual(mjp.relationship_name, relname)
             self.assertEqual(mjp.query_object, qo)
@@ -612,7 +624,7 @@ class HandlersTest(unittest.TestCase):
                 test_mjp(mjp, **expected_mjp)
 
         mq = MongoQuery(User)
-        mj = Reusable(MongoJoin(User).with_mongoquery(mq))  # type: MongoJoin
+        mj = Reusable(User_join().with_mongoquery(mq))  # type: MongoJoin
 
         # === Test: empty value
         test_mongojoin(mj.input(None))
@@ -705,7 +717,7 @@ class HandlersTest(unittest.TestCase):
 
 
         # === Test: allowed_relations
-        mj = Reusable(MongoJoin(User, allowed_relations=('articles',)).with_mongoquery(mq))  # type: MongoJoin
+        mj = Reusable(User_join(allowed_relations=('articles',)).with_mongoquery(mq))  # type: MongoJoin
 
         mj.input(('articles',))
         with self.assertRaises(DisabledError):
@@ -714,7 +726,7 @@ class HandlersTest(unittest.TestCase):
             mj.input(('non-existent',))
 
         # === Test: banned_relations
-        mj = Reusable(MongoJoin(User, banned_relations=('comments',)).with_mongoquery(mq))  # type: MongoJoin
+        mj = Reusable(User_join(banned_relations=('comments',)).with_mongoquery(mq))  # type: MongoJoin
 
         mj.input(('articles',))
         with self.assertRaises(DisabledError):
@@ -724,7 +736,7 @@ class HandlersTest(unittest.TestCase):
 
         # Test: allowed_relations + banned_relations
         with self.assertRaises(AssertionError):
-            Reusable(MongoJoin(User, allowed_relations=('articles',), banned_relations=('comments',)).with_mongoquery(mq))
+            Reusable(User_join(allowed_relations=('articles',), banned_relations=('comments',)).with_mongoquery(mq))
 
 
     def test_mongoquery_pluck_instance(self):

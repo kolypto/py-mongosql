@@ -18,15 +18,17 @@ class MongoJoin(MongoQueryHandlerBase):
 
     query_object_section_name = 'join'
 
-    def __init__(self, model, allowed_relations=None, banned_relations=None, raiseload_rel=False):
+    def __init__(self, model, bags, allowed_relations=None, banned_relations=None, raiseload_rel=False):
         """ Init a join expression
 
+        :param model: Sqlalchemy model to work with
+        :param bags: Model bags
         :param allowed_relations: List of relations that can be joined
         :param banned_relations: List of relations that can't be joined to
         :param raiseload_rel: Install a raiseload() option on all relations not explicitly loaded.
             This is a performance safeguard for the cases when your code might use them.
         """
-        super(MongoJoin, self).__init__(model)
+        super(MongoJoin, self).__init__(model, bags)
 
         # Security
         if allowed_relations is not None and banned_relations is not None:

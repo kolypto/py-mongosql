@@ -112,7 +112,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
         # Even if our code loads some more columns (and it does!), the client will always get what they requested.
         return list(map(self._return_instance, entities))
 
-    def _save_relations(self, new, prev=None, comments=None):
+    def _save_relations(self, _new, _prev=None, comments=None):
         pass  # TODO: unit-test saving relationships
 
 

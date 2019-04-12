@@ -503,7 +503,7 @@ class MongoQuery(object):
     def _init_handler(self, handler_name, handler_cls):
         """ Init a handler, and load its settings """
         handler_settings = self._handler_settings.get_settings(handler_name, handler_cls)
-        return handler_cls(self._model, **handler_settings)
+        return handler_cls(self._model, self._bags, **handler_settings)
 
     # endregion
 

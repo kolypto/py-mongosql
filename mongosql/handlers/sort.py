@@ -21,8 +21,8 @@ class MongoSort(MongoQueryHandlerBase):
 
     query_object_section_name = 'sort'
 
-    def __init__(self, model):
-        super(MongoSort, self).__init__(model)
+    def __init__(self, model, bags):
+        super(MongoSort, self).__init__(model, bags)
 
         # On input
         #: OderedDict() of a sort spec: {key: +1|-1}

@@ -93,7 +93,8 @@ class ModelPropertyBags(object):
     # region: Initialize bags
 
     # A bunch of initialization methods
-    # This way, you can override the way Bags is initialized
+    # This way, you can override the way a model is analyzed, and bags initialized
+
     def _init_columns(self, model, insp):
         """ Initialize: Column properties """
         return DotColumnsBag(_get_model_columns(model, insp))

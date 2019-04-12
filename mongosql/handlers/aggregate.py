@@ -174,7 +174,7 @@ class MongoAggregate(MongoQueryHandlerBase):
 
     query_object_section_name = 'aggregate'
 
-    def __init__(self, model, aggregate_columns=(), aggregate_labels=False):
+    def __init__(self, model, bags, aggregate_columns=(), aggregate_labels=False):
         """ Init aggregation
 
         :param model: Model
@@ -183,7 +183,7 @@ class MongoAggregate(MongoQueryHandlerBase):
         :param aggregate_labels: whether labelling columns is enabled
         :type aggregate_labels: bool
         """
-        super(MongoAggregate, self).__init__(model)
+        super(MongoAggregate, self).__init__(model, bags)
 
         # Security
         self.aggregate_columns = set(aggregate_columns or ())

@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import sessionmaker, scoped_session, column_property
 
 from sqlalchemy.sql.expression import and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
@@ -53,6 +53,7 @@ class MongoJsonSerializableBase(JsonSerializableBase):
 
 Base = declarative_base(cls=(MongoSqlBase, MongoJsonSerializableBase))
 
+# TODO: test column_property() behavior. Treat it as a @property? (default exclude)
 
 class User(Base):
     __tablename__ = 'u'

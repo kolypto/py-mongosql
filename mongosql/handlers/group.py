@@ -12,8 +12,8 @@ class MongoGroup(MongoSort):
 
     query_object_section_name = 'group'
 
-    def __init__(self, model):
-        super(MongoSort, self).__init__(model)
+    def __init__(self, model, bags):
+        super(MongoSort, self).__init__(model, bags)
 
         # On input
         #: OderedDict() of a group spec: {key: +1|-1}

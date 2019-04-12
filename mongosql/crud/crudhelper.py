@@ -19,6 +19,9 @@ class CrudHelper(object):
         don't do it for every query, keep it at the class level!
     """
 
+    # The class to use for getting structural data from a model
+    _MODEL_PROPERTY_BAGS_CLS = ModelPropertyBags
+
     def __init__(self, model, **handler_settings):
         """ Init CRUD helper
 
@@ -27,7 +30,7 @@ class CrudHelper(object):
         :param handler_settings: Settings for the MongoQuery used to make queries
         """
         self.model = model
-        self.bags = ModelPropertyBags.for_model(model)
+        self.bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(model)
         self.reusable_mongoquery = Reusable(MongoQuery(self.model, handler_settings))
 
     def query_model(self, query_obj=None, from_query=None):
@@ -202,18 +205,21 @@ class StrictCrudHelper(CrudHelper):
         # Done
         return ro_fields or set()
 
-    def _create_model(self, entity_dict):
-        # Remove ro fields
+    def _remove_ro_fields_from(self, entity_dict):
+        """ Remove read-only fields from the incoming entity dict """
         for k in set(entity_dict.keys()) & self.ro_fields:
             entity_dict.pop(k)
+
+    def _create_model(self, entity_dict):
+        # Remove ro fields
+        self._remove_ro_fields_from(entity_dict)
 
         # Super
         return super(StrictCrudHelper, self)._create_model(entity_dict)
 
     def _update_model(self, entity_dict, instance):
         # Remove ro fields
-        for k in set(entity_dict.keys()) & self.ro_fields:
-            entity_dict.pop(k)
+        self._remove_ro_fields_from(entity_dict)
 
         # Super
         return super(StrictCrudHelper, self)._update_model(entity_dict, instance)

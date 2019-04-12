@@ -16,12 +16,13 @@ class MongoCount(MongoQueryHandlerBase):
 
     query_object_section_name = 'count'
 
-    def __init__(self, model):
+    def __init__(self, model, bags):
         """ Init a count
 
         :param model: Sqlalchemy model to work with
+        :param bags: Model bags
         """
-        super(MongoCount, self).__init__(model)
+        super(MongoCount, self).__init__(model, bags)
 
         # On input
         self.count = None

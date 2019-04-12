@@ -69,7 +69,7 @@ class CrudViewMixin(object):
         """
         return mongoquery
 
-    def _save_relations(self, new, prev=None, **relations):
+    def _save_relations(self, _new, _prev=None, **relations):
         """ A hook that implements saving related models.
 
         Whenever a relationship is named in the 'saves_relations' class attribute,
@@ -83,10 +83,10 @@ class CrudViewMixin(object):
 
         NOTE: this method is executed before _save_hook() is.
 
-        :param new: The new instance
-        :type new: DeclarativeMeta
-        :param prev: Previously persisted version (is provided only when updating).
-        :type prev: ModelHistoryProxy | None
+        :param _new: The new instance
+        :type _new: DeclarativeMeta
+        :param _prev: Previously persisted version (is provided only when updating).
+        :type _prev: ModelHistoryProxy | None
         :param relations: Values for every relation
         """
         raise NotImplementedError('Saving relations is not yet implemented for this view')

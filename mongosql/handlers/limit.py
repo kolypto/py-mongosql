@@ -18,14 +18,15 @@ class MongoLimit(MongoQueryHandlerBase):
 
     query_object_section_name = 'sort'
 
-    def __init__(self, model, max_items=None):
+    def __init__(self, model, bags, max_items=None):
         """ Init a limit
 
-        :param model: Sqlalchem model to work with
+        :param model: Sqlalchemy model to work with
+        :param bags: Model bags
         :param max_items: The maximum number of items that can be loaded with this query.
             The user can never go any higher than that, and this value is forced onto every query.
         """
-        super(MongoLimit, self).__init__(model)
+        super(MongoLimit, self).__init__(model, bags)
 
         # Config
         self.max_items = max_items
