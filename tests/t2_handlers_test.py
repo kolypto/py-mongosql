@@ -151,6 +151,21 @@ class HandlersTest(unittest.TestCase):
                                              # Full projection in mixed mode
                                              theme=1, data=1, calculated=0, hybrid=0))
 
+        # Originally mixed, merge include
+        pr = mk_pr(0).merge(dict(data=1)).merge(dict(hybrid=1))
+        self.assertEqual(pr.mode, pr.MODE_MIXED)
+        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
+                                             theme=1, data=1, calculated=0,
+                                             # Now included
+                                             hybrid=1))
+
+        # Originally mixed, merge exclude
+        pr.merge(dict(hybrid=0))
+        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
+                                             theme=1, data=1, calculated=0,
+                                             # Now excluded again
+                                             hybrid=0))
+
         # === Test: merge, quiet mode
         # Originally include, merge include
         pr = mk_pr(1).merge(dict(data=1), quietly=True)
@@ -161,6 +176,10 @@ class HandlersTest(unittest.TestCase):
         pr = mk_pr(0).merge(dict(title=1), quietly=True)
         self.assertEqual(pr.get_full_projection(),
                          dict(id=0, uid=0, title=0, theme=1, data=1, calculated=0, hybrid=0))  # not 'title'
+
+        # Originally mixed, merge include
+        pr = mk_pr(0).merge(dict(data=1)).merge(dict(hybrid=1), quietly=True)
+        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0, theme=1, data=1, calculated=0, hybrid=0))  # not 'hybrid'
 
         # === Test: force_include
         pr = Reusable(Article_project(force_include=('id',)))

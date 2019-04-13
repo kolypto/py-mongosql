@@ -385,6 +385,10 @@ class MongoProject(MongoQueryHandlerBase):
             # Compatible modes: just merge
             # Defaults won't override anything, because the values are the same anyway.
             self._projection.update(projection)
+        elif self.mode == self.MODE_MIXED:
+            # merge(whatever) into self.mixed mode: just merge
+            # mixed mode contains every column's info, so whatever projection comes in, they are compatible.
+            self._projection.update(projection)
         elif mode == self.MODE_INCLUDE and self.mode == self.MODE_EXCLUDE:
             # merge(include) in self.exclude mode
             # These modes are incompatible. Got to use full projection
@@ -433,6 +437,13 @@ class MongoProject(MongoQueryHandlerBase):
                 now_included = set(k for k, v in self._projection.items() if v == 1)
                 previously_excluded = set(orig_projection.keys())
                 new_keys = now_included & previously_excluded
+                self.quietly_included.update(new_keys)
+            elif mode == self.MODE_INCLUDE and orig_mode == self.MODE_MIXED:
+                # originally MIXED, merged some more.
+                # Possibly, with includes. Compare the two sets of 1-s.
+                now_included = set(k for k, v in self._projection.items() if v == 1)
+                previously_excluded = set(k for k, v in orig_projection.items() if v == 1)
+                new_keys = now_included - previously_excluded
                 self.quietly_included.update(new_keys)
 
             # Note that we don't worry about other cases (EXCLUDE + EXCLUDE, INCLUDE + EXCLUDE),
