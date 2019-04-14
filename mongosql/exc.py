@@ -1,5 +1,5 @@
 
-class BaseMongoSqlException(AssertionError):
+class BaseMongoSqlException(AssertionError):  # `AssertionError` for backwards-compatibility
     pass
 
 

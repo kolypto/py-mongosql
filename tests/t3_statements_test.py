@@ -98,7 +98,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         u = models.User
         ua = aliased(models.User)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(TypeError):
             MongoQuery(ua)
 
         MongoQuery(u).aliased(ua)  # ok

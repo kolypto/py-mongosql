@@ -29,9 +29,9 @@ class MongoQuery(object):
         """
         # Aliases?
         if inspect(model).is_aliased_class:
-            raise AssertionError('MongoQuery does not accept aliases. '
-                                 'If you want to query an alias, do it like this: '
-                                 'MongoQuery(User).aliased(aliased(User))')
+            raise TypeError('MongoQuery does not accept aliases. '
+                            'If you want to query an alias, do it like this: '
+                            'MongoQuery(User).aliased(aliased(User))')
 
         # Init with the model
         self._model = model  # model, or its alias (when used with self.aliased())

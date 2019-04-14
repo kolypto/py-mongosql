@@ -192,7 +192,7 @@ class BagsTest(unittest.TestCase):
         aa = aliased(models.Article, name='a_1')
 
         # ModelPropertyBags() does not tolerate aliases
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(TypeError):
             ModelPropertyBags(aliased(models.Article))
 
         # Init bags

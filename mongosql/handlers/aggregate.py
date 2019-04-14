@@ -93,7 +93,7 @@ class AggregateColumnOperator(AggregateExpressionBase):
         elif self.operator == '$sum':
             stmt = func.sum(column)
         else:
-            raise AssertionError('Aggregate: unsupported operator "{}"'.format(self.operator))
+            raise InvalidQueryError('Aggregate: unsupported operator "{}"'.format(self.operator))
         return self.labeled_expression(stmt)
 
 
@@ -308,7 +308,7 @@ class MongoAggregate(MongoQueryHandlerBase):
                 bool_expression = copy(self._mongofilter).input(expression)
                 operator_obj = self._BOOLEAN_COUNT_CLS(comp_field_label, bool_expression)
             else:
-                raise AssertionError('Aggregate: expression should be either a column name, or an object')
+                raise InvalidQueryError('Aggregate: expression should be either a column name, or an object')
 
             # Add it
             agg_spec[comp_field_label] = operator_obj

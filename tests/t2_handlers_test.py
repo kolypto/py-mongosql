@@ -754,7 +754,7 @@ class HandlersTest(unittest.TestCase):
             mj.input(('non-existent',))
 
         # Test: allowed_relations + banned_relations
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             Reusable(User_join(allowed_relations=('articles',), banned_relations=('comments',)).with_mongoquery(mq))
 
 

@@ -32,7 +32,7 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Security
         if allowed_relations is not None and banned_relations is not None:
-            raise AssertionError('Cannot use both `allowed_relations` and `banned_relations`')
+            raise ValueError('Cannot use both `allowed_relations` and `banned_relations`')
         elif allowed_relations is not None:
             self.allowed_relations = set(allowed_relations)
         elif banned_relations is not None:
@@ -1029,7 +1029,7 @@ def _sa_create_joins(relation, left, right):
                 dest_polymorphic=True,
                 of_type_mapper=right_info.mapper)
     else:
-        raise AssertionError('Unsupported SqlAlchemy version! Expected 1.2.x or 1.3.x')
+        raise RuntimeError('Unsupported SqlAlchemy version! Expected 1.2.x or 1.3.x')
 
     return (
         primaryjoin,

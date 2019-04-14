@@ -410,7 +410,7 @@ class MongoProject(MongoQueryHandlerBase):
                 if not isinstance(projection[k], Default):  # don't let defaults destroy solid values!
                     self._projection.pop(k)
         else:
-            raise AssertionError('Unknown combination of self.mode and mode')
+            raise RuntimeError('Unknown combination of self.mode and mode')
 
         # Quiet mode handler
         if quietly:

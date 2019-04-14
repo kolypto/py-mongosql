@@ -69,10 +69,10 @@ class ModelPropertyBags(object):
         :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         """
         # We don't tolerate aliases here
-        assert not inspect(model).is_aliased_class, \
-            'MongoPropertyBags does not tolerate aliased() models.' \
-            'If you do really need to use one, do it this way: ' \
-            'ModelPropertyBags.for_alias(aliased_model)'
+        if inspect(model).is_aliased_class:
+            raise TypeError('MongoPropertyBags does not tolerate aliased() models.'
+                            'If you do really need to use one, do it this way: '
+                            'ModelPropertyBags.for_alias(aliased_model)')
 
         # Get the inspector
         insp = inspect(model)
