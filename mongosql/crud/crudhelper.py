@@ -21,6 +21,8 @@ class CrudHelper(object):
 
     # The class to use for getting structural data from a model
     _MODEL_PROPERTY_BAGS_CLS = ModelPropertyBags
+    # The class to use for MongoQuery
+    _MONGOQUERY_CLS = MongoQuery
 
     def __init__(self, model, **handler_settings):
         """ Init CRUD helper
@@ -31,7 +33,7 @@ class CrudHelper(object):
         """
         self.model = model
         self.bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(model)
-        self.reusable_mongoquery = Reusable(MongoQuery(self.model, handler_settings))
+        self.reusable_mongoquery = Reusable(self._MONGOQUERY_CLS(self.model, handler_settings))
 
     def query_model(self, query_obj=None, from_query=None):
         """ Make a MongoQuery using the provided Query Object
@@ -153,6 +155,10 @@ class StrictCrudHelper(CrudHelper):
 
         - Read-only fields can not be set: not with create, nor with update
         - Defaults for Query Object provide the default values for every query, unless overridden
+
+        Attributes:
+            ro_fields (list[str]): The list of read-only field names
+            query_defaults (dict): Default values for every field of the Query Object
     """
 
     def __init__(self, model, ro_fields=None, rw_fields=None, query_defaults=None, **handler_settings):
@@ -179,6 +185,11 @@ class StrictCrudHelper(CrudHelper):
 
         # Validate the Default Query Object
         MongoQuery(self.model).query(**self.query_defaults)
+
+    @property
+    def rw_fields(self):
+        """ The list of fields """
+        return self.bags.columns.names - self.ro_fields
 
     def _init_ro_rw_fields(self, ro_fields, rw_fields):
         """ Initialize ro_fields and rw_fields

@@ -206,6 +206,13 @@ class MongoQuerySettingsDict(dict):
         self.update({k: v
                      for k, v in locals().items()
                      if k not in {'__class__', 'self'}})
+        # NOTE: before you say your BOO at me for using locals(), consider the following...
+        # we have 20+ variables we have to pass to the update() function, and we have to make sure we've forgotten none.
+        # At the same time, this method is only called ONCE per model, during the initialization phase.
+        # All of this tells me that this is just the right situation to summon locals() to our assitance.
+        # Otherwise, we'll have a large, long, ugly list of variables, and we'll have to keep it updated every time
+        # there is a new setting in town.
+        # Therefore, locals().
 
     def and_more(self, **settings):
         """ Copy the object and add more settings to it """
@@ -239,6 +246,6 @@ class StrictCrudHelperSettingsDict(MongoQuerySettingsDict):
                  **mongoquery_settings
                  ):
         super(StrictCrudHelperSettingsDict, self).__init__(**mongoquery_settings)
-        self.update({k: v
+        self.update({k: v  # See the parent method for an apology... :)
                      for k, v in locals().items()
                      if k not in {'__class__', 'self', 'mongoquery_settings'}})
