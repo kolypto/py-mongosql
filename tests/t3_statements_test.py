@@ -1556,6 +1556,38 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                 {'id': 2, 'articles': [{'id': 21, 'uid': 2, 'user': {'id': 2}, 'comments': [{'aid': 21, 'id': 108}]}]},
             ])
 
+    def test_join_when_fk_is_deferred(self):
+        c = models.ManyForeignKeysModel
+
+        # === Test: project + limit + join + project, one-to-one relationship
+        mq = c.mongoquery().query(
+            project=['name'],  # FK is deferred
+            join={
+                'user_1': dict(
+                    project=['name']
+                )
+            },
+            limit=10
+        )
+        qs = self.assertQuery(mq.end(),
+                              # Subquery
+                              "FROM (SELECT mf.id",
+                              # Limit, Aliased
+                              "LIMIT 10) AS anon_1",
+                              # Join condition references the alias
+                              "anon_1 LEFT OUTER JOIN u AS u_1 ON u_1.id = anon_1.mf_user_1_id",
+                              )
+        self.assertSelectedColumns(qs,
+                                   'u_1.id', 'u_1.name',  # PK + project
+                                   'anon_1.mf_id', 'anon_1.mf_name',  # PK + project
+                                   # And also this one undeferred field
+                                   'anon_1.mf_user_1_id',
+                                   )
+
+        # The extra FK field is not specified in the projection
+        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'user_1': {'name': 1}})
+
+
     def test_ensure_loaded(self):
         """ Test MongoQuery.ensure_loaded() """
         u = models.User

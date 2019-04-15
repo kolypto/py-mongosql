@@ -427,6 +427,13 @@ class MongoJoin(MongoQueryHandlerBase):
                 query = query.options(*[as_relation.undefer(column_name)
                                         for column_name in order_by_column_names])
 
+            # We also have to undefer any columns that participate in this relationship
+            # If foreign keys are deferred, SqlAlchemy won't be able to adapt the join condition properly:
+            # it will use the original table name (not the subquery alias), which results in an invalid query.
+            local_columns = mjp.relationship.property.local_columns
+            query = query.options(*[as_relation.undefer(column.key)
+                                    for column in local_columns])
+
             # Select from self, so that LIMIT stays inside the inner query
             query = query.from_self()
 

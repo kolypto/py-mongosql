@@ -186,7 +186,27 @@ class ManyFieldsModel(Base):
     j_k = Column(pg.JSON)
 
 
+class ManyForeignKeysModel(Base):
+    """ A table with many foreign keys """
+    __tablename__ = 'mf'
+
+    id = Column(Integer, ForeignKey("gw.id"), primary_key=True)
+
+    name = Column(String)
+    fname = Column(String)
+    lname = Column(String)
+
+    # One-to-One relationships
+    user_1_id = Column(Integer, ForeignKey("u.id"))
+    user_2_id = Column(Integer, ForeignKey("u.id"))
+    user_3_id = Column(Integer, ForeignKey("u.id"))
+
+    user_1 = relationship(User, foreign_keys=user_1_id)
+    user_2 = relationship(User, foreign_keys=user_2_id)
+    user_3 = relationship(User, foreign_keys=user_3_id)
+
 class GirlWatcherFavorites(Base):
+    """ The M2M intermediate table """
     __tablename__ = 'gwf'
     gw_id = Column(Integer, ForeignKey("gw.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("u.id"), primary_key=True)
@@ -439,6 +459,7 @@ if __name__ == '__main__':
     # Developer's playground!
     import logging
     logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger('parso').setLevel(logging.INFO)  # noisy!
     logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
     engine, Session = get_working_db_for_tests()
