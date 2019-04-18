@@ -43,6 +43,7 @@ class MongoProject(MongoQueryHandlerBase):
                  default_projection=None,
                  default_exclude=None,
                  default_exclude_properties=True,
+                 default_unexclude_properties=None,
                  force_include=None, force_exclude=None,
                  raiseload_col=False):
         """ Init projection
@@ -58,6 +59,7 @@ class MongoProject(MongoQueryHandlerBase):
             Use this for properties that contain a lot of data, or require extra queries.
         :param default_exclude_properties: By default, exclude @property and @hybrid_property attributes.
             This is a handy shortcut. Use `force_include` to overrule, or `default_exclude` manually to fine-tune.
+        :param default_unexclude_properties: Exclude all but the given @property and @hybrid_property.
         :param force_include: A list of column names to include into the output always
         :param force_exclude: A list of column names to exclude from the output always
         :param raiseload_col: Install a raiseload_col() option on all fields excluded by projection.
@@ -77,8 +79,12 @@ class MongoProject(MongoQueryHandlerBase):
         self.default_exclude_properties = None
         self.raiseload_col = raiseload_col
 
-        if default_exclude_properties:
+        if default_exclude_properties or default_unexclude_properties:  # when either is specified, the effect is the same
+            assert not default_unexclude_properties or default_exclude_properties, \
+                'Using `default_unexclude_properties` only makes sense with default_exclude_properties=True'
+
             self.default_exclude_properties = self.bags.properties.names | self.bags.hybrid_properties.names
+            self.default_exclude_properties -= set(default_unexclude_properties or ())
             # Merge `properties` and `hybrid_properties` into `default_exclude`
             self.default_exclude = (self.default_exclude or set()) | self.default_exclude_properties
 

@@ -34,25 +34,26 @@ class MongoQuerySettingsDict(dict):
 
     def __init__(self,
                  # --- project
-                 default_projection=None,
-                 default_exclude=None,
-                 default_exclude_properties=True,
-                 force_include=None,
-                 force_exclude=None,
+                 default_projection = None,
+                 default_exclude = None,
+                 default_exclude_properties = True,
+                 default_unexclude_properties = None,
+                 force_include = None,
+                 force_exclude = None,
                  # --- project & join & joinf
-                 raiseload=False,
+                 raiseload = False,
                  # --- aggregate
-                 aggregate_columns: Iterable[str] = None,
-                 aggregate_labels: bool = False,
+                 aggregate_columns = None,
+                 aggregate_labels = False,
                  # --- filter
-                 force_filter: Union[dict, Callable[[DeclarativeMeta], Union[list, BinaryExpression]]] = None,
-                 scalar_operators: Mapping[str, Callable] = None,
-                 array_operators: Mapping[str, Callable] = None,
+                 force_filter = None,
+                 scalar_operators = None,
+                 array_operators = None,
                  # --- join & joinf
-                 allowed_relations: Iterable[str] = None,
-                 banned_relations: Iterable[str] = None,
+                 allowed_relations = None,
+                 banned_relations = None,
                  # --- limit
-                 max_items: int = None,
+                 max_items = None,
                  # --- enabled_handlers?
                  aggregate_enabled: bool = True,
                  count_enabled: bool = True,
@@ -64,8 +65,8 @@ class MongoQuerySettingsDict(dict):
                  project_enabled: bool = True,
                  sort_enabled: bool = True,
                  # --- Relations
-                 related: Union[Mapping, Callable] = None,
-                 related_models: Union[Mapping, Callable] = None,
+                 related = None,
+                 related_models = None,
                  ):
         """ Settings for Query Object handlers.
         
@@ -84,7 +85,10 @@ class MongoQuerySettingsDict(dict):
                 When `True`, all `@property` and `@hybrid_property` attributes
                 will be excluded by default (put into `default_exclude`).
                 This is a convenivent shortcut.
-                Use `force_include` to overrule, or `default_exclude` manually to fine-tune.
+                Use `default_include_properties` to overrule.
+            default_unexclude_properties (list[str]): (for: project)
+                The list of `@property` and `@hybrid_property` attributes that won't be excluded:
+                they will be treated like the rest of the columns.
             force_include (list[str]): (for: project)
                 A list of attributes that will always be loaded and included into the output.
             force_exclude (list[str]): (for: project)

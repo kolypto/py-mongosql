@@ -110,6 +110,70 @@ class HandlersTest(unittest.TestCase):
                                 calculated=1, hybrid=0,  # one included, one excluded
                                 )
 
+        # === Test: `default_exclude_properties=True`, exclude mode
+        p = Article_project(default_exclude_properties=True) \
+            .input(dict(uid=0))
+
+        self.assertEqual(p.default_exclude, {'calculated', 'hybrid'})
+        test_by_full_projection(p,
+                                id=1, uid=0, title=1,
+                                theme=1, data=1,
+                                calculated=0, hybrid=0,  # both excluded
+                                )
+
+        # === Test: `default_exclude_properties=True`, include mode
+        p = Article_project(default_exclude_properties=True) \
+            .input(dict(uid=1, calculated=1))
+
+        test_by_full_projection(p,
+                                id=0, uid=1, title=0,
+                                theme=0, data=0,
+                                calculated=1, hybrid=0,  # only the one explicitly required is included
+                                )
+
+        # === Test: `default_exclude_properties=False`, exclude mode
+        # default_exclude_properties=True, exclude mode
+        p = Article_project(default_exclude_properties=False) \
+            .input(dict(uid=0, calculated=0))
+
+        self.assertEqual(p.default_exclude, None)
+        test_by_full_projection(p,
+                                id=1, uid=0, title=1,
+                                theme=1, data=1,
+                                calculated=0, hybrid=1,  # 1 ex, 1 inc (like the rest of the columns)
+                                )
+
+        # === Test: `default_exclude_properties=False`, include mode
+        p = Article_project(default_exclude_properties=False) \
+            .input(dict(uid=1, calculated=1))
+
+        test_by_full_projection(p,
+                                id=0, uid=1, title=0,
+                                theme=0, data=0,
+                                calculated=1, hybrid=0,  # 1 inc, 1 exc (like the rest of the columns)
+                                )
+
+        # === Test: `default_unexclude_properties`, exclude mode
+        p = Article_project(default_unexclude_properties=('calculated',)) \
+            .input(dict(uid=0))
+
+        self.assertEqual(p.default_exclude, {'hybrid'})
+        test_by_full_projection(p,
+                                id=1, uid=0, title=1,
+                                theme=1, data=1,
+                                calculated=1, hybrid=0,  # only one is included
+                                )
+
+        # === Test: `default_unexclude_properties`, include mode
+        p = Article_project(default_unexclude_properties=('calculated',)) \
+            .input(dict(uid=1))
+
+        test_by_full_projection(p,
+                                id=0, uid=1, title=0,
+                                theme=0, data=0,
+                                calculated=0, hybrid=0,  # behaves like a column
+                                )
+
         # === Test: default_projection
         pr = Reusable(Article_project(default_projection=dict(id=1, title=1)))
 
