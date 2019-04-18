@@ -423,7 +423,8 @@ class MongoJoin(MongoQueryHandlerBase):
             # If there even is any ordering?
             if order_by_column_names:
                 # undefer() every column that participates in the ORDER BY
-                # we'll have to undo it later on
+                # We're adding extra columns to the result set, but that's alright.
+                # I've seen some really custom code raise weird errors if we don't. So let it be.
                 query = query.options(*[as_relation.undefer(column_name)
                                         for column_name in order_by_column_names])
 
@@ -461,11 +462,9 @@ class MongoJoin(MongoQueryHandlerBase):
             if not sort_handler.is_input_empty():
                 # Apply ORDER BY again, but to the outside query
                 query = sort_handler.alter_query(query)
-                # Undo undefer()ed columns: restore the columns to its original loader option (as specified by projection)
-                query = query.options(*[
-                    project_handler.compile_option_for_column(column_name, as_relation)
-                    for column_name in order_by_column_names
-                ])
+
+                # Here, we used to undo undefer()ed columns and restore the query to its original state, but we don't
+                # do it anymore: I've seen weird bugs because of this!
 
         # Get the nested MongoQuery
         # It's already been alias()ed and as_relation_from()ed

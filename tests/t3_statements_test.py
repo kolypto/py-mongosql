@@ -1563,11 +1563,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         mq = c.mongoquery().query(
             project=['name'],  # FK is deferred
             join={
-                'user_1': dict(
+                'user_1': dict(  # forces MongoJoin to use the LEFT OUTER JOIN join handler
                     project=['name']
                 )
             },
-            limit=10
+            limit=10,  # forces MongoSQL to use a subquery
         )
         qs = self.assertQuery(mq.end(),
                               # Subquery
@@ -1587,6 +1587,28 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # The extra FK field is not specified in the projection
         self.assertEqual(mq.get_projection_tree(), {'name': 1, 'user_1': {'name': 1}})
 
+    def test_sorting_when_column_is_deferred(self):
+        c = models.ManyForeignKeysModel
+
+        # === Test: project + limit + join + sort, one-to-one relationship
+        mq = c.mongoquery().query(
+            sort=['user_2_id-'],
+            project=['name'],  # sorting key is deferred
+            join={'user_1': dict(project=['name'])},  # forces MongoJoin to use the LEFT OUTER JOIN join handler
+            limit=10,  # forces MongoJoin to use a subquery
+        )
+        qs = self.assertQuery(mq.end(),
+                              # Subquery
+                              "FROM (SELECT mf.id",
+                              # Ordering, inside subquery
+                              "FROM mf ORDER BY mf.user_2_id DESC",
+                              # Limit, Aliased
+                              "LIMIT 10) AS anon_1",
+                              # Join condition references the alias
+                              "anon_1 LEFT OUTER JOIN u AS u_1 ON u_1.id = anon_1.mf_user_1_id",
+                              # Ordering on the outside too
+                              "ORDER BY anon_1.mf_user_2_id DESC",
+                              )
 
     def test_ensure_loaded(self):
         """ Test MongoQuery.ensure_loaded() """
@@ -1677,6 +1699,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                        'anon_1.a_id', 'anon_1.a_title',
                                        'u_1.id', 'u_1.name',
                                        'c_1.id', 'c_1.aid',
+                                       # side-effect: columns mentioned in ORDER BY are now included into the results
+                                       'anon_1.a_theme',
                                        )
 
         # === Test: join x3, project, limit
