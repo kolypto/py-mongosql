@@ -95,3 +95,14 @@ class MongoSort(MongoQueryHandlerBase):
             return query  # short-circuit
         return query.order_by(*self.compile_columns())
 
+    # Extra stuff
+
+    def undefer_columns_involved_in_sorting(self, as_relation):
+        """ undefer() columns required for this sort """
+        # Get the names of the columns
+        order_by_column_names = [c.key or c.element.key
+                                 for c in self.compile_columns()]
+
+        # Return options: undefer() every column
+        return (as_relation.undefer(column_name)
+                for column_name in order_by_column_names)

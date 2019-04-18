@@ -418,15 +418,11 @@ class MongoJoin(MongoQueryHandlerBase):
             # We're going to make it into a subquery, so let's first make sure that we have enough columns selected.
             # We'll need columns used in the ORDER BY clause selected, so let's get them out, so that we can use them
             # in the ORDER BY clause later on (a couple of statements later)
-            order_by_column_names = [c.key or c.element.key
-                                     for c in sort_handler.compile_columns()]
-            # If there even is any ordering?
-            if order_by_column_names:
-                # undefer() every column that participates in the ORDER BY
-                # We're adding extra columns to the result set, but that's alright.
-                # I've seen some really custom code raise weird errors if we don't. So let it be.
-                query = query.options(*[as_relation.undefer(column_name)
-                                        for column_name in order_by_column_names])
+            #
+            # undefer() every column that participates in the ORDER BY
+            # We're adding extra columns to the result set, but that's alright.
+            # I've seen some really custom code raise weird errors if we don't. So let it be.
+            query = query.options(sort_handler.undefer_columns_involved_in_sorting(as_relation))
 
             # We also have to undefer any columns that participate in this relationship
             # If foreign keys are deferred, SqlAlchemy won't be able to adapt the join condition properly:
