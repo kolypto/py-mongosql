@@ -59,7 +59,9 @@ class CrudTest(unittest.TestCase):
                 rw_fields=('data',),  # everything else must be RO
             )
         )
-        self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme'})
+        self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme',
+                                        # also properties and relationships
+                                        'calculated', 'comments', 'hybrid', 'user'})
 
         # === Test: rw_fields=()
         ch = StrictCrudHelper(
@@ -68,7 +70,10 @@ class CrudTest(unittest.TestCase):
                 rw_fields=(),  # everything is RO
             )
         )
-        self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme', 'data'})
+        self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme', 'data',
+                                        # also properties and relationships
+                                        'calculated', 'comments', 'hybrid', 'user'
+                                        })
 
         # === Test: defaults
         ch = StrictCrudHelper(models.Article)

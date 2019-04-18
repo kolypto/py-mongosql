@@ -71,6 +71,25 @@ class CrudHelper(object):
         if unk_cols:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
 
+    def _validate_attributes(self, column_names, where):
+        """ Validate attribute names (any)
+
+            :raises exc.InvalidColumnError: Invalid column name
+        """
+        unk_cols = set(column_names) - self.bags.all_names
+        if unk_cols:
+            raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
+
+    def _validate_writable_attributes(self, attr_names, where):
+        """ Validate attribute names (columns, properties, hybrid properties) that are writable
+
+            :raises exc.InvalidColumnError: Invalid column name
+        """
+        unk_cols = set(attr_names) - self.bags.writable_names
+        if unk_cols:
+            raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
+
+
     def create_model(self, entity_dict):
         """ Create an instance from entity dict.
 
@@ -205,13 +224,13 @@ class StrictCrudHelper(CrudHelper):
 
         # Validate
         if ro_fields:
-            self._validate_columns(ro_fields, 'ro_fields')
+            self._validate_attributes(ro_fields, 'ro_fields')
         if rw_fields:
-            self._validate_columns(rw_fields, 'rw_fields')
+            self._validate_writable_attributes(rw_fields, 'rw_fields')
 
         # Rw fields
         if rw_fields is not None:
-            ro_fields = set(self.bags.columns.names - rw_fields)
+            ro_fields = set(self.bags.all_names - rw_fields)
 
         # Done
         return ro_fields or set()

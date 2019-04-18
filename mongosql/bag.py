@@ -90,6 +90,9 @@ class ModelPropertyBags(object):
         self.pk = self._init_primary_key(model, insp)
         self.nullable = self._init_nullable_columns(model, insp)
 
+        # The list of columns' and writable properties' names
+        self.writable_names = frozenset(self._init_writable_names(model, insp))
+
     # region: Initialize bags
 
     # A bunch of initialization methods
@@ -130,6 +133,21 @@ class ModelPropertyBags(object):
         return ColumnsBag({name: c
                            for name, c in self.columns
                            if c.nullable})
+
+    def _init_writable_names(self, model, insp):
+        """ Initialize: the list of names of writable attributes """
+        names = set()
+
+        # Columns are writable
+        names.update(self.columns.names)
+
+        # @properties that have a setter are writable
+        names.update(self.properties.names)  # TODO: implement it properly: detect writable props
+
+        # @hybrid_properties that have a setter are writable
+        names.update(self.hybrid_properties.names)  # TODO: implement it properly: detect writable props
+
+        return names
 
     # endregion
 
