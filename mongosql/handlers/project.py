@@ -39,6 +39,9 @@ class MongoProject(MongoQueryHandlerBase):
 
     query_object_section_name = 'project'
 
+    # Allow the handling of relationships by MongoProject
+    RELATIONSHIPS_HANDLING_ENABLED = True
+
     def __init__(self, model, bags,
                  default_projection=None,
                  default_exclude=None,
@@ -98,19 +101,36 @@ class MongoProject(MongoQueryHandlerBase):
 
         # Validate
         if self.default_projection:
-            # just for the sake of validation
-            MongoProject(self.model, self.bags).input(default_projection)
+            try:
+                # just for the sake of validation: init MongoProject once
+                self.__class__(self.model, self.bags).input({k: v
+                                                             # Validate the whole thing, with the exception of relationships
+                                                             for k, v in default_projection.items()
+                                                             if k not in self.bags.relations})
+            except InvalidColumnError as e:
+                # Reraise with a custom error message
+                raise InvalidColumnError(self.bags.model_name, e.column_name, 'project:default_projection')
         if self.default_exclude:
-            self.validate_properties(self.default_exclude, where='project:default_exclude')
+            self.validate_properties_or_relations(self.default_exclude, where='project:default_exclude')
         if self.force_include:
-            self.validate_properties(self.force_include, where='project:force_include')
+            self.validate_properties_or_relations(self.force_include, where='project:force_include')
         if self.force_exclude:
-            self.validate_properties(self.force_exclude, where='project:force_exclude')
+            self.validate_properties_or_relations(self.force_exclude, where='project:force_exclude')
 
     def __copy__(self):
         obj = super(MongoProject, self).__copy__()
         obj.quietly_included = obj.quietly_included.copy()
         return obj
+
+    def validate_properties_or_relations(self, prop_names, where=None):
+        prop_names = set(prop_names)
+
+        # Remove relationships
+        if self.RELATIONSHIPS_HANDLING_ENABLED:
+            prop_names -= self.bags.relations.names
+
+        # Validate the rest
+        return super(MongoProject, self).validate_properties(prop_names, bag=None, where=where)
 
     def _get_supported_bags(self):
         return CombinedBag(
@@ -177,7 +197,7 @@ class MongoProject(MongoQueryHandlerBase):
         # Remove items that are relationships
         # This is only supported when there's a MongoQuery that binds the two together
         relations = {}
-        if self.mongoquery:
+        if self.mongoquery and self.RELATIONSHIPS_HANDLING_ENABLED:
             for name in list(projection.keys()):
                 # If the name happens to be a relationship
                 if name in self.bags.relations:
@@ -187,7 +207,7 @@ class MongoProject(MongoQueryHandlerBase):
                     # When value=1, transform it into a proper MongoJoin value
                     if value:
                         relations[name] = {}
-
+            # Every relationship that wasn't removed will cause validation errors
 
         # Validate keys
         self.validate_properties(projection.keys())

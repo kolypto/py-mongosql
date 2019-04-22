@@ -1654,16 +1654,6 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           },
                           })
 
-    def test_projection_join(self):
-        """ Test loading relationships by specifying their name in the projection """
-        u = models.User
-
-        # === Test: project column + relationship
-        mq = u.mongoquery().query(
-            project=['name', 'articles'],
-        )
-        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'articles': {'calculated': 0, 'hybrid': 0}})
-
     # region: Older tests
 
     def test_join_advanced(self):

@@ -282,7 +282,7 @@ class HandlersTest(unittest.TestCase):
         with self.assertRaises(InvalidColumnError):
             Article_project(default_projection=dict(id=1, INVALID=1))
         with self.assertRaises(InvalidQueryError):
-            Article_project(default_projection=dict(id=1, title=0))
+            Article_project(default_projection=dict(id=1, title=0))  # incomplete
 
         with self.assertRaises(InvalidColumnError):
             Article_project(default_exclude='id')
@@ -820,6 +820,29 @@ class HandlersTest(unittest.TestCase):
         # Test: allowed_relations + banned_relations
         with self.assertRaises(ValueError):
             Reusable(User_join(allowed_relations=('articles',), banned_relations=('comments',)).with_mongoquery(mq))
+
+    def test_projection_join(self):
+        """ Test loading relationships by specifying their name in the projection """
+        u = User
+
+        # === Test: project column + relationship
+        mq = u.mongoquery().query(
+            project=['name', 'articles'],
+        )
+        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'articles': {'calculated': 0, 'hybrid': 0}})
+
+
+        # === Test: can specify relationships in MongoProject settings
+        mq = MongoQuery(u, dict(force_include=('articles',))).query(project=['name',])
+        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'articles': {'calculated': 0, 'hybrid': 0}})
+
+        # === Test: force_include a relationship cannot be overridden
+        mq = MongoQuery(u, dict(force_include=('articles',))).query(project={'name': 1, 'articles': 0})
+        self.assertEqual(mq.get_projection_tree(), {'name': 1, 'articles': {'calculated': 0, 'hybrid': 0}})
+
+        # === Test: can specify relationships in default projection
+        mq = MongoQuery(u, dict(default_projection={'articles': 1})).query()
+        self.assertEqual(mq.get_projection_tree(), {'articles': {'calculated': 0, 'hybrid': 0}, 'user_calculated': 0})
 
 
     def test_mongoquery_pluck_instance(self):
