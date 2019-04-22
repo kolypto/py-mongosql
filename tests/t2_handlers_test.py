@@ -278,6 +278,37 @@ class HandlersTest(unittest.TestCase):
                                             calculated=0, hybrid=0
                                             ))
 
+        # === Test: merge() cannnot override force_include and force_exclude
+        # force_include
+        pr = Reusable(Article_project(force_include=('id',)))
+
+        p = pr.input(dict(id=0))
+        self.assertIn('id', p)  # can't undo
+
+        p = p.merge(dict(id=0))
+        self.assertIn('id', p)  # can't undo
+
+        # force_exclude
+        pr = Reusable(Article_project(force_exclude=('data',)))
+
+        p = pr.input(dict(data=1))
+        self.assertNotIn('data', p)  # can't undo
+
+        p = p.merge(dict(data=0))
+        self.assertNotIn('data', p)  # can't undo
+
+        # === Test: bundled_project
+        pr = Reusable(Article_project(bundled_project={'calculated': ['title', 'uid']}))
+        p = pr.input(dict(calculated=1))
+        self.assertIn('calculated', p)
+        self.assertIn('title', p)
+        self.assertIn('uid', p)
+
+        # === Test: bundled_project, relationships
+        mq = MongoQuery(Article, dict(bundled_project={'calculated': ['comments']}))
+        mq = mq.query(project=dict(calculated=1))
+        self.assertEqual(mq.get_projection_tree(), dict(calculated=1, comments=dict(comment_calc=0)))
+
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
         with self.assertRaises(InvalidColumnError):
             Article_project(default_projection=dict(id=1, INVALID=1))

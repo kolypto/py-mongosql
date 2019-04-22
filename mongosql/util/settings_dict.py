@@ -38,6 +38,7 @@ class MongoQuerySettingsDict(dict):
                  default_exclude = None,
                  default_exclude_properties = True,
                  default_unexclude_properties = None,
+                 bundled_project = None,
                  force_include = None,
                  force_exclude = None,
                  # --- project & join & joinf
@@ -89,6 +90,11 @@ class MongoQuerySettingsDict(dict):
             default_unexclude_properties (list[str]): (for: project)
                 The list of `@property` and `@hybrid_property` attributes that won't be excluded:
                 they will be treated like the rest of the columns.
+            bundled_project (dict[str, list]): (for: project)
+                The dict that declares columns that depend on other columns being loaded.
+                When you have a property that depends on some columns, and the user wants it loaded, the setting
+                got to have the name of the property mapped to the list of dependent columns.
+                Example: {'full_name': ['first_name', 'last_name']}
             force_include (list[str]): (for: project)
                 A list of attributes that will always be loaded and included into the output.
             force_exclude (list[str]): (for: project)

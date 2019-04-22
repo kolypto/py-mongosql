@@ -44,6 +44,7 @@ class MongoProject(MongoQueryHandlerBase):
 
     def __init__(self, model, bags,
                  default_projection=None,
+                 bundled_project=None,
                  default_exclude=None,
                  default_exclude_properties=True,
                  default_unexclude_properties=None,
@@ -54,6 +55,8 @@ class MongoProject(MongoQueryHandlerBase):
         :param model: Sqlalchemy model to work with
         :param bags: Model bags
         :param default_projection: The default projection to use in the absence of any value
+        :param bundled_project: A dict of column names mapped to a list of column names.
+            If the key is included, the values are included as well.
         :param default_exclude: A list of column names that are excluded even in exclusion mode.
             You can only get these properties if you request them explicitly.
             This only affects projections in exclusion mode: when the user has specified
@@ -76,6 +79,7 @@ class MongoProject(MongoQueryHandlerBase):
         # Settings
         self.default_projection = {k: Default(v)
                                    for k, v in (default_projection or {}).items()}
+        self.bundled_project = bundled_project or {}
         self.default_exclude = set(default_exclude) if default_exclude else None
         self.force_include = set(force_include) if force_include else None
         self.force_exclude = set(force_exclude) if force_exclude else None
@@ -110,6 +114,11 @@ class MongoProject(MongoQueryHandlerBase):
             except InvalidColumnError as e:
                 # Reraise with a custom error message
                 raise InvalidColumnError(self.bags.model_name, e.column_name, 'project:default_projection')
+        if self.bundled_project:
+            # NOTE: bundled_project does not support relationships yet
+            self.validate_properties_or_relations(self.bundled_project, where='project:bundled_project')
+            for name, names in self.bundled_project.items():
+                self.validate_properties_or_relations(names, where='project:bundled_project[{}]'.format(name))
         if self.default_exclude:
             self.validate_properties_or_relations(self.default_exclude, where='project:default_exclude')
         if self.force_include:
@@ -161,21 +170,21 @@ class MongoProject(MongoQueryHandlerBase):
         # Process
         self.mode, self._projection, relations = self._input_process(projection)
 
-        # Settings: default_exclude, force_include, force_exclude
+        # Settings: default_exclude, force_include, force_exclude, bundled_project
         if self.mode == self.MODE_EXCLUDE and self.default_exclude:
             # Add even more fields that are excluded by default
             # The only way to load them is to explicitly require them.
             # The value is marked with Default(0) so that merge() won't use it to overwrite anything
             self._projection.update({k: Default(0) for k in self.default_exclude})
 
-        if self.force_include or self.force_exclude:
-            self._input_process_force_include_exclude()
+        # bundled_project, force_include, force_exclude
+        more_relations = self._settings_process_force_include_exclude_and_bundled_project()
+        relations.update(more_relations)
 
         # Relations
         self._pass_relations_to_mongojoin(relations)
 
         # Done
-        assert self.mode is not None  # somebody should have decided by now
         return self
 
     def _input_process(self, projection):
@@ -240,15 +249,111 @@ class MongoProject(MongoQueryHandlerBase):
         # Done
         return mode, projection, relations
 
-    def _input_process_force_include_exclude(self):
-        """ input(): process self.force_include and self.force_exclude """
+    def _process_simple_merge(self, mode, projection, merge_projection, quietly_included=()):
+        """ Simply merge two projections """
+        # Prepare the input
+        merge_mode, merge_projection, merge_relations = self._input_process(merge_projection)
+
+        # Now, the logic goes as follows.
+        # When the two modes are compatible (mode == merge_mode), we can just update() the dict.
+        # But when the two modes are incompatible (e.g., one in inclusion mode, and one in exclusion mode),
+        # We have to use the full projection object, and update it.
+        if mode == merge_mode:
+            # Compatible modes: just merge
+            # Defaults won't override anything, because the values are the same anyway.
+            projection.update(merge_projection)
+        elif mode == self.MODE_MIXED:
+            # merge(whatever) into a MIXED mode: just merge
+            # mixed mode contains every column's info, so whatever projection comes in, they are compatible.
+            projection.update(merge_projection)
+        elif merge_mode == self.MODE_INCLUDE and mode == self.MODE_EXCLUDE:
+            # merge(include) into an EXCLUDE mode
+            # These modes are incompatible. Got to use full projection
+            orig_projection = projection.copy()
+            projection = self._generate_full_projection_for(mode, projection, quietly_included=quietly_included)
+            projection.update({k: v
+                               for k, v in merge_projection.items()
+                               # don't let defaults override solid values!
+                               # If the value that's going to override is a Default(),
+                               # and there used to be some value in the original projection,
+                               # leave the original value
+                               if not (isinstance(v, Default) and k in orig_projection)
+                               })
+            mode = self.MODE_MIXED
+        elif merge_mode == self.MODE_EXCLUDE and mode == self.MODE_INCLUDE:
+            # merge(exclude) in self.include mode: just drop banned keys
+            # this is a short-cut
+            drop_keys = set(merge_projection.keys()) & set(projection.keys())
+            for k in drop_keys:
+                if not isinstance(merge_projection[k], Default):  # don't let defaults destroy solid values!
+                    projection.pop(k)
+        else:
+            raise RuntimeError('Unknown combination of merge_mode and mode')
+
+        return mode, projection, merge_relations
+
+    def _settings_process_force_include_exclude_and_bundled_project(self):
+        """ Process force_include, force_exclude, bundled_project """
+        relations = {}
+
+        # bundled_project
+        if self.bundled_project:
+            more_keys = set()
+            for bundle_key, bundled_keys in self.bundled_project.items():
+                if bundle_key in self:
+                    more_keys.update(bundled_keys)
+
+            # Merge
+            self.mode, self._projection, more_rels = \
+                self._process_simple_merge(self.mode, self._projection, dict.fromkeys(more_keys, 1))
+            relations.update(more_rels)
+
         # force_include
         if self.force_include:
-            self.merge(dict.fromkeys(self.force_include, 1))
+            self.mode, self._projection, more_rels = \
+                self._process_simple_merge(self.mode, self._projection, dict.fromkeys(self.force_include, 1))
+            relations.update(more_rels)
 
         # force_exclude
         if self.force_exclude:
-            self.merge(dict.fromkeys(self.force_exclude, 0))
+            self.mode, self._projection, more_rels = \
+                self._process_simple_merge(self.mode, self._projection, dict.fromkeys(self.force_exclude, 0))
+            relations.update(more_rels)
+
+        # Done
+        return relations
+
+    def _input_process_bundled_project(self):
+        """ input(): process self.bundled_project """
+        for bundle_key, bundled_keys in self.bundled_project.items():
+            # A bundle key is included
+            if bundle_key in self:
+                # See if there're any keys we have to include
+                missing_bundle_keys = {k
+                                       for k in bundled_keys
+                                       if k not in self}
+                # Merge
+                self.merge(dict.fromkeys(missing_bundle_keys, 1))
+
+    def _generate_full_projection_for(self, mode, projection, quietly_included=()):
+        """ Generate a copy of a full projection for the given (mode, projection) """
+        # In mixed mode, all columns are already there. Just return it
+        if mode == self.MODE_MIXED:
+            full_projection = projection.copy()
+        else:
+            # Generate a default full projection for every column
+            # Meaning: {all: 0} or {all: 1}, depending on the mode
+            full_projection = {name: 0 if mode == self.MODE_INCLUDE else 1
+                               for name in self.supported_bags.names}
+
+            # Overwrite it with the projection from the query
+            full_projection.update(projection)
+
+        # Force {key: 0} on every quietly_included one
+        full_projection.update({key: 0 for key in quietly_included})
+
+        # Done
+        return full_projection
 
     def _pass_relations_to_mongojoin(self, relations):
         """ When _input_process() detects relationships, it returns them as a separate dict.
@@ -395,58 +500,27 @@ class MongoProject(MongoQueryHandlerBase):
         :type quietly: bool
         :rtype: MongoProject
         """
-        # Validate
-        mode, projection, relations = self._input_process(projection)
-
         # Make a copy because we're going to modify it
         orig_mode = self.mode
         orig_projection = self._projection
-        self._projection = self._projection.copy()
 
-        # Now, the logic goes as follows.
-        # When the two modes are compatible (mode == self.mode), we can just update() the dict.
-        # But when the two modes are incompatible (e.g., one in inclusion mode, and one in exclusion mode),
-        # We have to use the full projection object, and update it.
-        if self.mode == mode:
-            # Compatible modes: just merge
-            # Defaults won't override anything, because the values are the same anyway.
-            self._projection.update(projection)
-        elif self.mode == self.MODE_MIXED:
-            # merge(whatever) into self.mixed mode: just merge
-            # mixed mode contains every column's info, so whatever projection comes in, they are compatible.
-            self._projection.update(projection)
-        elif mode == self.MODE_INCLUDE and self.mode == self.MODE_EXCLUDE:
-            # merge(include) in self.exclude mode
-            # These modes are incompatible. Got to use full projection
-            self._projection = self.get_full_projection()
-            self._projection.update({k: v
-                                     for k, v in projection.items()
-                                     # don't let defaults override solid values!
-                                     # If the value that's going to override is a Default(),
-                                     # and there used to be some value in the original projection,
-                                     # leave the original value
-                                     if not (isinstance(v, Default) and k in orig_projection)
-                                     })
-            self.mode = self.MODE_MIXED
-        elif mode == self.MODE_EXCLUDE and self.mode == self.MODE_INCLUDE:
-            # merge(exclude) in self.include mode: just drop banned keys
-            # this is a short-cut
-            drop_keys = set(projection.keys()) & set(self._projection.keys())
-            for k in drop_keys:
-                if not isinstance(projection[k], Default):  # don't let defaults destroy solid values!
-                    self._projection.pop(k)
-        else:
-            raise RuntimeError('Unknown combination of self.mode and mode')
+        # Merge
+        new_mode, new_projection, relations = \
+            self._process_simple_merge(orig_mode, orig_projection.copy(), projection, self.quietly_included)
+
+        # Apply
+        self.mode = new_mode
+        self._projection = new_projection
 
         # Quiet mode handler
         if quietly:
             # Only handle cases where more keys were included
-            if mode == self.MODE_INCLUDE and orig_mode == self.MODE_INCLUDE:
+            if new_mode == self.MODE_INCLUDE and orig_mode == self.MODE_INCLUDE:
                 # originally INCLUDE, merge INCLUDE
                 # More keys included
-                new_keys = set(self._projection.keys()) - set(orig_projection.keys())
+                new_keys = set(new_projection.keys()) - set(orig_projection.keys())
                 self.quietly_included.update(new_keys)
-            elif mode == self.MODE_INCLUDE and orig_mode == self.MODE_EXCLUDE:
+            elif orig_mode == self.MODE_EXCLUDE and new_mode == self.MODE_MIXED:
                 # originally EXCLUDE, merged INCLUDE
                 # Ended up in MIXED mode because more keys included
 
@@ -464,7 +538,7 @@ class MongoProject(MongoQueryHandlerBase):
                 previously_excluded = set(orig_projection.keys())
                 new_keys = now_included & previously_excluded
                 self.quietly_included.update(new_keys)
-            elif mode == self.MODE_INCLUDE and orig_mode == self.MODE_MIXED:
+            elif orig_mode == self.MODE_MIXED:
                 # originally MIXED, merged some more.
                 # Possibly, with includes. Compare the two sets of 1-s.
                 now_included = set(k for k, v in self._projection.items() if v == 1)
@@ -474,6 +548,11 @@ class MongoProject(MongoQueryHandlerBase):
 
             # Note that we don't worry about other cases (EXCLUDE + EXCLUDE, INCLUDE + EXCLUDE),
             # because quiet mode only handles fields that appear during merge, not those that disappear.
+
+
+        # bundled_project, force_include, force_exclude
+        more_relations = self._settings_process_force_include_exclude_and_bundled_project()
+        relations.update(more_relations)
 
         # Relations
         self._pass_relations_to_mongojoin(relations)
@@ -515,23 +594,7 @@ class MongoProject(MongoQueryHandlerBase):
 
         :rtype: dict
         """
-        # In mixed mode, all columns are already there. Just return it
-        if self.mode == self.MODE_MIXED:
-            full_projection = self._projection.copy()
-        else:
-            # Generate a default full projection for every column
-            # Meaning: {all: 0} or {all: 1}, depending on the mode
-            full_projection = {name: 0 if self.mode == self.MODE_INCLUDE else 1
-                               for name in self.supported_bags.names}
-
-            # Overwrite it with the projection from the query
-            full_projection.update(self._projection)
-
-        # Force {key: 0} on every quietly_included one
-        full_projection.update({key: 0 for key in self.quietly_included})
-
-        # Done
-        return full_projection
+        return self._generate_full_projection_for(self.mode, self._projection, self.quietly_included)
 
     def __contains__(self, name):
         """ Test whether a column name is included into projection (by name)
