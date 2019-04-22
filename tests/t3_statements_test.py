@@ -91,8 +91,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         mq_1 = models.User.mongoquery().aliased(aliased(models.User))
         mq_2 = models.User.mongoquery()
         # not aliased
-        self.assertIsNot(mq_1._bags, mq_2._bags)
-        self.assertFalse(inspect(mq_2._model).is_aliased_class)
+        self.assertIsNot(mq_1.bags, mq_2.bags)
+        self.assertFalse(inspect(mq_2.model).is_aliased_class)
 
     def test_aliased(self):
         u = models.User
@@ -1092,7 +1092,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # === Test: related[*]
         def test_settings_for(mq, relation_name, target_model, expected_settings):
-            handler_settings = mq._handler_settings.settings_for_nested_mongoquery(relation_name, target_model)
+            handler_settings = mq.handler_settings.settings_for_nested_mongoquery(relation_name, target_model)
             self.assertEqual(handler_settings, expected_settings)
 
         mq = MongoQuery(u, MongoQuerySettingsDict(

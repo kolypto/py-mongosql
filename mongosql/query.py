@@ -34,11 +34,11 @@ class MongoQuery(object):
                             'MongoQuery(User).aliased(aliased(User))')
 
         # Init with the model
-        self._model = model  # model, or its alias (when used with self.aliased())
-        self._bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(self._model)
+        self.model = model  # model, or its alias (when used with self.aliased())
+        self.bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(self.model)
 
         # Initialize the settings
-        self._handler_settings = self._init_handler_settings(handler_settings or {})
+        self.handler_settings = self._init_handler_settings(handler_settings or {})
 
         # Initialized later
         self._query = None  # type: Query | None
@@ -51,7 +51,7 @@ class MongoQuery(object):
         # These are just the defaults ; as_relation() will override them when working with
         # deeper relationships
         self._join_path = ()
-        self._as_relation = Load(self._model)
+        self._as_relation = Load(self.model)
 
         # Cached MongoQuery objects for nested relationships
         self._nested_mongoqueries = dict()  # type: dict[str, MongoQuery]
@@ -128,7 +128,7 @@ class MongoQuery(object):
             # Set default
             # This behavior is used by the __copy__() method to reset the attribute
             self._join_path = ()
-            self._as_relation = Load(self._model)
+            self._as_relation = Load(self.model)
         return self
 
     def as_relation_of(self, mongoquery, relationship):
@@ -153,8 +153,8 @@ class MongoQuery(object):
         :param model: Aliased model
         """
         # Aliased bags
-        self._bags = self._bags.aliased(model)
-        self._model = model
+        self.bags = self.bags.aliased(model)
+        self.model = model
 
         # Aliased loader interface
         # Currently, our join path looks like this: [..., User]
@@ -168,7 +168,7 @@ class MongoQuery(object):
             # Second. Apply the new join path
             self.as_relation(new_join_path)
         else:  # empty
-            self._as_relation = Load(self._model)  # use the alias
+            self._as_relation = Load(self.model)  # use the alias
 
         # Aliased handlers
         for handler_name in self.HANDLER_ATTR_NAMES:
@@ -317,16 +317,16 @@ class MongoQuery(object):
         relations = {}
         for name in cols:
             # Tell apart
-            if name in self._bags.related_columns:
+            if name in self.bags.related_columns:
                 # A related column will initialize a projection
                 relation_name, column_name = name.split('.', 1)
                 relations.setdefault(relation_name, {})
                 relations[relation_name].setdefault('project', {})
                 relations[relation_name]['project'][column_name] = 1
-            elif name in self._bags.relations:
+            elif name in self.bags.relations:
                 # A relation will init an empty object
                 relations.setdefault(name, {})
-            elif name in self._bags.columns:
+            elif name in self.bags.columns:
                 # A column will just be loaded
                 columns.append(name)
             else:
@@ -380,9 +380,9 @@ class MongoQuery(object):
             :param instance: object
             :rtype: dict
         """
-        if not isinstance(instance, self._bags.model):  # bags.model, because self.model may be aliased
+        if not isinstance(instance, self.bags.model):  # bags.model, because self.model may be aliased
             raise ValueError('This MongoQuery.pluck_instance() expects {}, but {} was given'
-                             .format(self._bags.model, type(instance)))
+                             .format(self.bags.model, type(instance)))
         # First, projection will do what it wants.
         # By the way, it will also generate a dictionary
         dct = self.handler_project.pluck_instance(instance)
@@ -394,7 +394,7 @@ class MongoQuery(object):
         return dct
 
     def __repr__(self):
-        return 'MongoQuery({})'.format(str(self._model))
+        return 'MongoQuery({})'.format(str(self.model))
 
     # region Query Object handlers
 
@@ -498,12 +498,12 @@ class MongoQuery(object):
                     )
 
         # Check settings
-        self._handler_settings.raise_if_invalid_handler_settings(self)
+        self.handler_settings.raise_if_invalid_handler_settings(self)
 
     def _init_handler(self, handler_name, handler_cls):
         """ Init a handler, and load its settings """
-        handler_settings = self._handler_settings.get_settings(handler_name, handler_cls)
-        return handler_cls(self._model, self._bags, **handler_settings)
+        handler_settings = self.handler_settings.get_settings(handler_name, handler_cls)
+        return handler_cls(self.model, self.bags, **handler_settings)
 
     # endregion
 
@@ -528,7 +528,7 @@ class MongoQuery(object):
 
         # Create the object
         hso = MongoQuerySettingsHandler(handler_settings)
-        hso.validate_related_settings(self._bags)
+        hso.validate_related_settings(self.bags)
 
         # Done
         return hso
@@ -539,7 +539,7 @@ class MongoQuery(object):
             When the time comes to build an actual SqlAlchemy query, we're going to use the query that the user has
             provided with from_query(). If none was provided, we'll use the default one.
         """
-        return self._query or Query([self._model])
+        return self._query or Query([self.model])
 
     def _init_mongoquery_for_related_model(self, relationship_name):
         """ Create a MongoQuery object for a model, related through a relationship with the given name.
@@ -555,10 +555,10 @@ class MongoQuery(object):
         # There must be no exceptions here, because JoinHandler is the only guy using this method,
         # and it should already have validated relationship name.
         # Meaning, we can be pretty sure `relationship_name` exists
-        target_model = self._bags.relations.get_target_model(relationship_name)
+        target_model = self.bags.relations.get_target_model(relationship_name)
 
         # Make a new MongoQuery
-        handler_settings = self._handler_settings.settings_for_nested_mongoquery(relationship_name, target_model)
+        handler_settings = self.handler_settings.settings_for_nested_mongoquery(relationship_name, target_model)
         mongoquery = self.__class__(target_model, handler_settings)
 
         # Done
@@ -569,7 +569,7 @@ class MongoQuery(object):
 
         Remember that the 'join' operation support nested queries!
         And those queries also support projections, filters, joins, and whatnot.
-        This method will correctly load nested configuration from self._handler_settings,
+        This method will correctly load nested configuration from self.handler_settings,
         which enables you to set up your security and preferences for queries on related models.
 
         Example:
@@ -616,6 +616,6 @@ class MongoQuery(object):
 
             :return:
         """
-        self._handler_settings.raise_if_not_handler_enabled(self._bags.model_name, handler_name)
+        self.handler_settings.raise_if_not_handler_enabled(self.bags.model_name, handler_name)
 
     # endregion
