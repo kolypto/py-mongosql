@@ -42,6 +42,8 @@ class MongoQuerySettingsDict(dict):
                  force_include = None,
                  force_exclude = None,
                  # --- project & join & joinf
+                 raiseload_col = False,
+                 raiseload_rel = False,
                  raiseload = False,
                  # --- aggregate
                  aggregate_columns = None,
