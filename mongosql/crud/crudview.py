@@ -38,6 +38,8 @@ class CrudViewMixin(object):
     crudhelper = None  # type: Union[CrudHelper, StrictCrudHelper]
 
     #: List of columns and relationships that must be loaded with MongoQuery.ensure_loaded()
+    #: Note that you can also use related columns: "relation.col_name" to ensure it's loaded (join-project)
+    #: Remember that every time you use ensure_loaded() on a relationship, you disable filtering for it!
     ensure_loaded = ()
 
     #: The names of relationships that this View is capable of saving. They will be given to _save_relations() as kwargs

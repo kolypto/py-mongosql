@@ -182,7 +182,7 @@ class MongoProject(MongoQueryHandlerBase):
         relations.update(more_relations)
 
         # Relations
-        self._pass_relations_to_mongojoin(relations)
+        self._pass_relations_to_mongojoin(relations, False)
 
         # Done
         return self
@@ -355,7 +355,7 @@ class MongoProject(MongoQueryHandlerBase):
         # Done
         return full_projection
 
-    def _pass_relations_to_mongojoin(self, relations):
+    def _pass_relations_to_mongojoin(self, relations, strict):
         """ When _input_process() detects relationships, it returns them as a separate dict.
         This method forwards them to MongoJoin handler.
 
@@ -374,7 +374,7 @@ class MongoProject(MongoQueryHandlerBase):
             self.mongoquery._raise_if_handler_is_not_enabled('join')
 
             # Pass it to MongoJoin
-            self.mongoquery.handler_join.merge(relations)
+            self.mongoquery.handler_join.merge(relations, strict=strict)
 
     @staticmethod
     def _columns2names(columns):
@@ -481,7 +481,7 @@ class MongoProject(MongoQueryHandlerBase):
         proj.update({k: 0 for k in self.quietly_included})  # force 0s on them
         return proj
 
-    def merge(self, projection, quietly=False):
+    def merge(self, projection, quietly=False, strict=False):
         """ Merge another projection into the current one.
 
         This enables you to include or exclude additional columns after the Query Object has been processed.
@@ -497,6 +497,9 @@ class MongoProject(MongoQueryHandlerBase):
         :param quietly: Whether to include the new relations and projections quietly:
             that is, without changing the results of `self.projection` and `self.pluck_instance()`.
             See MongoQuery.merge() for more info.
+        :param strict: Whether to do a strict merge (see MongoJoin, which will refuse to merge()
+            in case of incompatible filters)
+        :type strict: bool
         :type quietly: bool
         :rtype: MongoProject
         """
@@ -550,12 +553,14 @@ class MongoProject(MongoQueryHandlerBase):
             # because quiet mode only handles fields that appear during merge, not those that disappear.
 
 
+        # Relations
+        self._pass_relations_to_mongojoin(relations, strict=strict)
+
         # bundled_project, force_include, force_exclude
         more_relations = self._settings_process_force_include_exclude_and_bundled_project()
-        relations.update(more_relations)
-
-        # Relations
-        self._pass_relations_to_mongojoin(relations)
+        # Any relations that have come up at this point must be bundled_project properties, nothing more.
+        # Therefore, it must be safe to load them in non-strict mode.
+        self._pass_relations_to_mongojoin(more_relations, strict=False)
 
         # Done
         return self

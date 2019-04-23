@@ -1615,7 +1615,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         u = models.User
 
         # === Test: columns, relationship
-        mq = u.mongoquery().query(  # TODO: uncomment
+        mq = u.mongoquery().query(
             project=['name'],
             filter={'age': {'$gt': 0}},
             join={'articles': dict(project=['title'])}
@@ -1631,6 +1631,28 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           },
                           # 'comments' not even mentioned
                           })
+
+        # We can load it too!
+        mq.ensure_loaded('articles')
+
+        # === Test: can't use ensure_loaded() when filtering is present
+        mq = u.mongoquery().query(
+            project=['name'],
+            join={'articles': dict(project=['title'], filter={'uid': 1})}
+        )
+
+        # Okay to call it without arguments
+        mq.ensure_loaded()
+
+        # Okay to load other relations
+        mq.ensure_loaded('age', 'comments')
+
+        # Can do it twice, no problem
+        mq.ensure_loaded('age', 'comments')
+
+        # Can't load it
+        with self.assertRaises(InvalidQueryError):
+            mq.ensure_loaded('articles')
 
         # === Test: handler_settings, columns, relationship
         # In this test, we pay special attention to `comment_calc` and make sure this projection does not disappear

@@ -423,6 +423,10 @@ class MongoFilter(MongoQueryHandlerBase):
 
         return self
 
+    def merge(self, criteria):
+        self.expressions.extend(self._parse_criteria(criteria))
+        return self
+
     def _parse_criteria(self, criteria):
         """ Parse MongoSQL criteria and return a list of parsed objects.
 

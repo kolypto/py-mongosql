@@ -304,6 +304,8 @@ class MongoQuery(object):
 
             If all you need is just to know whether something is loaded or not, use MongoQuery.__contains__() instead.
 
+            Remember that every time you use ensure_loaded() on a relationship, you disable filtering for it!
+
             :param cols: Column names ('age'), Relation names ('articles'), or Related column names ('articles.name')
             :raises InvalidQueryError: cannot merge because the relationship has a filter on it
             :raises ValueError: invalid column or relationship name given.
@@ -334,8 +336,11 @@ class MongoQuery(object):
                                  .format(name))
 
         # Load all them
-        self.handler_project.merge(columns, quietly=True)
-        self.handler_join.merge(relations, quietly=True)
+        try:
+            self.handler_project.merge(columns, quietly=True, strict=True)
+            self.handler_join.merge(relations, quietly=True, strict=True)
+        except InvalidQueryError as e:
+            raise InvalidQueryError('Failed to process ensure_loaded({}): {}'.format(cols, str(e)))  # from e  # TODO: uncomment in Python 3
 
         # Done
         return self
@@ -392,6 +397,10 @@ class MongoQuery(object):
         # Seems like there's no one else?
         # Done.
         return dct
+
+    def __contains__(self, key):
+        """ Test if a property is going to be loaded by this query """
+        return key in self.handler_project or key in self.handler_join
 
     def __repr__(self):
         return 'MongoQuery({})'.format(str(self.model))

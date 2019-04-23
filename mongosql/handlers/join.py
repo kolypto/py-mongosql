@@ -667,7 +667,7 @@ class MongoJoin(MongoQueryHandlerBase):
         return {relation_name: projection.get(relation_name, 0)
                 for relation_name in self.bags.relations.names}
 
-    def merge(self, relations, quietly=False):
+    def merge(self, relations, quietly=False, strict=False):
         """ Add another relationship to be eagerly loaded.
 
             This enables you to load additional relationships, even after the Query Object has been processed.
@@ -684,6 +684,8 @@ class MongoJoin(MongoQueryHandlerBase):
                 that is, without changing the results of `self.projection` and `self.pluck_instance()`.
                 See MongoQuery.ensure_loaded() for more info.
             :type quietly: bool
+            :param strict: Refuse to join when a filter is present (see ensure_loaded)
+            :type strict: bool
             :rtype: MongoJoin
             :raises InvalidQueryError: Conflicting query objects
         """
@@ -695,14 +697,25 @@ class MongoJoin(MongoQueryHandlerBase):
         # Current MJPs
         current_mjps = {mjp.relationship_name: mjp for mjp in self.mjps}
 
+        # Configure strict mode
+        if strict:
+            merge_allowed_keys = {'project', 'join', 'sort'}
+            strict_mode_str = 'strict mode'
+        else:
+            merge_allowed_keys = {'project', 'join', 'sort', 'filter'}
+            strict_mode_str = 'non-strict mode'
+
         # Helpers
-        merge_allowed_keys = {'project', 'join', 'sort'}
         is_mjp_simple = lambda mjp: mjp is None \
                                     or not mjp.has_nested_query or \
                                     set(mjp.query_object.keys()) <= merge_allowed_keys
-        mjp_has_sort = lambda mjp: mjp is not None and \
+
+        mjp_has_something = lambda mjp, key: mjp is not None and \
                                    mjp.has_nested_query and \
-                                   'sort' in mjp.query_object
+                                   key in mjp.query_object
+        mjp_has_sort = lambda mjp: mjp_has_something(mjp, 'sort')
+        mjp_has_filter = lambda mjp: mjp_has_something(mjp, 'filter')
+
 
         # Merge both dicts and MJPs
         for mjp in mjps:
@@ -728,20 +741,19 @@ class MongoJoin(MongoQueryHandlerBase):
             #       sort: either, but not both
             if not is_mjp_simple(mjp):
                 raise InvalidQueryError(u"You can only merge() a simple relationship, "
-                                        u"whose Query Object is limited to 'project', 'sort', 'join'; "
+                                        u"whose Query Object is limited to {} ({}); "
                                         u"Your relationship '{}' Query Object has more than that."
-                                        .format(relation_name))
+                                        .format(merge_allowed_keys, strict_mode_str, relation_name))
             if not is_mjp_simple(current_mjp):
                 raise InvalidQueryError(u"You can only merge() to simple relationships, "
-                                        u"whose Query Objects is limited to 'project', 'sort', 'join'; "
+                                        u"whose Query Objects is limited to {} ({}); "
                                         u"Relationship '{}' has already been loaded with advanced features. "
                                         u"Cannot merge to it."
-                                        .format(relation_name))
-            # if mjp_has_sort(mjp) and mjp_has_sort(current_mjp):
-            #     raise InvalidQueryError(u"You can only merge() when one of the Query Objects has 'sort', "
-            #                             u"but not both.")
-            if mjp_has_sort(mjp) and mjp_has_sort(current_mjp):
-                raise InvalidQueryError(u"Sorry, merge() does not support sorting yet.")
+                                        .format(merge_allowed_keys, strict_mode_str, relation_name))
+
+            if strict:
+                if mjp_has_sort(mjp) and mjp_has_sort(current_mjp):
+                    raise InvalidQueryError(u"You can only merge() when one of the Query Objects has 'sort', but not both.")
 
             # If there was no relationship - just add it
             if current_mjp is None:
@@ -766,11 +778,28 @@ class MongoJoin(MongoQueryHandlerBase):
                     quietly=quietly
                 )
 
-                # Merge relations dict, their 'project' and 'join' keys
+                if not strict:
+                    # Merge filters
+                    current_mjp.nested_mongoquery.handler_filter.merge(
+                        mjp.nested_mongoquery.handler_filter.input_value
+                    )
+
+                    # Merge sorting
+                    current_mjp.nested_mongoquery.handler_sort.merge(
+                        mjp.nested_mongoquery.handler_sort.sort_spec
+                    )
+
+                # Merge relations dict, and their keys
                 if self.relations[relation_name] is None:
                     self.relations[relation_name] = {}
                 self.relations[relation_name]['project'] = current_mjp.nested_mongoquery.handler_project.projection
                 self.relations[relation_name]['join'] = current_mjp.nested_mongoquery.handler_join.relations
+                if not strict:
+                    self.relations[relation_name]['sort'] = current_mjp.nested_mongoquery.handler_sort.sort_spec
+                    filt = {}
+                    filt.update(mjp.nested_mongoquery.handler_filter.input_value or {})
+                    filt.update(current_mjp.nested_mongoquery.handler_filter.input_value or {})
+                    self.relations[relation_name]['filter'] = filt
 
             # We don't have to re-initialize MongoQuery or anything, because we only support two handlers:
             # join, and project, and both have this 'merge' method

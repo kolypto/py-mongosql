@@ -384,6 +384,10 @@ class HandlersTest(unittest.TestCase):
         with self.assertRaises(InvalidQueryError):
             s = sr.input(dict(id=-1, uid=+1))
 
+        # === Test: merge()
+        s = sr.input(['id']).merge(['uid+'])
+        self.assertEqual(s.sort_spec, OrderedDict([('id', +1), ('uid', +1)]))
+
         # === Test: invalid columns
         with self.assertRaises(InvalidColumnError):
             # Invalid column
@@ -695,6 +699,11 @@ class HandlersTest(unittest.TestCase):
         f = Article_filter().input(dict(hybrid=1))
         self.assertIn('(a.id > 10 AND (EXISTS (SELECT 1 \nFROM u', stmt2sql(f.compile_statement()))
 
+        # === Test: merge
+        f = Article_filter().input(dict(id=1)).merge(dict(uid=2))
+        q_str = stmt2sql(f.compile_statement())
+        self.assertIn('(a.id = 1 AND a.uid = 2)', q_str)
+
         # === Test: dry run of compile_*()
         # No errors
         for input_value in (None, {'id': 1}):
@@ -816,8 +825,11 @@ class HandlersTest(unittest.TestCase):
 
         # Test: conflicting merge
         with self.assertRaises(InvalidQueryError):
-            # Can't merge with a filter
-            j.merge({'articles': dict(filter={'id': 1})})
+            # Can't merge with a filter in strict mode
+            j.merge({'articles': dict(filter={'id': 1})}, strict=True)
+
+        # Test: conflicting merge, non-strict mode
+        j.merge({'articles': dict(filter={'id': 1})}, strict=False)  # ok
 
         # Test: quietly
         j = mj.input({'articles': dict(project=('title',))})

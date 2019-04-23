@@ -79,6 +79,10 @@ class MongoSort(MongoQueryHandlerBase):
         self.sort_spec = self._input(sort_spec)
         return self
 
+    def merge(self, sort_spec):
+        self.sort_spec.update(self._input(sort_spec))
+        return self
+
     def compile_columns(self):
         return [
             self.supported_bags.get(name).desc() if d == -1 else self.supported_bags.get(name)
