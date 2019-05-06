@@ -63,10 +63,8 @@ class ArticlesView(RestfulView, CrudViewMixin):
     # Can save relationships
     saves_relations = ('comments',)
 
-    # This is our helper method that extracts the QueryObject from the request
-    # No interface requires this ; this is purely for our pleasure
-    @property
-    def _query_object(self):
+    # Implement the method that fetches the Query Object for this request
+    def _get_query_object(self):
         """ Get Query Object from request
 
         :rtype: dict | None
@@ -95,7 +93,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
     def list(self):
         """ List method: GET /article/ """
         # List results
-        results = self._method_list(self._query_object)
+        results = self._method_list()
 
         # Format response
         # NOTE: can't return map(), because it's not JSON serializable
@@ -117,7 +115,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
 
 
     def get(self, id):
-        item = self._method_get(self._query_object, id=id)
+        item = self._method_get(id=id)
         return {self.entity_name: self._return_instance(item)}
 
     def create(self):
@@ -129,7 +127,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
         ssn.add(instance)
         ssn.commit()
 
-        return {self.entity_name: instance}
+        return {self.entity_name: self._return_instance(instance)}
 
     def update(self, id):
         input_entity_dict = request.get_json()[self.entity_name]
@@ -139,7 +137,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
         ssn.add(instance)
         ssn.commit()
 
-        return {self.entity_name: instance}
+        return {self.entity_name: self._return_instance(instance)}
 
     def delete(self, id):
         instance = self._method_delete(id=id)
@@ -148,6 +146,6 @@ class ArticlesView(RestfulView, CrudViewMixin):
         ssn.delete(instance)
         ssn.commit()
 
-        return {self.entity_name: instance}
+        return {self.entity_name: self._return_instance(instance)}
 
     # endregion

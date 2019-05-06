@@ -853,7 +853,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # === Test: plain query, nothing special
         mq = ll.mongoquery().query()
 
-        self.assertQuery(mq.end(),
+        self.assertQuery(mq.end().with_labels(),  # with_labels() because of joined tables and ambiguous column1 names
                          'FROM ll '
                          'LEFT OUTER JOIN u AS u_1 ON u_1.id = ll.user_id '
                          'LEFT OUTER JOIN a AS a_1 ON a_1.id = ll.article_id')

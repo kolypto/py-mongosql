@@ -47,7 +47,8 @@ class CrudViewMixin(object):
 
     def __init__(self):
         #: The MongoQuery for this request, if it was indeed initialized by _mquery()
-        self._mongoquery = None  # type: MongoQuery
+        self.__mongoquery = None  # type: MongoQuery
+
         #: The current CRUD method
         self._current_crud_method = None
 
@@ -58,6 +59,14 @@ class CrudViewMixin(object):
         """
         raise NotImplementedError('_get_db_session() not implemented on {}'
                                   .format(type(self)))
+
+    def _get_query_object(self):
+        """ Get the Query Object for the current query.
+
+            Note that the Query Object is not only supported for get() and list() methods, but also for
+            create(), update(), and delete(). This enables the API use to request a relationship right away.
+        """
+        raise NotImplementedError
 
     # region Hooks
 
@@ -116,7 +125,7 @@ class CrudViewMixin(object):
     # ###
     # CRUD methods' implementations
 
-    def _method_get(self, query_obj=None, *filter, **filter_by):
+    def _method_get(self, *filter, **filter_by):
         """ Fetch a single entity: as in READ, single entity
 
             Normally, used when the user has supplied a primary key:
@@ -132,10 +141,10 @@ class CrudViewMixin(object):
             :raises exc.InvalidQueryError: Query Object errors made by the user
         """
         self._current_crud_method = CRUD_METHOD.GET
-        instance = self._get_one(query_obj, *filter, **filter_by)
+        instance = self._get_one(self._get_query_object(), *filter, **filter_by)
         return instance
 
-    def _method_list(self, query_obj=None, *filter, **filter_by):
+    def _method_list(self, *filter, **filter_by):
         """ Fetch a list of entities: as in READ, list of entities
 
             Normally, used when the user has supplied no primary key:
@@ -163,8 +172,13 @@ class CrudViewMixin(object):
         self._current_crud_method = CRUD_METHOD.LIST
 
         # Query
-        query = self._mquery(query_obj, *filter, **filter_by)
+        query = self._mquery(self._get_query_object(), *filter, **filter_by)
 
+        # Done
+        return self._method_list_result_handler(query)
+
+    def _method_list_result_handler(self, query):
+        """ Handle the results from method_list() """
         # Handle: Query Object has count
         if self._mongoquery.result_is_scalar():
             return self._method_list_result__count(query.scalar())
@@ -256,7 +270,7 @@ class CrudViewMixin(object):
         self._current_crud_method = CRUD_METHOD.UPDATE
 
         # Load the instance
-        instance = self._get_one(None, *filter, **filter_by)
+        instance = self._get_one(self._get_query_object(), *filter, **filter_by)
         old_instance = ModelHistoryProxy(instance)
 
         # Update it
@@ -294,7 +308,7 @@ class CrudViewMixin(object):
         self._current_crud_method = CRUD_METHOD.DELETE
 
         # Load
-        instance = self._get_one(None, *filter, **filter_by)
+        instance = self._get_one(self._get_query_object(), *filter, **filter_by)
 
         # Return
         # We don't delete anything here
@@ -306,14 +320,68 @@ class CrudViewMixin(object):
         """ Make the initial Query object to work with """
         return self._get_db_session().query(self.crudhelper.model)
 
+    @property
+    def _mongoquery(self):
+        """ Get the current MongoQuery for this request, or initialize a new one.
+
+        :rtype: MongoQuery
+        """
+        # Init a new one, if necessary
+        if not self.__mongoquery:
+            # MongoQuery object is not explicitly created during CREATE requests
+            # Therefore, we have to initialize it manually
+            self.__mongoquery = self._mquery_simple(self._get_query_object())
+
+        # Return
+        return self.__mongoquery
+
+    @_mongoquery.setter
+    def _mongoquery(self, mongoquery):
+        self.__mongoquery = mongoquery
+        return self.__mongoquery
+
     def _mquery_end(self, mongoquery):
         """ Finalize a MongoQuery and generate a Query """
         return mongoquery.end()
 
     def _mquery(self, query_object=None, *filter, **filter_by):
-        """ Use a MongoQuery to make a Query, with the Query Object, and initial custom filtering applied.
+        """ Run a MongoQuery and invoke the View's hooks.
 
             This method is used by other methods to initialize all CRUD queries in this view.
+
+            :param query_object: Query Object
+            :type query_object: dict | None
+            :param filter: Additional filter() criteria
+            :param filter_by: Additional filter_by() criteria
+            :rtype: sqlalchemy.orm.Query
+            :raises exc.InvalidQueryError: Query Object errors made by the user
+        """
+        # Initialize the MongoQuery
+        mquery = self._mquery_simple(query_object, *filter, **filter_by)
+
+        # ensure_loaded(), when applicable
+        if mquery.result_contains_entities():
+            mquery.ensure_loaded(*self.ensure_loaded)
+
+        # Session
+        mquery.with_session(self._get_db_session())  # not really necessary, because _query() does it already
+
+        # MongoQuery hook
+        mquery = self._mongoquery_hook(mquery)
+
+        # Store
+        self._mongoquery = mquery
+
+        # Query
+        q = self._mquery_end(mquery)
+
+        # Done
+        return q
+
+    def _mquery_simple(self, query_object=None, *filter, **filter_by):
+        """ Use a MongoQuery to make a Query, with the Query Object, and initial custom filtering applied.
+
+            This method does not run the View's hooks; that's why it is "simple".
 
             :param query_object: Query Object
             :type query_object: dict | None
@@ -333,23 +401,10 @@ class CrudViewMixin(object):
             q = q.filter_by(**filter_by)
 
         # MongoQuery
-        self._mongoquery = self.crudhelper.query_model(query_object, from_query=q)  # type: MongoQuery
-
-        # ensure_loaded(), when applicable
-        if self._mongoquery.result_contains_entities():
-            self._mongoquery.ensure_loaded(*self.ensure_loaded)
-
-        # Session
-        self._mongoquery.with_session(self._get_db_session())  # not really necessary, because _query() does it already
-
-        # MongoQuery hook
-        self._mongoquery = self._mongoquery_hook(self._mongoquery)
-
-        # Query
-        q = self._mquery_end(self._mongoquery)
+        mquery = self.crudhelper.query_model(query_object, from_query=q)  # type: MongoQuery
 
         # Done
-        return q
+        return mquery
 
     def _get_one(self, query_obj, *filter, **filter_by):
         """ Utility method that fetches a single entity.

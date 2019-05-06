@@ -144,18 +144,17 @@ class CrudTest(unittest.TestCase):
 
     def test_create(self):
         """ Test create() """
+        article_json = {
+            'id': 999, 'uid': 999,
+            'title': '999',
+            'theme': None,
+            'data': {'wow': True}
+        }
 
         # Create
         # 'ro' field should be set manually
         with self.app.test_client() as c:
-            rv = c.post('/article/', json={
-                'article': {
-                    'id': 999, 'uid': 999,
-                    'title': '999',
-                    'theme': None,
-                    'data': {'wow': True}
-                }
-                })
+            rv = c.post('/article/', json={'article': article_json})
             self.assertEqual(rv['article'], {
                 'id': 1,  # Auto-set
                 'uid': 3,  # Set manually
@@ -163,6 +162,18 @@ class CrudTest(unittest.TestCase):
                 'theme': None,
                 'data': {'wow': True},
             })
+
+            self.db.begin()
+
+            # Create: test that MongoSQL projections & joins are supported
+            rv = c.post('/article/', json={
+                'article': article_json,
+                'query': {
+                    'project': ['title'],
+                    'join': {'user': {'project': ['id', 'name']}}
+                }
+            })
+            self.assertEqual(rv['article'], {'title': '999', 'user': {'id': 3, 'name': 'c'}})  # respects projections
 
     def test_get(self):
         """ Test get() """
@@ -252,6 +263,18 @@ class CrudTest(unittest.TestCase):
                 'theme': None,
                 'data': {'?': ':)', 'o': {'a': True}, 'rating': 5},  # merged
             })
+
+            self.db.begin()
+
+            # Update: respects MongoSQL projections & joins
+            rv = c.post('/article/10', json={
+                'article': {},
+                'query': {
+                    'project': ['title'],
+                }
+            })
+            self.assertEqual(rv['article'], {'title': '10'})
+
 
     def test_delete(self):
         """ Test delete() """
