@@ -846,6 +846,25 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          "AND c_1.text IS NOT NULL"
                          )
 
+        # === Test: joinf + LIMIT on the outer query
+        mq = u.mongoquery().query(
+            project=['name'],
+            limit=10,
+            joinf={'articles': dict(project=['title'],
+                                    filter={'theme': 'sci-fi'},
+                                    )}
+        )
+        self.assertQuery(mq.end(),
+                         # Inner query wrapped into a subquery
+                         'FROM (SELECT u.id AS u_id, u.name AS u_name',
+                         'FROM u',
+                         'LIMIT 10) AS anon_1',
+                         # Join condition
+                         'anon_1 JOIN a AS a_1 ON anon_1.u_id = a_1.uid',
+                         # Filter
+                         'WHERE a_1.theme = sci-fi'
+                         )
+
     def test_model_with_lazy_relationships(self):
         """ Test how querying a model with relationship(lazy=joined) works """
         ll = models.ConfiguredLazyloadModel

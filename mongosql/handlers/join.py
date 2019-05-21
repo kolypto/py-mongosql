@@ -395,72 +395,12 @@ class MongoJoin(MongoQueryHandlerBase):
         if 'skip' in mjp.query_object or 'limit' in mjp.query_object:
             raise InvalidQueryError('MongoSQL does not support `skip` or `limit` for this kind of `join` (relationship={}, strategy={})'
                                     .format(mjp.relationship_name, mjp.loading_strategy))
+        # Handle the case when the query has a LIMIT, and sqlalchemy won't do a JOIN to it
+        query = self._join__wrap_query_with_subquery_to_overcome_LIMIT_issues(query, mjp, as_relation)
 
         # If our source model is aliased, we have to use its alias in the query
         # self.model is that very thing: it's aliased, if we're aliased()
         source_model_aliased = self.model
-
-        # There will be a few special cases with the ORDER BY clause, so let's get the handler
-        project_handler = self.mongoquery.handler_project  # type: MongoProject
-        sort_handler = self.mongoquery.handler_sort  # type: MongoSort
-
-        # Handle the situation when the outer query (the top-level query) has a LIMIT
-        # In this case, when we JOIN, there's going to be a problem: rows would multiply, and LIMIT won't do what
-        # it is supposed to do.
-        # To prevent this, we do the following trick: we take this query, with limits applied to it,
-        # and make it into a subquery, like this:
-        # SELECT users.*, articles.*
-        # FROM (
-        #   SELECT * FROM users WHERE ... LIMIT 10
-        #   ) AS users
-        #   LEFT JOIN articles ....
-        if query._limit is not None or query._offset is not None:  # accessing protected properties of Query
-            # We're going to make it into a subquery, so let's first make sure that we have enough columns selected.
-            # We'll need columns used in the ORDER BY clause selected, so let's get them out, so that we can use them
-            # in the ORDER BY clause later on (a couple of statements later)
-            #
-            # undefer() every column that participates in the ORDER BY
-            # We're adding extra columns to the result set, but that's alright.
-            # I've seen some really custom code raise weird errors if we don't. So let it be.
-            query = query.options(sort_handler.undefer_columns_involved_in_sorting(as_relation))
-
-            # We also have to undefer any columns that participate in this relationship
-            # If foreign keys are deferred, SqlAlchemy won't be able to adapt the join condition properly:
-            # it will use the original table name (not the subquery alias), which results in an invalid query.
-            local_columns = mjp.relationship.property.local_columns
-            query = query.options(*[as_relation.undefer(column.key)
-                                    for column in local_columns])
-
-            # Select from self, so that LIMIT stays inside the inner query
-            query = query.from_self()
-
-            # Handle the 'ORDER BY' clause of the main query.
-            # We can't let it stay inside the subquery: otherwise, the main ordering won't be specified, and related
-            # queries will define the ordering of the outside scope! That's unacceptable.
-            #
-            # Example: mongoquery(User) { sort: [age+], limit: 10, join: { articles: { sort=[rating-] } }
-            # Currently, a query will loook like this:
-            #   SELECT users.*, articles.*
-            #   FROM (
-            #       SELECT * FROM users
-            #       ORDER BY users.age
-            #       LIMIT 10
-            #       ) AS users
-            #       LEFT JOIN articles ...
-            #   ORDER BY articles.rating DESC.
-            #
-            # It's clear that we have to take the 'ORDER BY' clause from the inside, and duplicate it on the outside.
-
-            # Ordering will always be present inside the subquery, because the 'sort' handler gets executed before 'join'.
-            # Now we have to add another ordering to the outside query.
-
-            # Test if there even was any sorting?
-            if not sort_handler.is_input_empty():
-                # Apply ORDER BY again, but to the outside query
-                query = sort_handler.alter_query(query)
-
-                # Here, we used to undo undefer()ed columns and restore the query to its original state, but we don't
-                # do it anymore: I've seen weird bugs because of this!
 
         # Get the nested MongoQuery
         # It's already been alias()ed and as_relation_from()ed
@@ -551,6 +491,9 @@ class MongoJoin(MongoQueryHandlerBase):
                 raise InvalidQueryError('MongoSQL does not support `{}` for queries joined with `joinf`'
                                         .format(unsupported))
 
+        # Handle the case when the query has a LIMIT, and sqlalchemy won't do a JOIN to it
+        query = self._join__wrap_query_with_subquery_to_overcome_LIMIT_issues(query, mjp, as_relation)
+
         # JOIN
         joined_query = query.join((mjp.relationship, mjp.target_model_aliased))
 
@@ -606,6 +549,79 @@ class MongoJoin(MongoQueryHandlerBase):
                 alter_query=lambda q, **kw: nested_mq.from_query(q).end()
             )
         )
+
+    def _join__wrap_query_with_subquery_to_overcome_LIMIT_issues(self, query, mjp, as_relation):
+        """ SqlAlchemy would refuse to do Query.join() when it has a LIMIT on it already:
+
+            sqlalchemy.exc.InvalidRequestError: Query._join() being called on a Query which already has LIMIT or OFFSET applied.
+            To modify the row-limited results of a  Query, call from_self() first.
+            Otherwise, call _join() before limit() or offset() are applied.
+
+            This method is used for both `join` and `joinf`: for this reason, it's moved to a separate method.
+        """
+        # There will be a few special cases with the ORDER BY clause, so let's get the handler
+        project_handler = self.mongoquery.handler_project  # type: MongoProject
+        sort_handler = self.mongoquery.handler_sort  # type: MongoSort
+
+        # Handle the situation when the outer query (the top-level query) has a LIMIT
+        # In this case, when we JOIN, there's going to be a problem: rows would multiply, and LIMIT won't do what
+        # it is supposed to do.
+        # To prevent this, we do the following trick: we take this query, with limits applied to it,
+        # and make it into a subquery, like this:
+        # SELECT users.*, articles.*
+        # FROM (
+        #   SELECT * FROM users WHERE ... LIMIT 10
+        #   ) AS users
+        #   LEFT JOIN articles ....
+        if query._limit is not None or query._offset is not None:  # accessing protected properties of Query
+            # We're going to make it into a subquery, so let's first make sure that we have enough columns selected.
+            # We'll need columns used in the ORDER BY clause selected, so let's get them out, so that we can use them
+            # in the ORDER BY clause later on (a couple of statements later)
+            #
+            # undefer() every column that participates in the ORDER BY
+            # We're adding extra columns to the result set, but that's alright.
+            # I've seen some really custom code raise weird errors if we don't. So let it be.
+            query = query.options(sort_handler.undefer_columns_involved_in_sorting(as_relation))
+
+            # We also have to undefer any columns that participate in this relationship
+            # If foreign keys are deferred, SqlAlchemy won't be able to adapt the join condition properly:
+            # it will use the original table name (not the subquery alias), which results in an invalid query.
+            local_columns = mjp.relationship.property.local_columns
+            query = query.options(*[as_relation.undefer(column.key)
+                                    for column in local_columns])
+
+            # Select from self, so that LIMIT stays inside the inner query
+            query = query.from_self()
+
+            # Handle the 'ORDER BY' clause of the main query.
+            # We can't let it stay inside the subquery: otherwise, the main ordering won't be specified, and related
+            # queries will define the ordering of the outside scope! That's unacceptable.
+            #
+            # Example: mongoquery(User) { sort: [age+], limit: 10, join: { articles: { sort=[rating-] } }
+            # Currently, a query will loook like this:
+            #   SELECT users.*, articles.*
+            #   FROM (
+            #       SELECT * FROM users
+            #       ORDER BY users.age
+            #       LIMIT 10
+            #       ) AS users
+            #       LEFT JOIN articles ...
+            #   ORDER BY articles.rating DESC.
+            #
+            # It's clear that we have to take the 'ORDER BY' clause from the inside, and duplicate it on the outside.
+
+            # Ordering will always be present inside the subquery, because the 'sort' handler gets executed before 'join'.
+            # Now we have to add another ordering to the outside query.
+
+            # Test if there even was any sorting?
+            if not sort_handler.is_input_empty():
+                # Apply ORDER BY again, but to the outside query
+                query = sort_handler.alter_query(query)
+
+                # Here, we used to undo undefer()ed columns and restore the query to its original state, but we don't
+                # do it anymore: I've seen weird bugs because of this!
+
+        return query
 
     # endregion
 
