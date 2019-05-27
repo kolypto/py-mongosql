@@ -6,7 +6,7 @@ This benchmark compares the performance of:
 """
 
 
-from tests.benchmark_utils import benchmark_parallel_funcs
+from tests.benchmarks.benchmark_utils import benchmark_parallel_funcs
 
 from sqlalchemy.orm import selectinload
 
@@ -24,7 +24,7 @@ N_REPEATS = 1000
 ssn = Session()
 
 # Tests
-def tst_selectinload(n):
+def test_selectinload(n):
     """ Test SqlAlchemy's selectinload(): using it as a baseline """
     for i in range(n):
         q = ssn.query(User).options(
@@ -52,7 +52,7 @@ def test_selectinquery__no_cache(n):
 # Run
 res = benchmark_parallel_funcs(
     N_REPEATS, 10,
-    tst_selectinload,
+    test_selectinload,
     test_selectinquery__cache,
     test_selectinquery__no_cache,
 )

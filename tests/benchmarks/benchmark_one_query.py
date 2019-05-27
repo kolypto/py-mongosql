@@ -1,4 +1,4 @@
-from tests.benchmark_utils import benchmark_parallel_funcs
+from tests.benchmarks.benchmark_utils import benchmark_parallel_funcs
 
 from mongosql.handlers import MongoJoin
 from tests.models import *
