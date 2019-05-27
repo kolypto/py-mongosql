@@ -1575,6 +1575,57 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                 {'id': 2, 'articles': [{'id': 21, 'uid': 2, 'user': {'id': 2}, 'comments': [{'aid': 21, 'id': 108}]}]},
             ])
 
+    @unittest.skipIf(SA_12, 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently')
+    def test_selectinquery_caching(self):
+        """ Test how query caching works with selectinquery """
+        # selectinquery() uses some smart query caching
+        # However, it's not very straightforward:
+        # the underlying BakedQuery caches the SQL query itself, and MongoQuery.from_query() lets you use any query.
+        # In addition, different Query Objects can be used, which all results in complicated caching behavior.
+        # Here, we're going to test it.
+        
+        # Prepare
+        u = models.User
+        engine = self.engine
+        ssn = self.Session()
+
+        # Enable it, because setUp() has disabled it.
+        handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = True
+
+        # === Test 1: Run the same QO on two different initial queries
+        query_object = dict(
+            project=['name'],
+            filter={'age': {'$gte': 0}},
+            join={'articles': dict(project=['title'],
+                                   filter={'theme': {'$ne': 'biography'}},
+                                   )},
+        )
+
+        with QueryLogger(engine) as ql:
+            mq = u.mongoquery(ssn.query(u).filter_by(id=1)).query(**query_object)
+            res = mq.end().all()
+
+            # Query 1: Primary, User
+            self.assertQuery(ql[0],
+                             # The from_query() filter
+                             'u.id = 1',
+                             # condition on the outer query
+                             'u.age >= 0',
+                             )
+
+        with QueryLogger(engine) as ql:
+            mq = u.mongoquery(ssn.query(u).filter_by(id=2)).query(**query_object)
+            res = mq.end().all()
+
+            # Query 1: Primary, User
+            self.assertQuery(ql[0],
+                             # The from_query() filter
+                             'u.id = 2',  # CHANGED! not cached!
+                             # condition on the outer query
+                             'u.age >= 0',
+                             )
+
+
     def test_join_when_fk_is_deferred(self):
         c = models.ManyForeignKeysModel
 
