@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
+import json
 from sqlalchemy.orm import aliased, Query
 
 from .base import MongoQueryHandlerBase
@@ -546,7 +547,8 @@ class MongoJoin(MongoQueryHandlerBase):
         return query.options(
             as_relation.selectinquery(
                 relationship=mjp.relationship,
-                alter_query=lambda q, **kw: nested_mq.from_query(q).end()
+                alter_query=lambda q: nested_mq.from_query(q).end(),
+                cache_key=get_mongoquery_cache_key(query, nested_mq),  # cached, yes!
             )
         )
 
@@ -968,7 +970,43 @@ class MongoJoinParams(object):
 
 
 
+# region Join helpers
 
+class JSONCacheKeyEncoder(json.JSONEncoder):
+    """ A JSON encoder that can encode everything
+
+        Everything that it can't encode, it encodes using a repr()
+    """
+    def default(self, o):
+        return repr(o)
+
+
+def get_mongoquery_cache_key(query, nested_mongoquery):
+    """ Get the hash key for the current query
+
+        This must include the original SqlAlchemy's query hash, plus,
+        a hash of every MongoQuery object down to the current one
+    """
+    # First, get some sort of hash from the sqlalchemy query
+    # stmt_compiled = query.statement.compile(compile_kwargs={"literal_binds": True})
+    stmt_compiled = query.statement.compile()
+    q_hash = (stmt_compiled.string, stmt_compiled.params)
+    q_hash = json.dumps(q_hash, cls=JSONCacheKeyEncoder, sort_keys=True)
+
+    # Second, get a hash of the MongoQuery
+    # However, because we have nested queries, we'll have to take a hash of every single one of them
+    # while going upwards. Otherwise, cache collisions are possible
+    mq = nested_mongoquery
+    mq_hash = []
+    while mq is not None:
+        # QueryObject on this level
+        mq_hash.append(mq.input_value)
+        # Go up?
+        mq = mq._parent_mongoquery
+    mq_hash = json.dumps(mq_hash, cls=JSONCacheKeyEncoder, sort_keys=True)
+
+    # Combine them all
+    return q_hash + '/' + mq_hash
 
 
 # region Magic for LEFT OUTER JOIN on a relationship with a custom ON clause
@@ -1086,5 +1124,7 @@ def _sa_create_joins(relation, left, right):
         secondary,
         target_adapter,
     )
+
+# endregion
 
 # endregion

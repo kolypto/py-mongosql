@@ -43,6 +43,7 @@ class MongoQuery(object):
         # Initialized later
         self._query = None  # type: Query | None
         self._parent_mongoquery = None  # type: MongoQuery | None
+        self.input_value = None  # type: dict | None
 
         # Get ready: Query object handlers
         self._init_query_object_handlers()
@@ -204,6 +205,9 @@ class MongoQuery(object):
         invalid_keys = set(query_object.keys()) - self.HANDLER_NAMES
         if invalid_keys:
             raise InvalidQueryError(u'Unknown Query Object operations: {}'.format(', '.join(invalid_keys)))
+
+        # Store
+        self.input_value = query_object
 
         # Bind every handler with ourselves
         # We do it as a separate step because some handlers want other handlers in a pristine condition.

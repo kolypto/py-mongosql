@@ -93,6 +93,8 @@ class Article(Base):
     def hybrid(cls):
         return and_(cls.id > 10, cls.user.has(User.age > 18))
 
+    def __repr__(self):
+        return 'Article(id={}, uid={!r}, title={!r})'.format(self.id, self.uid, self.title)
 
 class Comment(Base):
     __tablename__ = 'c'
@@ -111,6 +113,8 @@ class Comment(Base):
     def comment_calc(self):
         return self.text[-3:]
 
+    def __repr__(self):
+        return 'Comment(id={}, aid={}, uid={})'.format(self.id, self.aid, self.uid)
 
 class Role(Base):
     __tablename__ = 'r'
