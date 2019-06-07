@@ -198,6 +198,9 @@ class BagsTest(unittest.TestCase):
         # Init bags
         bags = ModelPropertyBags.for_alias(aa)
 
+        # Test that we're using a lazy wrapper
+        self.assertNotIsInstance(bags, ModelPropertyBags)
+
         # Test that every bag's dicts got wrapped
         # Yes, we're testing their protected properties
         self.assertIsInstance(bags.columns._columns, DictOfAliasedColumns)
@@ -305,6 +308,23 @@ class BagsTest(unittest.TestCase):
         test_column(c, 'a_1.id')
 
         return
+
+    def test_writable_properties(self):
+        """ Test how mongosql detects writable properties """
+        bags = ModelPropertyBags.for_model(models.ManyPropertiesModel)
+
+        # @property
+        # `_p_invisible` is missing
+        self.assertEqual(bags.properties.names, {'p_readonly', 'p_writable'})
+        self.assertEqual(bags.writable_properties.names, {'p_writable'})
+
+        # @hybrid_property
+        self.assertEqual(bags.hybrid_properties.names, {'hp_readonly', 'hp_writable'})
+        self.assertEqual(bags.writable_hybrid_properties.names, {'hp_writable'})
+
+        # both, if writable
+        self.assertEqual(bags.writable.names, {'id', 'p_writable', 'hp_writable'})
+
 
     def test_bag_is_reused(self):
         """ Test that ModelPropertyBags is reused every time """

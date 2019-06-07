@@ -90,8 +90,16 @@ class ModelPropertyBags(object):
         self.pk = self._init_primary_key(model, insp)
         self.nullable = self._init_nullable_columns(model, insp)
 
-        # The list of columns' and writable properties' names
-        self.writable_names = frozenset(self._init_writable_names(model, insp))
+        # Writable entities
+        self.writable_properties = self._init_writable_properties(model, insp)
+        self.writable_hybrid_properties = self._init_writable_hybrid_properties(model, insp)
+
+        self.writable = CombinedBag(
+            # Everything that's writable in a model (excluding relations)
+            col=self.columns,
+            prop=self.writable_properties,
+            hybrid=self.writable_hybrid_properties,
+        )
 
     # region: Initialize bags
 
@@ -134,38 +142,26 @@ class ModelPropertyBags(object):
                            for name, c in self.columns
                            if c.nullable})
 
-    def _init_writable_names(self, model, insp):
-        """ Initialize: the list of names of writable attributes """
-        names = set()
+    def _init_writable_properties(self, model, insp):
+        """ Initialize: writable properties """
+        return PropertiesBag({name: None
+                              for name in self.properties.names
+                              if _is_property_writable(getattr(model, name))})
 
-        # Columns are writable
-        names.update(self.columns.names)
-
-        # @properties that have a setter are writable
-        names.update(self.properties.names)  # TODO: implement it properly: detect writable props
-
-        # @hybrid_properties that have a setter are writable
-        names.update(self.hybrid_properties.names)  # TODO: implement it properly: detect writable props
-
-        return names
+    def _init_writable_hybrid_properties(self, model, insp):
+        """ Initialize: writable Hybrid properties """
+        return HybridPropertiesBag({name: prop
+                                    for name, prop in self.hybrid_properties
+                                    if _is_property_writable(prop)})
 
     # endregion
 
     def aliased(self, aliased_class):
-        # Copy the class
-        cls = self.__class__
-        result = cls.__new__(cls)
-
-        # Copy the dict, invoking aliased() on every bag
-        result.__dict__.update({
-            k: v.aliased(aliased_class)
-               if isinstance(v, PropertiesBagBase)
-               else v
-            for k, v in self.__dict__.items()
-        })
-
-        # Done
-        return result
+        # Return a wrapper that will lazily apply aliased() on every property when accessed
+        # This makes sense because we don't know which of the bags are going to be actually used,
+        # and aliased() has a bit of overhead: it involves copying the whole class.
+        # Benchmarks have shown that it's about 3 times faster.
+        return _MPB_LazyAliasedWrapper(self.__dict__, aliased_class)
 
     @property
     def all_names(self):
@@ -249,7 +245,7 @@ class PropertiesBag(PropertiesBagBase):
 
     @property
     def names(self):
-        """ Get the set of column names
+        """ Get the set of property names
         :rtype: set[str]
         """
         return self._property_names
@@ -586,7 +582,7 @@ class CombinedBag(PropertiesBagBase):
         new = copy(self)
         # aliased() on every bag
         new._bags = {name: bag.aliased(aliased_class)
-                     for name, bag in self._bags}
+                     for name, bag in self._bags.items()}
         return new
 
     def __contains__(self, name):
@@ -642,7 +638,7 @@ def _get_model_columns(model, ins):
 
 
 def _get_model_hybrid_properties(model, ins):
-    """ Get a dict of model hybrid properties and regular properties """
+    """ Get a dict of model hybrid properties """
     return {name: getattr(model, name)
             for name, c in ins.all_orm_descriptors.items()
             if not name.startswith('_')
@@ -650,7 +646,7 @@ def _get_model_hybrid_properties(model, ins):
 
 
 def _get_model_properties(model, ins):
-    """ Get a dict of model properties (calculated properies) """
+    """ Get a dict of model properties (calculated properties) """
     return {name: None  # we don't need the property itself
             for name in dir(model)
             if not name.startswith('_')
@@ -688,6 +684,11 @@ def _is_relationship_array(rel):
     :rtype: bool
     """
     return rel.property.uselist
+
+
+def _is_property_writable(prop):
+    """ Check if a property is writable """
+    return prop.fset is not None
 
 
 def _dot_notation(name):
@@ -769,3 +770,32 @@ class DictOfAliasedColumns(object):
     def items(self):
         return ((k, self._adapt_to_entity(c))
                 for k, c in self._d.items())
+
+
+class _MPB_LazyAliasedWrapper(object):
+    """ A ModelPropertyBags wrapper that will lazily apply aliased() on every attribute upon access """
+    def __init__(self, mpb_dict, aliased_class):
+        self.__aliased_class = aliased_class
+
+        # Remember those attributes that were not aliased() yet
+        self.__unaliased = {}
+
+        # Tell attributes apart:
+        # set the bags aside for later aliased()ing,
+        # but put all other attributes onto ourselves
+        for k, v in mpb_dict.items():
+            if isinstance(v, PropertiesBagBase):
+                self.__unaliased[k] = mpb_dict[k]
+            else:
+                setattr(self, k, v)  # onto ourselves
+
+    def __getattr__(self, attr):
+        # Initialize a new attribute that's aliased()
+        setattr(self,
+                attr,
+                self.__unaliased.pop(attr).aliased(self.__aliased_class)
+                )
+
+        # return it
+        return getattr(self, attr)
+

@@ -190,6 +190,39 @@ class ManyFieldsModel(Base):
     j_k = Column(pg.JSON)
 
 
+class ManyPropertiesModel(Base):
+    """ A table with many properties """
+    __tablename__ = 'mp'
+
+    id = Column(Integer, ForeignKey("gw.id"), primary_key=True)
+
+    @property
+    def p_readonly(self):
+        return 1
+
+    @property
+    def p_writable(self):
+        return 2
+    @p_writable.setter
+    def p_writable(self, v):
+        return v
+
+    @property
+    def _p_invisible(self):
+        return None
+
+    @hybrid_property
+    def hp_readonly(self):
+        return self.id
+
+    @hybrid_property
+    def hp_writable(self):
+        return self.id
+    @hp_writable.setter
+    def hp_writable(self, v):
+        self.id = v
+
+
 class ManyForeignKeysModel(Base):
     """ A table with many foreign keys """
     __tablename__ = 'mf'

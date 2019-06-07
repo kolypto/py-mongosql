@@ -75,19 +75,27 @@ class CrudHelper(object):
         """ Validate attribute names (any)
 
             :raises exc.InvalidColumnError: Invalid column name
+            :rtype: set[set]
         """
-        unk_cols = set(column_names) - self.bags.all_names
+        column_names = set(column_names)
+        unk_cols = column_names - self.bags.all_names
         if unk_cols:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
+        return column_names
 
     def _validate_writable_attributes(self, attr_names, where):
         """ Validate attribute names (columns, properties, hybrid properties) that are writable
 
+            This list does not include attributes like relationships and read-only properties
+
             :raises exc.InvalidColumnError: Invalid column name
+            :rtype: set[set]
         """
-        unk_cols = set(attr_names) - self.bags.writable_names
+        attr_names = set(attr_names)
+        unk_cols = attr_names - self.bags.writable.names
         if unk_cols:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
+        return attr_names
 
 
     def create_model(self, entity_dict):
@@ -173,14 +181,25 @@ class StrictCrudHelper(CrudHelper):
     """ Crud helper with limitations
 
         - Read-only fields can not be set: not with create, nor with update
+        - Constant fields can be set initially, but never be updated
         - Defaults for Query Object provide the default values for every query, unless overridden
 
+        The following behavior is implemented:
+
+        * By default, all fields are writable
+        * If ro_fields is provided, these fields become read-only, all other fields are writable
+        * If rw_fields is provided, ony these fields are writable, all other fields are read-only
+        * If const_fields, it is seen as a further limitation on rw_fields: those fields would be writable,
+            but only once.
+
         Attributes:
-            ro_fields (list[str]): The list of read-only field names
+            ro_fields (set[str]): The list of read-only field names
+            rw_fields (set[str]): The list of writable field names
+            const_fields (set[str]): The list of constant field names
             query_defaults (dict): Default values for every field of the Query Object
     """
 
-    def __init__(self, model, ro_fields=None, rw_fields=None, query_defaults=None, **handler_settings):
+    def __init__(self, model, ro_fields=None, rw_fields=None, const_fields=None, query_defaults=None, **handler_settings):
         """ Init a strict CRUD helper
 
             Note: use a **StrictCrudHelperSettingsDict() to help you with the argument names and their docs!
@@ -190,14 +209,19 @@ class StrictCrudHelper(CrudHelper):
             :type ro_fields: Iterable[str] | Callable | None
             :param rw_fields: List of writable property names, or a callable which gives the list
             :type rw_fields: Iterable[str] | Callable | None
+            :param const_fields: List of property names that are constant once set, or a callable which gives the list
+            :type const_fields: Iterable[str] | Callable | None
             :param query_defaults: Defaults for every Query Object: Query Object will be merged into it.
             :type query_defaults: dict | None
             :param handler_settings: Settings for the MongoQuery used to make queries
         """
         super(StrictCrudHelper, self).__init__(model, **handler_settings)
 
-        # ro_fields
-        self.ro_fields = self._init_ro_rw_fields(ro_fields, rw_fields)  # type: set[str]
+        # ro, rw, const fields
+        ro, rw, cn = self._init_ro_rw_cn_fields(ro_fields, rw_fields, const_fields)
+        self.ro_fields = ro
+        self.rw_fields = rw
+        self.const_fields = cn
 
         # Defaults for the Query Object
         self.query_defaults = query_defaults or {}  # type: dict
@@ -205,35 +229,35 @@ class StrictCrudHelper(CrudHelper):
         # Validate the Default Query Object
         MongoQuery(self.model).query(**self.query_defaults)
 
-    @property
-    def rw_fields(self):
-        """ The list of fields """
-        return self.bags.columns.names - self.ro_fields
+    def _init_ro_rw_cn_fields(self, ro_fields, rw_fields, cn_fields):
+        """ Initialize ro_fields and rw_fields and const_fields
 
-    def _init_ro_rw_fields(self, ro_fields, rw_fields):
-        """ Initialize ro_fields and rw_fields
-
-            :rtype: set[str]
+            :rtype: (set[str], set[str], set[str])
         """
         # Usage
-        assert not (ro_fields is not None and rw_fields is not None), 'Use either ro_fields or rw_fields, but not both'
+        ro_provided = ro_fields is not None  # provided, even if empty
+        rw_provided = rw_fields is not None
+        assert not (ro_provided and rw_provided), 'Use either ro_fields or rw_fields, but not both'
 
         # Read-only and Read-Write fields
-        ro_fields = set(call_if_callable(ro_fields)) if ro_fields is not None else None
-        rw_fields = set(call_if_callable(rw_fields)) if rw_fields is not None else None
+        ro_fields = set(call_if_callable(ro_fields)) if ro_fields is not None else set()
+        rw_fields = set(call_if_callable(rw_fields)) if rw_fields is not None else set()
+        cn_fields = set(call_if_callable(cn_fields)) if cn_fields is not None else set()
 
         # Validate
-        if ro_fields:
-            self._validate_attributes(ro_fields, 'ro_fields')
-        if rw_fields:
-            self._validate_writable_attributes(rw_fields, 'rw_fields')
+        self._validate_attributes(ro_fields, 'ro_fields')
+        self._validate_writable_attributes(rw_fields, 'rw_fields')
+        self._validate_writable_attributes(cn_fields, 'const_fields')
 
-        # Rw fields
-        if rw_fields is not None:
-            ro_fields = set(self.bags.all_names - rw_fields)
+        # ro_fields
+        if rw_provided:
+            ro_fields = set(self.bags.all_names - rw_fields - cn_fields)
+
+        # rw_fields
+        rw_fields = self.bags.writable.names - ro_fields - cn_fields
 
         # Done
-        return ro_fields or set()
+        return frozenset(ro_fields), frozenset(rw_fields), frozenset(cn_fields)
 
     def _remove_ro_fields_from(self, entity_dict):
         """ Remove read-only fields from the incoming entity dict """

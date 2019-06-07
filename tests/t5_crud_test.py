@@ -34,50 +34,86 @@ class CrudTest(unittest.TestCase):
 
     def test_crudhelper(self):
         """ Test crudhelper configuration """
-        # === Test: ro_fields
-        ch = StrictCrudHelper(
+        make_crudhelper = lambda **kw: StrictCrudHelper(
             models.Article,
             **StrictCrudHelperSettingsDict(
-                ro_fields=('id',),  # everything else must be RW
+                **kw
             )
         )
-        self.assertEqual(ch.ro_fields, {'id',})
+
+        # === Test: ro_fields
+        ch = make_crudhelper(
+            ro_fields=('id',),  # everything else must be RW
+        )
+        self.assertEqual(ch.ro_fields, {'id'})
+        self.assertEqual(ch.rw_fields, {'uid', 'title', 'theme', 'data'})
+        self.assertEqual(ch.const_fields, set())
+
+        # === Test: defaults to all fields writable
+        ch = StrictCrudHelper(models.Article)
+        self.assertEqual(ch.ro_fields, set())
+        self.assertEqual(ch.rw_fields, {'id', 'uid', 'title', 'theme', 'data'})
+        self.assertEqual(ch.const_fields, set())
 
         # === Test: ro_fields=()
-        ch = StrictCrudHelper(
-            models.Article,
-            **StrictCrudHelperSettingsDict(
-                ro_fields=(),  # everything is RW
-            )
+        ch = make_crudhelper(
+            ro_fields=(),  # everything is RW
         )
         self.assertEqual(ch.ro_fields, set())
+        self.assertEqual(ch.rw_fields, {'id', 'uid', 'title', 'theme', 'data'})
+        self.assertEqual(ch.const_fields, set())
 
         # === Test: rw_fields
-        ch = StrictCrudHelper(
-            models.Article,
-            **StrictCrudHelperSettingsDict(
-                rw_fields=('data',),  # everything else must be RO
-            )
+        ch = make_crudhelper(
+            rw_fields=('data',),  # everything else must be RO
         )
         self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme',
                                         # also properties and relationships
                                         'calculated', 'comments', 'hybrid', 'user'})
+        self.assertEqual(ch.rw_fields, {'data'})
+        self.assertEqual(ch.const_fields, set())
 
         # === Test: rw_fields=()
-        ch = StrictCrudHelper(
-            models.Article,
-            **StrictCrudHelperSettingsDict(
-                rw_fields=(),  # everything is RO
-            )
+        ch = make_crudhelper(
+            rw_fields=(),  # everything is RO
         )
         self.assertEqual(ch.ro_fields, {'id', 'uid', 'title', 'theme', 'data',
                                         # also properties and relationships
                                         'calculated', 'comments', 'hybrid', 'user'
                                         })
+        self.assertEqual(ch.rw_fields, set())
+        self.assertEqual(ch.const_fields, set())
 
-        # === Test: defaults
-        ch = StrictCrudHelper(models.Article)
+        # === Test: const_fields
+        ch = make_crudhelper(
+            const_fields=('uid',),  # everything else is rw
+        )
         self.assertEqual(ch.ro_fields, set())
+        self.assertEqual(ch.rw_fields, {'id', 'title', 'theme', 'data'})
+        self.assertEqual(ch.const_fields, {'uid'})
+
+        # === Test: const_fields & ro_fields
+        ch = make_crudhelper(
+            ro_fields=('id',),
+            const_fields=('uid',),
+            # everything else is rw
+        )
+        self.assertEqual(ch.ro_fields, {'id'})
+        self.assertEqual(ch.rw_fields, {'title', 'theme', 'data'})  # no 'id'
+        self.assertEqual(ch.const_fields, {'uid'})
+
+        # === Test: const_fields & rw_fields
+        ch = make_crudhelper(
+            rw_fields=('title', 'theme', 'data'),
+            const_fields=('uid',),
+            # everything else is rw
+        )
+        self.assertEqual(ch.ro_fields, {'id',
+                                        # also properties and relationships
+                                        'calculated', 'comments', 'hybrid', 'user'
+                                        })
+        self.assertEqual(ch.rw_fields, {'title', 'theme', 'data'})  # no 'id'
+        self.assertEqual(ch.const_fields, {'uid'})
 
     def test_list(self):
         """ Test list() """

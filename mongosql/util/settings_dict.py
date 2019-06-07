@@ -250,6 +250,8 @@ class StrictCrudHelperSettingsDict(MongoQuerySettingsDict):
                  ro_fields: Union[Tuple[str], Callable] = None,
                  # The list of read-write fields; all the rest will be read-only
                  rw_fields: Union[Tuple[str], Callable] = None,
+                 # The list of contant fields: only writable once (upon insert)
+                 const_fields: Union[Tuple[str], Callable] = None,
                  # Default values for every Query Object: Query Object will be merged into it.
                  query_defaults: dict = None,
 
