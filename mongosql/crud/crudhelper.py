@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from sqlalchemy.orm.attributes import flag_modified
 
 from mongosql import exc

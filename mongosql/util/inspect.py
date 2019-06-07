@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 import inspect
 
 try: from functools import lru_cache  # Python 3

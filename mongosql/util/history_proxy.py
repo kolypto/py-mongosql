@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from copy import deepcopy
 from sqlalchemy import inspect
 from sqlalchemy.orm.base import DEFAULT_STATE_ATTR

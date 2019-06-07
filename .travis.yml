@@ -18,6 +18,8 @@ matrix:
       env: TOXENV=py35-sa-latest
     - python: 3.6
       env: TOXENV=py36-sa-latest
+    - python: 3.7
+      env: TOXENV=py37-sa-latest
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.0}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.1}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.2.2}

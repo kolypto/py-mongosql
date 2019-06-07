@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from future.utils import string_types
-
 from collections import OrderedDict
 
 from .base import MongoQueryHandlerBase
@@ -44,7 +41,7 @@ class MongoSort(MongoQueryHandlerBase):
         # List
         if isinstance(spec, (list, tuple)):
             # Strings: convert "column[+-]" into an ordered dict
-            if all(isinstance(v, string_types) for v in spec):
+            if all(isinstance(v, str) for v in spec):
                 spec = OrderedDict([
                     [v[:-1], -1 if v[-1] == '-' else +1]
                     if v[-1] in {'+', '-'}

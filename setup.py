@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 """ SqlAlchemy queries with MongoDB-style """
 
+import sys
 from setuptools import setup, find_packages
+
+if sys.version_info[0] == 2:
+    raise ImportError('Python 2 is no longer supported')
 
 setup(
     name='mongosql',
@@ -22,7 +26,6 @@ setup(
 
     install_requires=[
         'sqlalchemy >= 1.2.0,!=1.2.9',
-        'future',
     ],
     extras_require={},
     include_package_data=True,
@@ -35,7 +38,6 @@ setup(
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 3',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],

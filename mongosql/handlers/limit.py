@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-
 from sqlalchemy import inspect
-from sqlalchemy.orm import aliased
 from sqlalchemy.sql import func, literal_column
 
 from .base import MongoQueryHandlerBase

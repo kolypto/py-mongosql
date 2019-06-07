@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from future.utils import string_types
-
 from copy import copy
 
 from sqlalchemy import Integer, Float
@@ -265,7 +262,7 @@ class MongoAggregate(MongoQueryHandlerBase):
             # Here the logic forks depending on the type of the argument
 
             # string: Column reference
-            if isinstance(comp_expression, string_types):
+            if isinstance(comp_expression, str):
                 column_name = comp_expression
                 # get the column, give it a label
                 column = self._get_column_securely(column_name, True)
@@ -295,7 +292,7 @@ class MongoAggregate(MongoQueryHandlerBase):
             if isinstance(expression, int) and agg_operator == '$sum':
                 # 1) special case for { $sum: 1 }
                 operator_obj = self._BOOLEAN_COUNT_CLS(comp_field_label, int(expression))
-            elif isinstance(expression, string_types):
+            elif isinstance(expression, str):
                 # 2) column name
                 column_name = expression
                 column = self._get_column_securely(column_name)

@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func

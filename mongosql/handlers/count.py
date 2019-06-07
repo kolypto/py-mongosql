@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from sqlalchemy import func
 from sqlalchemy import exc as sa_exc
 

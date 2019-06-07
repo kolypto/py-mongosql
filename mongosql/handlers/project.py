@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from sqlalchemy.orm.base import InspectionAttr
 
 from .base import MongoQueryHandlerBase
