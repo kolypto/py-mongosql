@@ -1,11 +1,15 @@
+from sqlalchemy.orm import Query
 from sqlalchemy.orm.attributes import flag_modified
 
 from mongosql import exc
 from mongosql import MongoQuery, ModelPropertyBags
 from mongosql.util import Reusable
 
+from typing import Union, Mapping, Iterable, Set, Callable
+from sqlalchemy.ext.declarative import DeclarativeMeta
 
-class CrudHelper(object):
+
+class CrudHelper:
     """ Crud helper: an object that helps implement CRUD
 
         Create: construct sqlalchemy instances from dict
@@ -22,28 +26,24 @@ class CrudHelper(object):
     # The class to use for MongoQuery
     _MONGOQUERY_CLS = MongoQuery
 
-    def __init__(self, model, **handler_settings):
+    def __init__(self, model: DeclarativeMeta, **handler_settings):
         """ Init CRUD helper
 
         :param model: The model to work with
-        :type model: DeclarativeMeta
         :param handler_settings: Settings for the MongoQuery used to make queries
         """
         self.model = model
         self.bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(model)
         self.reusable_mongoquery = Reusable(self._MONGOQUERY_CLS(self.model, handler_settings))
 
-    def query_model(self, query_obj=None, from_query=None):
+    def query_model(self, query_obj: Union[Mapping, None] = None, from_query: Union[Query, None] = None) -> MongoQuery:
         """ Make a MongoQuery using the provided Query Object
 
             Note that you have to provide the MongoQuery yourself.
             This is because it has to be properly configured with handler_settings.
 
             :param query_obj: The Query Object to use
-            :type query_obj: dict | None
             :param from_query: An optional Query to initialize MongoQuery with
-            :type from_query: Query | None
-            :rtype: MongoQuery
             :raises exc.InvalidColumnError: Invalid column name specified in the Query Object by the user
             :raises exc.InvalidRelationError: Invalid relationship name specified in the Query Object by the user
             :raises exc.InvalidQueryError: There is an error in the Query Object that the user has made
@@ -56,11 +56,11 @@ class CrudHelper(object):
         # Query
         return self._query_model(query_obj or {}, from_query)  # ensure dict
 
-    def _query_model(self, query_obj, from_query=None):
+    def _query_model(self, query_obj: Mapping, from_query: Union[Query, None] = None) -> MongoQuery:
         """ Make a MongoQuery """
         return self.reusable_mongoquery.from_query(from_query).query(**query_obj)
 
-    def _validate_columns(self, column_names, where):
+    def _validate_columns(self, column_names: Iterable[str], where: str):
         """ Validate column names
 
             :raises exc.InvalidColumnError: Invalid column name
@@ -69,11 +69,10 @@ class CrudHelper(object):
         if unk_cols:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
 
-    def _validate_attributes(self, column_names, where):
+    def _validate_attributes(self, column_names: Iterable[str], where: str) -> Set[str]:
         """ Validate attribute names (any)
 
             :raises exc.InvalidColumnError: Invalid column name
-            :rtype: set[set]
         """
         column_names = set(column_names)
         unk_cols = column_names - self.bags.all_names
@@ -81,7 +80,7 @@ class CrudHelper(object):
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
         return column_names
 
-    def _validate_writable_attributes(self, attr_names, where):
+    def _validate_writable_attributes(self, attr_names: Iterable[str], where: str) -> Set[str]:
         """ Validate attribute names (columns, properties, hybrid properties) that are writable
 
             This list does not include attributes like relationships and read-only properties
@@ -96,15 +95,13 @@ class CrudHelper(object):
         return attr_names
 
 
-    def create_model(self, entity_dict):
+    def create_model(self, entity_dict: Mapping) -> object:
         """ Create an instance from entity dict.
 
             This only allows to assign column properties and not relations.
 
             :param entity_dict: Entity dict
-            :type entity_dict: dict
             :return: Created instance
-            :rtype: DeclarativeMeta
             :raises InvalidQueryError: validation errors
             :raises InvalidColumnError: invalid column
         """
@@ -119,14 +116,14 @@ class CrudHelper(object):
         # Create
         return self._create_model(entity_dict)
 
-    def _create_model(self, entity_dict):
+    def _create_model(self, entity_dict: Mapping) -> object:
         """ Create an instance from a dict
 
             This method does not validate `entity_dict`
         """
         return self.model(**entity_dict)
 
-    def update_model(self, entity_dict, instance):
+    def update_model(self, entity_dict: Mapping, instance: object) -> object:
         """ Update an instance from an entity dict by merging the fields
 
             - Properties are copied over
@@ -136,11 +133,8 @@ class CrudHelper(object):
             this operation does not replace the entity; it merely updates the entity.
 
             :param entity_dict: Entity dict
-            :type entity_dict: dict
             :param instance: The instance to update
-            :type instance: DeclarativeMeta
             :return: New instance, updated
-            :rtype: DeclarativeMeta
             :raises InvalidQueryError: validation errors
             :raises InvalidColumnError: invalid column
         """
@@ -155,7 +149,7 @@ class CrudHelper(object):
         # Update
         return self._update_model(entity_dict, instance)
 
-    def _update_model(self, entity_dict, instance):
+    def _update_model(self, entity_dict: Mapping, instance: object) -> object:
         """ Update an instance from an entity dict
 
             This method does not validate `entity_dict`
@@ -197,20 +191,21 @@ class StrictCrudHelper(CrudHelper):
             query_defaults (dict): Default values for every field of the Query Object
     """
 
-    def __init__(self, model, ro_fields=None, rw_fields=None, const_fields=None, query_defaults=None, **handler_settings):
+    def __init__(self, model: DeclarativeMeta,
+                 ro_fields: Union[Iterable[str], Callable, None] = None,
+                 rw_fields: Union[Iterable[str], Callable, None] = None,
+                 const_fields: Union[Iterable[str], Callable, None] = None,
+                 query_defaults: Union[Iterable[str], Callable, None] = None,
+                 **handler_settings):
         """ Init a strict CRUD helper
 
             Note: use a **StrictCrudHelperSettingsDict() to help you with the argument names and their docs!
 
             :param model: The model to work with
             :param ro_fields: List of read-only property names, or a callable which gives the list
-            :type ro_fields: Iterable[str] | Callable | None
             :param rw_fields: List of writable property names, or a callable which gives the list
-            :type rw_fields: Iterable[str] | Callable | None
             :param const_fields: List of property names that are constant once set, or a callable which gives the list
-            :type const_fields: Iterable[str] | Callable | None
             :param query_defaults: Defaults for every Query Object: Query Object will be merged into it.
-            :type query_defaults: dict | None
             :param handler_settings: Settings for the MongoQuery used to make queries
         """
         super(StrictCrudHelper, self).__init__(model, **handler_settings)
@@ -220,6 +215,7 @@ class StrictCrudHelper(CrudHelper):
         self.ro_fields = ro
         self.rw_fields = rw
         self.const_fields = cn
+        self._ro_and_const_fields = ro | cn
 
         # Defaults for the Query Object
         self.query_defaults = query_defaults or {}  # type: dict
@@ -235,7 +231,8 @@ class StrictCrudHelper(CrudHelper):
         # Usage
         ro_provided = ro_fields is not None  # provided, even if empty
         rw_provided = rw_fields is not None
-        assert not (ro_provided and rw_provided), 'Use either ro_fields or rw_fields, but not both'
+        if ro_provided and rw_provided:
+            raise ValueError('Use either `ro_fields` or `rw_fields`, but not both')
 
         # Read-only and Read-Write fields
         ro_fields = set(call_if_callable(ro_fields)) if ro_fields is not None else set()
@@ -257,32 +254,32 @@ class StrictCrudHelper(CrudHelper):
         # Done
         return frozenset(ro_fields), frozenset(rw_fields), frozenset(cn_fields)
 
-    def _remove_ro_fields_from(self, entity_dict):
-        """ Remove read-only fields from the incoming entity dict """
-        for k in set(entity_dict.keys()) & self.ro_fields:
+    def _remove_entity_dict_fields(self, entity_dict: Mapping, rm_fields: Set[str]):
+        """ Remove certain fields from the incoming entity dict """
+        for k in set(entity_dict.keys()) & rm_fields:
             entity_dict.pop(k)
 
-    def _create_model(self, entity_dict):
+    def _create_model(self, entity_dict: Mapping) -> object:
         # Remove ro fields
-        self._remove_ro_fields_from(entity_dict)
+        self._remove_entity_dict_fields(entity_dict, self.ro_fields)
 
         # Super
-        return super(StrictCrudHelper, self)._create_model(entity_dict)
+        return super()._create_model(entity_dict)
 
-    def _update_model(self, entity_dict, instance):
-        # Remove ro fields
-        self._remove_ro_fields_from(entity_dict)
+    def _update_model(self, entity_dict: Mapping, instance: object) -> object:
+        # Remove ro & const fields
+        self._remove_entity_dict_fields(entity_dict, self.ro_fields)
 
         # Super
-        return super(StrictCrudHelper, self)._update_model(entity_dict, instance)
+        return super()._update_model(entity_dict, instance)
 
-    def _query_model(self, query_obj, from_query=None):
+    def _query_model(self, query_obj: Mapping, from_query: Union[Query, None] = None) -> MongoQuery:
         # Default Query Object
         if self.query_defaults:
-            query_obj = shallow_merge_dicts(self.query_defaults, query_obj or {})
+            query_obj = {**self.query_defaults, **(query_obj or {})}
 
         # Super
-        return super(StrictCrudHelper, self)._query_model(query_obj, from_query=from_query)
+        return super()._query_model(query_obj, from_query=from_query)
 
 
 NoneType = type(None)
@@ -291,11 +288,3 @@ NoneType = type(None)
 def call_if_callable(v):
     """ Preprocess a value: return it ; but call it, if it's a lambda (for late binding) """
     return v() if callable(v) else v
-
-
-def shallow_merge_dicts(d1, d2):
-    """ Merge two dicts, d2 into d1, shallowly """
-    d = {}
-    d.update(d1)
-    d.update(d2)
-    return d

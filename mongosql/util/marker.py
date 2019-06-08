@@ -1,4 +1,4 @@
-class Marker(object):
+class Marker:
     """ An object that can transparently wrap a dict key
 
         Example:
@@ -52,7 +52,5 @@ class Marker(object):
     def __instancecheck__(self, instance):
         # isinstance() will react on both the Marker's type and the value's type
         return isinstance(instance, type(self)) or isinstance(instance, type(self.key))
-
-    __nonzero__ = __bool__  # Python 2.7 only. TODO: remove in Python 3
 
     # endregion

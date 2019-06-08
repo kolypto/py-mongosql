@@ -3,12 +3,18 @@ from copy import copy
 
 from sqlalchemy import inspect
 from sqlalchemy import Column
-from sqlalchemy.orm import ColumnProperty
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.hybrid import hybrid_property
 
+from typing import Union, Set, Mapping, Iterable, Tuple, FrozenSet, List
+from sqlalchemy.ext.declarative import DeclarativeMeta
+from sqlalchemy.orm import ColumnProperty, RelationshipProperty
+from sqlalchemy.orm.interfaces import MapperProperty
+from sqlalchemy.orm.util import AliasedClass
+from sqlalchemy.sql.elements import BinaryExpression
 
-class ModelPropertyBags(object):
+
+class ModelPropertyBags:
     """ Model property bags
 
     This is the class that binds them all together: Columns, Relationships, PKs, etc.
@@ -25,14 +31,10 @@ class ModelPropertyBags(object):
     __bags_per_model_cache = {}
 
     @classmethod
-    def for_model(cls, model):
+    def for_model(cls, model: DeclarativeMeta) -> 'ModelPropertyBags':
         """ Get bags for a model.
 
         Please use this method over __init__(), because it initializes those bags only once
-
-        :param model: Model
-        :type model: mongosql.MongoSqlBase|sqlalchemy.ext.declarative.DeclarativeMeta
-        :rtype: ModelPropertyBags
         """
         # The goal of this method is to only initialize a ModelPropertyBags only once per model.
         # Previously, we used to store them inside model attributes.
@@ -48,20 +50,20 @@ class ModelPropertyBags(object):
             return bags
 
     @classmethod
-    def for_alias(cls, aliased_model):
+    def for_alias(cls, aliased_model: AliasedClass) -> 'ModelPropertyBags':
         """ Get bags for an aliased class """
         model = inspect(aliased_model).class_
         return cls.for_model(model).aliased(aliased_model)
 
     @classmethod
-    def for_model_or_alias(cls, target):
+    def for_model_or_alias(cls, target: Union[DeclarativeMeta, AliasedClass]) -> 'ModelPropertyBags':
         """ Get bags for a model, or aliased(model) """
         if inspect(target).is_aliased_class:
             return cls.for_alias(target)
         else:
             return cls.for_model(target)
 
-    def __init__(self, model):
+    def __init__(self, model: DeclarativeMeta):
         """ Init bags
 
         :param model: Model
@@ -155,7 +157,7 @@ class ModelPropertyBags(object):
 
     # endregion
 
-    def aliased(self, aliased_class):
+    def aliased(self, aliased_class: AliasedClass):
         # Return a wrapper that will lazily apply aliased() on every property when accessed
         # This makes sense because we don't know which of the bags are going to be actually used,
         # and aliased() has a bit of overhead: it involves copying the whole class.
@@ -163,7 +165,7 @@ class ModelPropertyBags(object):
         return _MPB_LazyAliasedWrapper(self.__dict__, aliased_class)
 
     @property
-    def all_names(self):
+    def all_names(self) -> Set[str]:
         """ Get the names of all properties defined for the model """
         return self.columns.names | \
                self.properties.names | \
@@ -171,7 +173,7 @@ class ModelPropertyBags(object):
                self.relations.names
 
 
-class PropertiesBagBase(object):
+class PropertiesBagBase:
     """ Base class for Property bags:
 
     A container that keeps meta-information on SqlAlchemy stuff, like:
@@ -188,47 +190,39 @@ class PropertiesBagBase(object):
     handle them all, depending on the context.
     """
 
-    def __contains__(self, name):
+    def __contains__(self, name: str) -> bool:
         """ Test if the property is in the bag
         :param name: Property name
-        :type name: str
-        :rtype: bool
         """
         raise NotImplementedError
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> MapperProperty:
         """ Get the property by name
         :param name: Property name
-        :type name: str
-        :rtype: sqlalchemy.orm.interfaces.MapperProperty
         """
         raise NotImplementedError
 
-    def __copy__(self):
+    def __copy__(self) -> 'PropertiesBagBase':
         """ Copy behavior is used to make an AliasedBag """
         cls = self.__class__
         result = cls.__new__(cls)
         result.__dict__.update(self.__dict__)
         return result
 
-    def aliased(self, aliased_class):
+    def aliased(self, aliased_class) -> 'PropertiesBagBase':
+        """ Get a version of this bag for using with an aliased class """
         return copy(self)
 
     @property
-    def names(self):
-        """ Get the set of names
-        :rtype: set[str]
-        """
+    def names(self) -> FrozenSet[str]:
+        """ Get the set of names """
         raise NotImplementedError
 
-    def __iter__(self):
-        """ Get all items
-
-        :rtype: dict
-        """
+    def __iter__(self) -> Mapping[str, MapperProperty]:
+        """ Get all items """
         raise NotImplementedError
 
-    def get_invalid_names(self, names):
+    def get_invalid_names(self, names: Iterable[str]) -> Set[str]:
         """ Get the names of invalid items
 
         Use this for validation.
@@ -239,25 +233,23 @@ class PropertiesBagBase(object):
 class PropertiesBag(PropertiesBagBase):
     """ Contains simple model properties (@property) """
 
-    def __init__(self, properties):
+    def __init__(self, properties: Mapping[str, None]):
         self._property_names = frozenset(properties.keys())
 
     @property
-    def names(self):
-        """ Get the set of property names
-        :rtype: set[str]
-        """
+    def names(self) -> FrozenSet[str]:
+        """ Get the set of property names """
         return self._property_names
 
-    def __contains__(self, prop_name):
+    def __contains__(self, prop_name: str) -> bool:
         return prop_name in self._property_names
 
-    def __getitem__(self, prop_name):
+    def __getitem__(self, prop_name: str) -> None:
         if prop_name in self._property_names:
             return None
         raise KeyError(prop_name)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Tuple[str, None]]:
         return iter(zip(self._property_names, repeat(None)))
 
 
@@ -271,11 +263,10 @@ class ColumnsBag(PropertiesBagBase):
     - getting a column by name: bag[column_name]
     """
 
-    def __init__(self, columns):
+    def __init__(self, columns: Mapping[str, ColumnProperty]):
         """ Init columns
 
         :param columns: Model columns
-        :type columns: dict[sqlalchemy.orm.properties.ColumnProperty]
         """
         self._columns = columns
         self._column_names = frozenset(self._columns.keys())
@@ -286,52 +277,46 @@ class ColumnsBag(PropertiesBagBase):
                                              for name, col in self._columns.items()
                                              if _is_column_json(col))
 
-    def aliased(self, aliased_class):
+    def aliased(self, aliased_class: AliasedClass):
         return DictOfAliasedColumns.aliased_attrs(
             aliased_class,
             copy(self), '_columns'
         )
 
-    def is_column_array(self, name):
-        """ Is the column an ARRAY column
-        :type name: str
-        :rtype: bool
-        """
+    def is_column_array(self, name: str) -> bool:
+        """ Is the column an ARRAY column """
         column_name = get_plain_column_name(name)
         return column_name in self._array_column_names
 
-    def is_column_json(self, name):
-        """ Is the column a JSON column
-        :type name: str
-        :rtype: bool
-        """
+    def is_column_json(self, name: str) -> bool:
+        """ Is the column a JSON column """
         column_name = get_plain_column_name(name)
         return column_name in self._json_column_names
 
     @property
-    def names(self):
+    def names(self) -> FrozenSet[str]:
         """ Get the set of column names
         :rtype: set[str]
         """
         return self._column_names
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Tuple[str, ColumnProperty]]:
         """ Get columns
         :rtype: dict[sqlalchemy.orm.properties.ColumnProperty]
         """
         return iter(self._columns.items())
 
-    def __contains__(self, column_name):
+    def __contains__(self, column_name: str) -> bool:
         return column_name in self._columns
 
-    def __getitem__(self, column_name):
+    def __getitem__(self, column_name: str) -> ColumnProperty:
         return self._columns[column_name]
 
 
 class HybridPropertiesBag(ColumnsBag):
     """ Contains hybrid properties of a model """
 
-    class _Hack_Lazy_Dict(object):
+    class _Hack_Lazy_Dict:
         """ A Lazy dict that only loads its keys upon request """
         __slots__ = ('_l', '_ks')
 
@@ -342,7 +327,7 @@ class HybridPropertiesBag(ColumnsBag):
         def __getitem__(self, key):
             return self._l(key)
 
-    def aliased(self, aliased_class):
+    def aliased(self, aliased_class: AliasedClass) -> 'HybridPropertiesBag':
         new = copy(self)
         # For some reason, hybrid properties do not get a proper alias with adapt_to_entity()
         # We have to get them the usual way: from the entity
@@ -375,11 +360,11 @@ class DotColumnsBag(ColumnsBag):
         - For JSON fields: field.prop.prop -- dot-notation access to sub-properties
     """
 
-    def __contains__(self, name):
+    def __contains__(self, name: str) -> bool:
         column_name, path = _dot_notation(name)
         return super(DotColumnsBag, self).__contains__(column_name)
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> Union[ColumnProperty, BinaryExpression]:
         column_name, path = _dot_notation(name)
         col = super(DotColumnsBag, self).__getitem__(column_name)
         # JSON path
@@ -390,15 +375,15 @@ class DotColumnsBag(ColumnsBag):
                 raise KeyError(name)
         return col
 
-    def get_column_name(self, name):
+    def get_column_name(self, name: str) -> str:
         """ Get a column name, not a JSON path """
         return get_plain_column_name(name)
 
-    def get_column(self, name):
+    def get_column(self, name: str) -> ColumnProperty:
         """ Get a column, not a JSON path """
         return self[get_plain_column_name(name)]
 
-    def get_invalid_names(self, names):
+    def get_invalid_names(self, names: Iterable[str]) -> Set[str]:
         # First, validate easy names
         invalid = super(DotColumnsBag, self).get_invalid_names(names)  #type: set
         # Next, among those invalid ones, give those with dot-notation a second change: they
@@ -416,10 +401,9 @@ class RelationshipsBag(PropertiesBagBase):
     Keeps track of relationships of a model.
     """
 
-    def __init__(self, relationships):
+    def __init__(self, relationships: Mapping[str, RelationshipProperty]):
         """ Init relationships
         :param relationships: Model relationships
-        :type relationships: dict[sqlalchemy.orm.relationships.RelationshipProperty]
         """
         self._relations = relationships
         self._rel_names = frozenset(self._relations.keys())
@@ -427,42 +411,32 @@ class RelationshipsBag(PropertiesBagBase):
                                           for name, rel in self._relations.items()
                                           if _is_relationship_array(rel))
 
-    def aliased(self, aliased_class):
+    def aliased(self, aliased_class: AliasedClass) -> 'RelationshipsBag':
         return DictOfAliasedColumns.aliased_attrs(
             aliased_class,
             copy(self), '_relations'
         )
 
-    def is_relationship_array(self, name):
-        """ Is the relationship an array relationship?
-
-            :type name: str
-            :rtype: bool
-        """
+    def is_relationship_array(self, name: str) -> bool:
+        """ Is the relationship an array relationship? """
         return name in self._array_rel_names
 
     @property
-    def names(self):
-        """ Get the set of relation names
-
-        :rtype: set[str]
-        """
+    def names(self) -> FrozenSet[str]:
+        """ Get the set of relation names """
         return self._rel_names
 
-    def __iter__(self):
-        """ Get relationships
-
-        :rtype: dict[sqlalchemy.orm.relationships.RelationshipProperty]
-        """
+    def __iter__(self) -> Iterable[Tuple[str, RelationshipProperty]]:
+        """ Get relationships """
         return iter(self._relations.items())
 
-    def __contains__(self, name):
+    def __contains__(self, name: str) -> bool:
         return name in self._relations
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> RelationshipProperty:
         return self._relations[name]
 
-    def get_target_model(self, name):
+    def get_target_model(self, name: str) -> DeclarativeMeta:
         """ Get target model of a relationship """
         return self[name].property.mapper.class_
 
@@ -470,7 +444,7 @@ class RelationshipsBag(PropertiesBagBase):
 class DotRelatedColumnsBag(ColumnsBag):
     """ Relationships bag that supports dot-notation for referencing columns of a related model """
 
-    def __init__(self, relationships):
+    def __init__(self, relationships: Mapping[str, ColumnProperty]):
         self._rel_bag = RelationshipsBag(relationships)
 
         #: Dot-notation mapped to columns: 'rel.col' => Column
@@ -506,7 +480,7 @@ class DotRelatedColumnsBag(ColumnsBag):
         #: A mapping of related column names to target models
         #self._column_name_to_related_model = rel_col_2_model  # unused
 
-    def aliased(self, aliased_class):
+    def aliased(self, aliased_class: AliasedClass) -> 'DotRelatedColumnsBag':
         new = DictOfAliasedColumns.aliased_attrs(
             aliased_class,
             copy(self), '_columns', #'_column_name_to_related_model',
@@ -514,24 +488,24 @@ class DotRelatedColumnsBag(ColumnsBag):
         new._rel_bag = new._rel_bag.aliased(aliased_class)
         return new
 
-    def is_column_array(self, name):
+    def is_column_array(self, name: str) -> bool:
         # not dot-notation filter like in the parent class: check as is!
         return name in self._array_column_names
 
-    def is_column_json(self, name):
+    def is_column_json(self, name: str) -> bool:
         # not dot-notation filter like in the parent class: check as is!
         return name in self._json_column_names
 
-    def get_relationship_name(self, col_name):
+    def get_relationship_name(self, col_name: str) -> str:
         return _dot_notation(col_name)[0]
 
-    def get_related_column_name(self, col_name):
+    def get_related_column_name(self, col_name: str) -> str:
         return _dot_notation(col_name)[1]
 
-    def get_relationship(self, col_name):
+    def get_relationship(self, col_name: str) -> RelationshipProperty:
         return self._rel_bag[self.get_relationship_name(col_name)]
 
-    def is_relationship_array(self, col_name):
+    def is_relationship_array(self, col_name: str) -> bool:
         """ Is this relationship an array?
 
             This method accepts both relationship names and its column names.
@@ -577,14 +551,14 @@ class CombinedBag(PropertiesBagBase):
                 json_column_names.extend(bag._json_column_names)
         self._json_column_names = frozenset(json_column_names)
 
-    def aliased(self, aliased_class):
+    def aliased(self, aliased_class: AliasedClass) -> 'CombinedBag':
         new = copy(self)
         # aliased() on every bag
         new._bags = {name: bag.aliased(aliased_class)
                      for name, bag in self._bags.items()}
         return new
 
-    def __contains__(self, name):
+    def __contains__(self, name: str) -> bool:
         # Simple
         if name in self._names:
             return True
@@ -594,7 +568,7 @@ class CombinedBag(PropertiesBagBase):
         # Nope. Nothing worked
         return False
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> Tuple[str, PropertiesBagBase, MapperProperty]:
         # Try every bag in order
         for bag_name, bag in self._bags.items():
             try:
@@ -603,7 +577,7 @@ class CombinedBag(PropertiesBagBase):
                 continue
         raise KeyError(name)
 
-    def get_invalid_names(self, names):
+    def get_invalid_names(self, names: Iterable[str]) -> Set[str]:
         # This method is copy-paste from ColumnsBag
         # First, validate easy names
         invalid = super(CombinedBag, self).get_invalid_names(names)  # type: set
@@ -615,15 +589,15 @@ class CombinedBag(PropertiesBagBase):
                     }
         return invalid
 
-    def get(self, name):
+    def get(self, name: str) -> MapperProperty:
         """ Get a property """
         return self[name][2]
 
     @property
-    def names(self):
+    def names(self) -> FrozenSet[str]:
         return self._names
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Tuple[str, MapperProperty]]:
         return chain(*self._bags.values())
 
 
@@ -658,58 +632,43 @@ def _get_model_relationships(model, ins):
             for name, c in ins.relationships.items()}
 
 
-def _is_column_array(col):
-    """ Is the column a PostgreSql ARRAY column?
-
-    :type col: sqlalchemy.sql.schema.Column
-    :rtype: bool
-    """
+def _is_column_array(col: MapperProperty) -> bool:
+    """ Is the column a PostgreSql ARRAY column? """
     return isinstance(col.type, pg.ARRAY)
 
 
-def _is_column_json(col):
-    """ Is the column a PostgreSql JSON column?
-
-    :type col: sqlalchemy.sql.schema.Column
-    :rtype: bool
-    """
+def _is_column_json(col: MapperProperty) -> bool:
+    """ Is the column a PostgreSql JSON column? """
     return isinstance(col.type, (pg.JSON, pg.JSONB))
 
 
-def _is_relationship_array(rel):
-    """ Is the relationship an array relationship?
-
-    :type rel: sqlalchemy.orm.relationships.RelationshipProperty
-    :rtype: bool
-    """
+def _is_relationship_array(rel: RelationshipProperty) -> bool:
+    """ Is the relationship an array relationship? """
     return rel.property.uselist
 
 
-def _is_property_writable(prop):
+def _is_property_writable(prop: property) -> bool:
     """ Check if a property is writable """
     return prop.fset is not None
 
 
-def _dot_notation(name):
+def _dot_notation(name: str) -> Tuple[str, List[str]]:
     """ Split a property name that's using dot-notation.
 
     This is used to navigate the internals of JSON types:
 
-        "json_colum.property.property"
-
-    :type name: str
-    :rtype: str, list[str]
+        "json_column.property.property"
     """
     path = name.split('.')
     return path[0], path[1:]
 
 
-def get_plain_column_name(name):
+def get_plain_column_name(name: str) -> str:
     """ Get a plain column name, dropping any dot-notation that may follow """
     return name.split('.')[0]
 
 
-class DictOfAliasedColumns(object):
+class DictOfAliasedColumns:
     """ A dict of columns that makes proper aliases upon access
 
         All our bags contain columns of a real model.
@@ -723,7 +682,7 @@ class DictOfAliasedColumns(object):
     __slots__ = ('_d', '_a',)
 
     @classmethod
-    def aliased_attrs(cls, aliased_class, obj, *attr_names):
+    def aliased_attrs(cls, aliased_class: AliasedClass, obj: object, *attr_names: Tuple[str]):
         """ Wrap a whole list of dictionaries into aliased wrappers """
         # Prepare AliasedInsp: this is what adapt_to_entity() wants
         aliased_inspector = inspect(aliased_class)
@@ -741,12 +700,7 @@ class DictOfAliasedColumns(object):
         return obj
 
     def __init__(self, columns_dict, aliased_insp):
-        """ Make a dict of columns, ready to alias them as needed
-
-        :param columns_dict:
-        :param aliased_insp:
-        :return:
-        """
+        """ Make a dict of columns, ready to alias them as needed """
         self._d = columns_dict
         self._a = aliased_insp
 
@@ -771,9 +725,9 @@ class DictOfAliasedColumns(object):
                 for k, c in self._d.items())
 
 
-class _MPB_LazyAliasedWrapper(object):
+class _MPB_LazyAliasedWrapper:
     """ A ModelPropertyBags wrapper that will lazily apply aliased() on every attribute upon access """
-    def __init__(self, mpb_dict, aliased_class):
+    def __init__(self, mpb_dict: dict, aliased_class: AliasedClass):
         self.__aliased_class = aliased_class
 
         # Remember those attributes that were not aliased() yet
@@ -788,7 +742,7 @@ class _MPB_LazyAliasedWrapper(object):
             else:
                 setattr(self, k, v)  # onto ourselves
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str):
         # Initialize a new attribute that's aliased()
         setattr(self,
                 attr,

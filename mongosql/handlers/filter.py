@@ -14,7 +14,7 @@ def _is_array(value):
     return isinstance(value, (list, tuple, set, frozenset))
 
 
-class FilterExpressionBase(object):
+class FilterExpressionBase:
     """ An expression from the MongoFilter object """
 
     __slots__ = ('operator_str', 'value')

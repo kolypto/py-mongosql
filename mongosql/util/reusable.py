@@ -1,7 +1,7 @@
 from copy import copy
 
 
-class Reusable(object):
+class Reusable:
     """ Make a reusable handler or query
 
         When a handler object is initialized, it's a pity to waste it!

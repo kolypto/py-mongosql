@@ -27,7 +27,7 @@ def q2sql(q):
     return stmt2sql(q.statement)
 
 
-class TestQueryStringsMixin(object):
+class TestQueryStringsMixin:
     """ unittest mixin that will help testing query strings """
 
     def assertQuery(self, qs, *expected_lines):
@@ -101,7 +101,7 @@ class TestQueryStringsMixin(object):
             raise
 
 
-class QueryCounter(object):
+class QueryCounter:
     """ Counts the number of queries """
 
     def __init__(self, engine):

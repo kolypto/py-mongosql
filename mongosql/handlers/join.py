@@ -755,20 +755,20 @@ class MongoJoin(MongoQueryHandlerBase):
             #       project, join. sort
             #       sort: either, but not both
             if not is_mjp_simple(mjp):
-                raise InvalidQueryError(u"You can only merge() a simple relationship, "
-                                        u"whose Query Object is limited to {} ({}); "
-                                        u"Your relationship '{}' Query Object has more than that."
+                raise InvalidQueryError("You can only merge() a simple relationship, "
+                                        "whose Query Object is limited to {} ({}); "
+                                        "Your relationship '{}' Query Object has more than that."
                                         .format(merge_allowed_keys, strict_mode_str, relation_name))
             if not is_mjp_simple(current_mjp):
-                raise InvalidQueryError(u"You can only merge() to simple relationships, "
-                                        u"whose Query Objects is limited to {} ({}); "
-                                        u"Relationship '{}' has already been loaded with advanced features. "
-                                        u"Cannot merge to it."
+                raise InvalidQueryError("You can only merge() to simple relationships, "
+                                        "whose Query Objects is limited to {} ({}); "
+                                        "Relationship '{}' has already been loaded with advanced features. "
+                                        "Cannot merge to it."
                                         .format(merge_allowed_keys, strict_mode_str, relation_name))
 
             if strict:
                 if mjp_has_sort(mjp) and mjp_has_sort(current_mjp):
-                    raise InvalidQueryError(u"You can only merge() when one of the Query Objects has 'sort', but not both.")
+                    raise InvalidQueryError("You can only merge() when one of the Query Objects has 'sort', but not both.")
 
             # If there was no relationship - just add it
             if current_mjp is None:
@@ -866,7 +866,7 @@ class MongoJoin(MongoQueryHandlerBase):
         return ret
 
 
-class MongoJoinParams(object):
+class MongoJoinParams:
     """ All the information necessary for MongoQuery to build a join clause
 
         Because JOINs are complicated, we need a dataclass to transport the necessary information

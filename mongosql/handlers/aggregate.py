@@ -12,7 +12,7 @@ from ..exc import InvalidQueryError, DisabledError, InvalidColumnError
 
 # region Aggregate Expression Classes
 
-class AggregateExpressionBase(object):
+class AggregateExpressionBase:
     """ Represents a computed field with a label """
 
     __slots__ = ('label',)

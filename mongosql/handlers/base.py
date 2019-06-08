@@ -2,7 +2,7 @@ from ..bag import ModelPropertyBags
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
 
-class MongoQueryHandlerBase(object):
+class MongoQueryHandlerBase:
     """ An implementation of a handler from MongoQuery
 
         Every subclass will handle a single field from the Query object

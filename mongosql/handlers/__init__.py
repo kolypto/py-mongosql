@@ -13,3 +13,4 @@ from .limit import MongoLimit
 from .count import MongoCount
 
 # TODO: implement update operations on a model in MongoDB-style
+# TODO: document MongoHandler classes

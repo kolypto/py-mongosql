@@ -8,22 +8,28 @@ from . import handlers
 from .exc import InvalidQueryError
 from .util import MongoQuerySettingsHandler
 
+from typing import Union, Mapping, Iterable, Tuple
+from sqlalchemy.orm import Session
+from sqlalchemy.ext.declarative import DeclarativeMeta
+from sqlalchemy.orm import RelationshipProperty
+from .util import MongoQuerySettingsDict
+
 # TODO: Run a query with a LIMIT/OFFSET and also get the total number of rows?
 #   https://stackoverflow.com/questions/28888375/
 
-class MongoQuery(object):
+
+
+class MongoQuery:
     """ MongoDB-style queries """
 
     # The class to use for getting structural data from a model
     _MODEL_PROPERTY_BAGS_CLS = ModelPropertyBags
 
-    def __init__(self, model, handler_settings=None):
+    def __init__(self, model: DeclarativeMeta, handler_settings: Union[Mapping, MongoQuerySettingsDict, None] = None):
         """ Init a MongoDB-style query
 
         :param model: SqlAlchemy model to make a MongoSQL query for.
-        :type model: sqlalchemy.ext.declarative.DeclarativeMeta
         :param handler_settings: Settings for Query Object handlers. See MongoQuerySettingsDict
-        :type handler_settings: dict | MongoQuerySettingsDict | None
         """
         # Aliases?
         if inspect(model).is_aliased_class:
@@ -62,7 +68,7 @@ class MongoQuery(object):
         # will inherit all option()s from the previous queries and lead to all sorts of weird effects!
         # So, whenever you add a property to this object, make sure you understand its copy() behavior.
 
-    def __copy__(self):
+    def __copy__(self) -> 'MongoQuery':
         """ MongoQuery can be reused: wrap it with Reusable() which performs the automatic copy()
 
             It actually makes sense to have reusable MongoQuery because there's plenty of settings
@@ -84,7 +90,7 @@ class MongoQuery(object):
 
         return result
 
-    def from_query(self, query):
+    def from_query(self, query: Query) -> 'MongoQuery':
         """ Specify a custom sqlalchemy query to work with.
 
         It can have, say, initial filtering already applied to it.
@@ -96,12 +102,12 @@ class MongoQuery(object):
         self._query = query
         return self
 
-    def with_session(self, ssn):
+    def with_session(self, ssn: Session) -> 'MongoQuery':
         """ Query with the given sqlalchemy Session """
         self._query = self._from_query().with_session(ssn)
         return self
 
-    def as_relation(self, join_path=None):
+    def as_relation(self, join_path: Union[Tuple[RelationshipProperty], None] = None):
         """ Handle a model in relationship with another model
 
             This internal method is used when working with deeper relations.
@@ -118,7 +124,6 @@ class MongoQuery(object):
             `self._as_relation` is the Load() interface for chaining methods for deeper relationships.
 
             :param join_path: A tuple of relationships leading to this query.
-            :type join_path: tuple[sqlalchemy.orm.relationships.RelationshipProperty] | None
         """
         if join_path:
             self._join_path = join_path
@@ -130,18 +135,17 @@ class MongoQuery(object):
             self._as_relation = Load(self.model)
         return self
 
-    def as_relation_of(self, mongoquery, relationship):
+    def as_relation_of(self, mongoquery: 'MongoQuery', relationship: RelationshipProperty) -> 'MongoQuery':
         """ Handle the query as a sub-query handling a relationship
 
         This is used by the MongoJoin handler to build queries to related models.
 
         :param mongoquery: The parent query
         :param relationship: The relationship
-        :return: MongoQuery
         """
         return self.as_relation(mongoquery._join_path + (relationship,))
 
-    def aliased(self, model):
+    def aliased(self, model: DeclarativeMeta) -> 'MongoQuery':
         """ Make a query to an aliased model instead.
 
         This is used by MongoJoin handler to issue subqueries.
@@ -176,7 +180,7 @@ class MongoQuery(object):
 
         return self
 
-    def query(self, **query_object):
+    def query(self, **query_object: Mapping) -> 'MongoQuery':
         """ Build a MongoSql query from an object
 
         :param project: Projection spec
@@ -202,7 +206,7 @@ class MongoQuery(object):
         # Check if Query Object keys are all right
         invalid_keys = set(query_object.keys()) - self.HANDLER_NAMES
         if invalid_keys:
-            raise InvalidQueryError(u'Unknown Query Object operations: {}'.format(', '.join(invalid_keys)))
+            raise InvalidQueryError('Unknown Query Object operations: {}'.format(', '.join(invalid_keys)))
 
         # Store
         self.input_value = query_object
@@ -231,11 +235,8 @@ class MongoQuery(object):
         # Done
         return self
 
-    def end(self):
-        """ Get the resulting sqlalchemy Query object
-
-        :rtype: sqlalchemy.orm.Query
-        """
+    def end(self) -> Query:
+        """ Get the resulting sqlalchemy Query object """
         # The query
         q = self._from_query()
 
@@ -248,42 +249,36 @@ class MongoQuery(object):
 
     # Extra features
 
-    def result_contains_entities(self):
+    def result_contains_entities(self) -> bool:
         """ Test whether the result will contain entities.
 
         This is normally the case in the absense of 'aggregate', 'group', and 'count' queries.
-
-        :rtype: bool
         """
         return self.handler_aggregate.is_input_empty() and \
                self.handler_group.is_input_empty() and \
                self.handler_count.is_input_empty()
 
-    def result_is_scalar(self):
+    def result_is_scalar(self) -> bool:
         """ Test whether the result is a scalar value, like with count
 
             In this case, you'll fetch it like this:
 
                 MongoQuery(...).end().scalar()
-
-            :rtype: bool
         """
         return not self.handler_count.is_input_empty()
 
-    def result_is_tuples(self):
+    def result_is_tuples(self) -> bool:
         """ Test whether the result is a list of keyed tuples, like with group_by
 
             In this case, you might fetch it like this:
 
                 res = MongoQuery(...).end()
                 return [dict(zip(row.keys(), row)) for row in res], None
-
-            :rtype: bool
         """
         return not self.handler_aggregate.is_input_empty() or \
                not self.handler_group.is_input_empty()
 
-    def ensure_loaded(self, *cols):
+    def ensure_loaded(self, *cols: Iterable[str]) -> 'MongoQuery':
         """ Ensure the given columns, relationships, and related columns are loaded
 
             Despite any projections and joins the user may be doing, make sure that the given `cols` are loaded.
@@ -312,7 +307,6 @@ class MongoQuery(object):
             :raises InvalidQueryError: cannot merge because the relationship has a filter on it
             :raises ValueError: invalid column or relationship name given.
                 It does not throw `InvalidColumnError` because that's likely your error, not an error of the API user :)
-            :rtype: MongoQuery
         """
         assert self.result_contains_entities(), 'Cannot use ensure_loaded() on a result set that does not contain entities'
 
@@ -342,12 +336,12 @@ class MongoQuery(object):
             self.handler_project.merge(columns, quietly=True, strict=True)
             self.handler_join.merge(relations, quietly=True, strict=True)
         except InvalidQueryError as e:
-            raise InvalidQueryError('Failed to process ensure_loaded({}): {}'.format(cols, str(e)))  # from e  # TODO: uncomment in Python 3
+            raise InvalidQueryError('Failed to process ensure_loaded({}): {}'.format(cols, str(e))) from e
 
         # Done
         return self
 
-    def get_projection_tree(self):
+    def get_projection_tree(self) -> dict:
         """ Get a projection-like dict that maps every included column to 1,
             and every relationship to a nested projection dict.
 
@@ -365,7 +359,7 @@ class MongoQuery(object):
         ret.update(self.handler_joinf.get_projection_tree())
         return ret
 
-    def get_full_projection_tree(self):
+    def get_full_projection_tree(self) -> dict:
         """ Get a full projection tree that mentions every column, but only those relationships that are loaded
             :rtype: dict
         """
@@ -375,7 +369,7 @@ class MongoQuery(object):
         ret.update(self.handler_joinf.get_full_projection_tree())
         return ret
 
-    def pluck_instance(self, instance):
+    def pluck_instance(self, instance: object) -> dict:
         """ Pluck an sqlalchemy instance and make it into a dict
 
             This method should be used to prepare an object for JSON encoding.
@@ -400,7 +394,7 @@ class MongoQuery(object):
         # Done.
         return dct
 
-    def __contains__(self, key):
+    def __contains__(self, key: str) -> bool:
         """ Test if a property is going to be loaded by this query """
         return key in self.handler_project or key in self.handler_join
 
@@ -511,7 +505,7 @@ class MongoQuery(object):
         # Check settings
         self.handler_settings.raise_if_invalid_handler_settings(self)
 
-    def _init_handler(self, handler_name, handler_cls):
+    def _init_handler(self, handler_name: str, handler_cls: type):
         """ Init a handler, and load its settings """
         handler_settings = self.handler_settings.get_settings(handler_name, handler_cls)
         return handler_cls(self.model, self.bags, **handler_settings)
@@ -520,7 +514,7 @@ class MongoQuery(object):
 
     # region Internals
 
-    def _init_handler_settings(self, handler_settings):
+    def _init_handler_settings(self, handler_settings: Mapping) -> MongoQuerySettingsHandler:
         """ Initialize: handler settings """
         # A special case for 'join'
         if handler_settings.get('join_enabled', True) is False:
@@ -544,7 +538,7 @@ class MongoQuery(object):
         # Done
         return hso
 
-    def _from_query(self):
+    def _from_query(self) -> Query:
         """ Get the query to work with, or initialize one
 
             When the time comes to build an actual SqlAlchemy query, we're going to use the query that the user has
@@ -552,15 +546,13 @@ class MongoQuery(object):
         """
         return self._query or Query([self.model])
 
-    def _init_mongoquery_for_related_model(self, relationship_name):
+    def _init_mongoquery_for_related_model(self, relationship_name: str) -> 'MongoQuery':
         """ Create a MongoQuery object for a model, related through a relationship with the given name.
 
             This method configures queries made on related models.
             Note that this method is only called once for every relationship.
 
             See: _get_nested_mongoquery() for more info
-
-            :rtype: callable[(), MongoQuery]
         """
         # Get the relationship
         # There must be no exceptions here, because JoinHandler is the only guy using this method,
@@ -575,7 +567,7 @@ class MongoQuery(object):
         # Done
         return mongoquery
 
-    def _get_nested_mongoquery(self, relationship_name):
+    def _get_nested_mongoquery(self, relationship_name: str) -> 'MongoQuery':
         """ Get a MongoQuery for a nested model (through a relationship)
 
         Remember that the 'join' operation support nested queries!
@@ -599,8 +591,6 @@ class MongoQuery(object):
 
         Note that this method does not call as_relation() nor aliased().
         You'll have to do it yourself.
-
-        :rtype: MongoQuery
         """
         # If there's no nested MongoQuery inited, make one
         if relationship_name not in self._nested_mongoqueries:
@@ -618,7 +608,7 @@ class MongoQuery(object):
         # Done
         return nested_mq
 
-    def _raise_if_handler_is_not_enabled(self, handler_name):
+    def _raise_if_handler_is_not_enabled(self, handler_name: str):
         """ Raise an error if a handler is not enabled.
 
             This is used by:

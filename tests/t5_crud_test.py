@@ -369,8 +369,8 @@ class CrudTest(unittest.TestCase):
             self.assertEqual(rv['article'], {
                 'id': 20,
                 'comments': [
-                    {'comment_calc': u'ONE', 'id': 106},
-                    {'comment_calc': u'TWO', 'id': 107}]
+                    {'comment_calc': 'ONE', 'id': 106},
+                    {'comment_calc': 'TWO', 'id': 107}]
             })
 
             try:

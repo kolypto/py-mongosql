@@ -1,10 +1,13 @@
+from typing import Union
+
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
+import mongosql
 from mongosql.util.inspect import pluck_kwargs_from
 from ..exc import DisabledError
 
 
-class MongoQuerySettingsHandler(object):
+class MongoQuerySettingsHandler:
     """ Settings keeper for MongoQuery
 
         This is essentially a helper which will feed the correct kwargs to every class.
@@ -20,7 +23,7 @@ class MongoQuerySettingsHandler(object):
         both of those will receive them!
     """
 
-    def __init__(self, settings):
+    def __init__(self, settings: dict):
         """ Store the settings for every handler
 
             :param settings: dict of handler kwargs
@@ -48,12 +51,11 @@ class MongoQuerySettingsHandler(object):
         #: Nested MongoQuery settings (for related models)
         self._nested_model_settings = call_if_callable(self._settings.get('related_models', None))or {}
 
-    def validate_related_settings(self, bags):
+    def validate_related_settings(self, bags: mongosql.ModelPropertyBags):
         """ Validate the settings for related entities.
 
             This method only validates the keys for "related" and "related_models".
 
-            :type bags: mongosql.bag.ModelPropertyBags
             :raises KeyError: Invalid keys
         """
         # Validate "related": all keys must be relationship names
@@ -71,7 +73,7 @@ class MongoQuerySettingsHandler(object):
             raise KeyError('Invalid related model object provided to "related_models": {!r}'
                            .format(list(invalid_keys)))
 
-    def get_settings(self, handler_name, handler_cls):
+    def get_settings(self, handler_name: str, handler_cls: type) -> dict:
         """ Get settings for the given handler
 
             Because we do not know in advance how many handlers we will have, what their names will be,
@@ -101,17 +103,17 @@ class MongoQuerySettingsHandler(object):
         # Done
         return kwargs  # for the handler's __init__()
 
-    def is_handler_enabled(self, handler_name):
+    def is_handler_enabled(self, handler_name: str) -> bool:
         """ Test if the handler is enabled in the configuration """
         return handler_name not in self._disabled_handlers
 
-    def raise_if_not_handler_enabled(self, model_name, handler_name):
+    def raise_if_not_handler_enabled(self, model_name: str, handler_name: str):
         """ Raise an error if the handler is not enabled """
         if not self.is_handler_enabled(handler_name):
             raise DisabledError('Query handler "{}" is disabled for "{}"'
                                 .format(handler_name, model_name))
 
-    def raise_if_invalid_handler_settings(self, mongoquery):
+    def raise_if_invalid_handler_settings(self, mongoquery: 'mongosql.MongoQuery'):
         """ Check whether there were any typos in setting names
 
             After all handlers were initialized, we've had a chance to analyze all their keyword arguments.
@@ -140,7 +142,7 @@ class MongoQuerySettingsHandler(object):
             raise KeyError('Invalid settings were provided for MongoQuery {!r}: {}'
                            .format(mongoquery, ','.join(invalid_keys)))
 
-    def _get_nested_settings_from_store_attr(self, store, key, star_lambda_args):
+    def _get_nested_settings_from_store_attr(self, store: dict, key: str, star_lambda_args) -> Union[dict, None]:
         """ Get settings from `store`, which is "related" or "related_models"
 
         handler_settings may be stored in two dict keys:
@@ -175,7 +177,7 @@ class MongoQuerySettingsHandler(object):
             # Not found
             return None
 
-    def settings_for_nested_mongoquery(self, relation_name, target_model):
+    def settings_for_nested_mongoquery(self, relation_name: str, target_model: DeclarativeMeta) -> dict:
         """ Get settings for a nested MongoQuery
 
         Tries in turn:
@@ -183,10 +185,6 @@ class MongoQuerySettingsHandler(object):
         related[*]
         related_models[target-model]
         related_models[*]
-
-        :param relation_name:
-        :param target_model:
-        :return:
         """
         # Try "related"
         sets = self._get_nested_settings_from_store_attr(self._nested_relation_settings, relation_name, (relation_name, target_model))

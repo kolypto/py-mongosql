@@ -1,15 +1,17 @@
 from copy import copy
+from typing import Union
+
 from sqlalchemy.orm import Session, Query
 
 from .query import MongoQuery
 
 
-class MongoSqlBase(object):
+class MongoSqlBase:
     """ Mixin for SqlAlchemy models that provides the .mongoquery() method for convenience """
 
     # Override this method in your subclass in order to be able to configure MongoSql on a per-model basis!
     @classmethod
-    def _init_mongoquery(cls, handler_settings=None):
+    def _init_mongoquery(cls, handler_settings: dict = None) -> MongoQuery:
         """ Get a reusable MongoQuery object. Is only invoked once.
 
             Override this method in order to initialize MongoQuery they way you need.
@@ -28,7 +30,7 @@ class MongoSqlBase(object):
     __mongoquery_per_class_cache = {}
 
     @classmethod
-    def _get_mongoquery(cls):
+    def _get_mongoquery(cls) -> MongoQuery:
         """ Get a Reusable MongoQuery for this model ; initialize it only once
 
             :rtype: MongoQuery
@@ -46,7 +48,7 @@ class MongoSqlBase(object):
         return copy(mq)
 
     @classmethod
-    def mongoquery_configure(cls, handler_settings):
+    def mongoquery_configure(cls, handler_settings: dict) -> MongoQuery:
         """ Initialize this models' MongoQuery settings and make it permanent.
 
             This method is just a shortcut to do configuration the lazy way.
@@ -65,7 +67,7 @@ class MongoSqlBase(object):
         return mq
 
     @classmethod
-    def mongoquery(cls, query_or_session=None):
+    def mongoquery(cls, query_or_session: Union[Query, Session] = None) -> MongoQuery:
         """ Build a MongoQuery
 
         Note that when `None` is given, the resulting Query is not bound to any session!

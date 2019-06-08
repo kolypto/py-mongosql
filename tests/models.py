@@ -279,7 +279,7 @@ class GirlWatcher(Base):
                         )
 
 
-class CreationTimeMixin(object):
+class CreationTimeMixin:
     """ Inheritance tests: a mixin """
     ctime = Column(DateTime, doc="Creation time")
 
@@ -294,7 +294,7 @@ class CreationTimeMixin(object):
                             foreign_keys='{}.cuid'.format(cls.__name__), doc="Created by")
 
 
-class SpecialMixin(object):
+class SpecialMixin:
     @property
     def get_42(self):
         return 42

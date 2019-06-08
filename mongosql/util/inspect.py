@@ -1,19 +1,13 @@
 import inspect
+from functools import lru_cache
+from typing import Callable, Mapping
 
-try: from functools import lru_cache  # Python 3
-except ImportError:
-    def lru_cache(*args):  # Python 2: no-op wrapper
-        return lambda f: f
-
-try: getargspec = inspect.getfullargspec  # Python 3
-except AttributeError:
-    getargspec = inspect.getargspec  # Python 2
 
 @lru_cache(100)
-def get_function_defaults(for_func):
+def get_function_defaults(for_func: Callable) -> dict:
     """ Get a dict of function's arguments that have default values """
     # Analyze the method
-    argspec = getargspec(for_func)  # TODO: use signature() in Python 3.3
+    argspec = inspect.getfullargspec(for_func)  # TODO: use signature(): Python 3.3
 
     # Get the names of the kwargs
     # Only process those that have defaults
@@ -27,7 +21,7 @@ def get_function_defaults(for_func):
     return defaults
 
 
-def pluck_kwargs_from(dct, for_func):
+def pluck_kwargs_from(dct: Mapping, for_func: Callable) -> dict:
     """ Analyze a function, pluck the arguments it needs from a dict """
     defaults = get_function_defaults(for_func)
 

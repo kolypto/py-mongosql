@@ -10,7 +10,7 @@ from mongosql import raiseload_col
 from . import models
 
 
-class RaiseloadTesterMixin(object):
+class RaiseloadTesterMixin:
     def assertRaiseloadWorked(self, entity, loaded, raiseloaded, unloaded):
         """ Test columns and their load state
 

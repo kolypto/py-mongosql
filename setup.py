@@ -4,8 +4,9 @@
 import sys
 from setuptools import setup, find_packages
 
-if sys.version_info[0] == 2:
-    raise ImportError('Python 2 is no longer supported')
+if not sys.version_info >= (3, 4, 0):
+    raise ImportError('MongoSQL 2.0 only supports Python 3.5+')
+
 
 setup(
     name='mongosql',

@@ -6,7 +6,7 @@ from sqlalchemy.orm.state import InstanceState
 from mongosql.bag import ModelPropertyBags
 
 
-class ModelHistoryProxy(object):
+class ModelHistoryProxy:
     """ Proxy object to gain access to historical model attributes.
 
     This leverages SqlAlchemy attribute history to provide access to the previous value of an

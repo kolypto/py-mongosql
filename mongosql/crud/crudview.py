@@ -1,12 +1,15 @@
-from sqlalchemy.orm import Query
+from enum import Enum
 
 from ..query import MongoQuery
 from ..util.history_proxy import ModelHistoryProxy
 from .crudhelper import CrudHelper, StrictCrudHelper
 
+from typing import Iterable, Mapping, Set, Union, Tuple, Callable
+from sqlalchemy.orm import Query, Session
 
-# CRUD method constants
-class CRUD_METHOD:  # TODO: Make it an enum in Python 3
+
+class CRUD_METHOD(Enum):
+    """ CRUD method """
     GET = 'GET'
     LIST = 'LIST'
     CREATE = 'CREATE'
@@ -14,7 +17,7 @@ class CRUD_METHOD:  # TODO: Make it an enum in Python 3
     DELETE = 'DELETE'
 
 
-class CrudViewMixin(object):
+class CrudViewMixin:
     """ Base class for implementations of CRUD views. This class is supposed to be re-initialized for every request.
 
         To implement a CRUD view:
@@ -52,7 +55,7 @@ class CrudViewMixin(object):
         #: The current CRUD method
         self._current_crud_method = None
 
-    def _get_db_session(self):
+    def _get_db_session(self) -> Session:
         """ Get a DB session to be used for queries made in this view
 
         :return: sqlalchemy.orm.Session
@@ -60,7 +63,7 @@ class CrudViewMixin(object):
         raise NotImplementedError('_get_db_session() not implemented on {}'
                                   .format(type(self)))
 
-    def _get_query_object(self):
+    def _get_query_object(self) -> Mapping:
         """ Get the Query Object for the current query.
 
             Note that the Query Object is not only supported for get() and list() methods, but also for
@@ -70,20 +73,17 @@ class CrudViewMixin(object):
 
     # region Hooks
 
-    def _mongoquery_hook(self, mongoquery):
+    def _mongoquery_hook(self, mongoquery: MongoQuery) -> MongoQuery:
         """ A hook invoked in _mquery() to modify MongoQuery, if necessary
 
             This is the last chance to modify a MongoQuery.
             Right after this hook, it end()s, and generates an sqlalchemy Query.
 
             Use self._current_crud_method to tell what is going on: create, read, update, delete?
-
-            :type mongoquery: MongoQuery
-            :rtype: MongoQuery
         """
         return mongoquery
 
-    def _save_relations(self, _new, _prev=None, **relations):
+    def _save_relations(self, _new: object, _prev: Union[object, None] = None, **relations: dict):
         """ A hook that implements saving related models.
 
         Whenever a relationship is named in the 'saves_relations' class attribute,
@@ -98,23 +98,19 @@ class CrudViewMixin(object):
         NOTE: this method is executed before _save_hook() is.
 
         :param _new: The new instance
-        :type _new: DeclarativeMeta
         :param _prev: Previously persisted version (is provided only when updating).
-        :type _prev: ModelHistoryProxy | None
         :param relations: Values for every relation
         """
         raise NotImplementedError('Saving relations is not yet implemented for this view')
 
-    def _save_hook(self, new, prev=None):
+    def _save_hook(self, new: object, prev: Union[object, None] = None):
         """ Hook into create(), update() methods, before an entity is saved.
 
             This allows to make some changes to the instance before it's actually saved.
             The hook is provided with both the old and the new versions of the instance (!).
 
             :param new: The new instance
-            :type new: DeclarativeMeta
             :param prev: Previously persisted version (is provided only when updating).
-            :type prev: ModelHistoryProxy | None
         """
         pass
 
@@ -125,7 +121,7 @@ class CrudViewMixin(object):
     # ###
     # CRUD methods' implementations
 
-    def _method_get(self, *filter, **filter_by):
+    def _method_get(self, *filter, **filter_by) -> object:
         """ Fetch a single entity: as in READ, single entity
 
             Normally, used when the user has supplied a primary key:
@@ -135,7 +131,6 @@ class CrudViewMixin(object):
             :param query_obj: Query Object
             :param filter: Additional filter() criteria
             :param filter_by: Additional filter_by() criteria
-            :rtype: DeclarativeMeta
             :raises sqlalchemy.orm.exc.NoResultFound: Nothing found
             :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
             :raises exc.InvalidQueryError: Query Object errors made by the user
@@ -144,7 +139,7 @@ class CrudViewMixin(object):
         instance = self._get_one(self._get_query_object(), *filter, **filter_by)
         return instance
 
-    def _method_list(self, *filter, **filter_by):
+    def _method_list(self, *filter, **filter_by) -> Iterable[object]:
         """ Fetch a list of entities: as in READ, list of entities
 
             Normally, used when the user has supplied no primary key:
@@ -166,7 +161,6 @@ class CrudViewMixin(object):
             :param query_obj: Query Object
             :param filter: Additional filter() criteria
             :param filter_by: Additional filter_by() criteria
-            :rtype: int | Iterable[DeclarativeMeta]
             :raises exc.InvalidQueryError: Query Object errors made by the user
         """
         self._current_crud_method = CRUD_METHOD.LIST
@@ -177,7 +171,7 @@ class CrudViewMixin(object):
         # Done
         return self._method_list_result_handler(query)
 
-    def _method_list_result_handler(self, query):
+    def _method_list_result_handler(self, query: Query) -> Union[int, Iterable[object], Iterable[Tuple]]:
         """ Handle the results from method_list() """
         # Handle: Query Object has count
         if self._mongoquery.result_is_scalar():
@@ -194,31 +188,19 @@ class CrudViewMixin(object):
         # Regular result: entities
         return self._method_list_result__entities(iter(query))  # Return an iterable that yields entities, not a list
 
-    def _method_list_result__entities(self, entities):
-        """ Handle _method_list() result when it's a list of entities
-
-            :type entities: Iterable[DeclarativeMeta]
-            :rtype: Iterable[DeclarativeMeta]
-        """
+    def _method_list_result__entities(self, entities: Iterable[object]) -> Iterable[object]:
+        """ Handle _method_list() result when it's a list of entities """
         return list(entities)  # because it may be an iterable
 
-    def _method_list_result__groups(self, dicts):
-        """ Handle _method_list() result when it's a list of dicts: the one you get from GROUP BY
-
-            :type dicts: Iterable[dict]
-            :type: Iterable[dict]
-        """
+    def _method_list_result__groups(self, dicts: Iterable[dict]) -> Iterable[dict]:
+        """ Handle _method_list() result when it's a list of dicts: the one you get from GROUP BY """
         return dicts
 
-    def _method_list_result__count(self, n):
-        """ Handle _method_list() result when it's an integer number: the one you get from COUNT()
-
-            :type n: int
-            :rtype: int
-        """
+    def _method_list_result__count(self, n: int) -> int:
+        """ Handle _method_list() result when it's an integer number: the one you get from COUNT() """
         return n
 
-    def _method_create(self, entity_dict):
+    def _method_create(self, entity_dict: dict) -> object:
         """ Create a new entity: as in CREATE
 
             Normally, used when the user has supplied no primary key:
@@ -227,9 +209,7 @@ class CrudViewMixin(object):
                 {'name': 'Hakon'}
 
             :param entity_dict: Entity dict
-            :type entity_dict: dict
             :return: The created instance (to be saved)
-            :rtype: DeclarativeMeta
             :raises exc.InvalidQueryError: Query Object errors made by the user
         """
         self._current_crud_method = CRUD_METHOD.CREATE
@@ -249,7 +229,7 @@ class CrudViewMixin(object):
         # We don't save anything here
         return instance
 
-    def _method_update(self, entity_dict, *filter, **filter_by):
+    def _method_update(self, entity_dict: dict, *filter, **filter_by) -> object:
         """ Update an existing entity by merging the fields: as in UPDATE
 
             Normally, used when the user has supplied a primary key:
@@ -258,11 +238,9 @@ class CrudViewMixin(object):
                 {'id': 1, 'name': 'Hakon'}
 
             :param entity_dict: Entity dict
-            :type entity_dict: dict
             :param filter: Criteria to find the previous entity
             :param filter_by: Criteria to find the previous entity
             :return: The updated instance (to be saved)
-            :rtype: DeclarativeMeta
             :raises sqlalchemy.orm.exc.NoResultFound: The entity not found
             :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple entities found with the filter condition
             :raises exc.InvalidQueryError: Query Object errors made by the user
@@ -288,7 +266,7 @@ class CrudViewMixin(object):
         # We don't save anything here
         return instance
 
-    def _method_delete(self, *filter, **filter_by):
+    def _method_delete(self, *filter, **filter_by) -> object:
         """ Delete an existing entity: as in DELETE
 
             Normally, used when the user has supplied a primary key:
@@ -300,7 +278,6 @@ class CrudViewMixin(object):
             :param filter: Criteria to find the previous entity
             :param filter_by: Criteria to find the previous entity
             :return: The instance to be deleted
-            :rtype: DeclarativeMeta
             :raises sqlalchemy.orm.exc.NoResultFound: The entity not found
             :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple entities found with the filter condition
             :raises exc.InvalidQueryError: Query Object errors made by the user
@@ -316,12 +293,12 @@ class CrudViewMixin(object):
 
     # region Helpers
 
-    def _query(self):
+    def _query(self) -> Query:
         """ Make the initial Query object to work with """
         return self._get_db_session().query(self.crudhelper.model)
 
     @property
-    def _mongoquery(self):
+    def _mongoquery(self) -> MongoQuery:
         """ Get the current MongoQuery for this request, or initialize a new one.
 
         :rtype: MongoQuery
@@ -336,24 +313,22 @@ class CrudViewMixin(object):
         return self.__mongoquery
 
     @_mongoquery.setter
-    def _mongoquery(self, mongoquery):
+    def _mongoquery(self, mongoquery: MongoQuery):
         self.__mongoquery = mongoquery
         return self.__mongoquery
 
-    def _mquery_end(self, mongoquery):
+    def _mquery_end(self, mongoquery: MongoQuery) -> Query:
         """ Finalize a MongoQuery and generate a Query """
         return mongoquery.end()
 
-    def _mquery(self, query_object=None, *filter, **filter_by):
+    def _mquery(self, query_object: Union[dict, None] = None, *filter, **filter_by) -> Query:
         """ Run a MongoQuery and invoke the View's hooks.
 
             This method is used by other methods to initialize all CRUD queries in this view.
 
             :param query_object: Query Object
-            :type query_object: dict | None
             :param filter: Additional filter() criteria
             :param filter_by: Additional filter_by() criteria
-            :rtype: sqlalchemy.orm.Query
             :raises exc.InvalidQueryError: Query Object errors made by the user
         """
         # Initialize the MongoQuery
@@ -378,7 +353,7 @@ class CrudViewMixin(object):
         # Done
         return q
 
-    def _mquery_simple(self, query_object=None, *filter, **filter_by):
+    def _mquery_simple(self, query_object: dict = None, *filter, **filter_by) -> MongoQuery:
         """ Use a MongoQuery to make a Query, with the Query Object, and initial custom filtering applied.
 
             This method does not run the View's hooks; that's why it is "simple".
@@ -387,7 +362,6 @@ class CrudViewMixin(object):
             :type query_object: dict | None
             :param filter: Additional filter() criteria
             :param filter_by: Additional filter_by() criteria
-            :rtype: sqlalchemy.orm.Query
             :raises exc.InvalidQueryError: Query Object errors made by the user
         """
         # We have to make a Query object and filter it in advance,
@@ -406,7 +380,7 @@ class CrudViewMixin(object):
         # Done
         return mquery
 
-    def _get_one(self, query_obj, *filter, **filter_by):
+    def _get_one(self, query_obj: dict, *filter, **filter_by) -> object:
         """ Utility method that fetches a single entity.
 
             You will probably want to override it with custom error handling
@@ -414,7 +388,6 @@ class CrudViewMixin(object):
             :param query_obj: Query Object
             :param filter: Additional filter() criteria
             :param filter_by: Additional filter_by() criteria
-            :rtype: DeclarativeMeta
             :raises exc.InvalidQueryError: Query Object errors made by the user
             :raises sqlalchemy.orm.exc.NoResultFound: Nothing found
             :raises sqlalchemy.orm.exc.MultipleResultsFound: Multiple found
@@ -425,7 +398,7 @@ class CrudViewMixin(object):
         # Result
         return query.one()
 
-    def _handle_saving_relationships(self, entity_dict, prev_instance, wrapped_method):
+    def _handle_saving_relationships(self, entity_dict: dict, prev_instance: object, wrapped_method: Callable) -> object:
         """ A helper wrapper that will save relationships of an instance while it's being created or updated.
 
             The idea is that this method will pluck `self.saves_relations` relatioships from the entity_dict,

@@ -204,9 +204,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             self.assertTrue(qs.endswith(expected_ends), '{!r} should end with {!r}'.format(qs, expected_ends))
 
         # Empty
-        test_sort(None, u'FROM u')
-        test_sort([], u'FROM u')
-        test_sort(OrderedDict(), u'FROM u')
+        test_sort(None, 'FROM u')
+        test_sort([], 'FROM u')
+        test_sort(OrderedDict(), 'FROM u')
 
         # List
         test_sort(['id-', 'age-'], 'ORDER BY u.id DESC, u.age DESC')
@@ -228,9 +228,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             self.assertTrue(qs.endswith(expected_ends), '{!r} should end with {!r}'.format(qs, expected_ends))
 
         # Empty
-        test_group(None, u'FROM u')
-        test_group([], u'FROM u')
-        test_group(OrderedDict(), u'FROM u')
+        test_group(None, 'FROM u')
+        test_group([], 'FROM u')
+        test_group(OrderedDict(), 'FROM u')
 
         # List
         test_group(['id-', 'age-'], 'GROUP BY u.id DESC, u.age DESC')

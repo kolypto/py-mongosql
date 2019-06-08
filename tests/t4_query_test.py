@@ -305,6 +305,8 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
         )
 
         # === Test: User, projection + join Article: projection + join Comment: projection
+        # TODO: FIXME: sqlalchemy 1.2.x: SAWarning: Column 'id' on table <selectable> being replaced by Column('id'),
+        #  which has the same key. Consider use_labels for select() statements.
         ssn = self.Session()
         user = mq_user.query(project=('name',),
                              join={'articles': dict(project=('title',),

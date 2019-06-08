@@ -688,12 +688,12 @@ class HandlersTest(unittest.TestCase):
 
         s = stmt2sql(f.compile_statement())
         # We rely on OrderedDict, so the order of arguments should be perfect
-        self.assertIn(u"(EXISTS (SELECT 1 \n"
-                         "FROM a, c \n"
-                         "WHERE a.id = c.aid AND c.id = 1 AND c.uid > 18))", s)
-        self.assertIn(u"(EXISTS (SELECT 1 \n"
-                         "FROM u, a \n"
-                         "WHERE u.id = a.uid AND u.id = 1 AND u.name NOT IN (a, b)))", s)
+        self.assertIn("(EXISTS (SELECT 1 \n"
+                        "FROM a, c \n"
+                        "WHERE a.id = c.aid AND c.id = 1 AND c.uid > 18))", s)
+        self.assertIn("(EXISTS (SELECT 1 \n"
+                        "FROM u, a \n"
+                        "WHERE u.id = a.uid AND u.id = 1 AND u.name NOT IN (a, b)))", s)
 
         # === Test: Hybrid Properties
         f = Article_filter().input(dict(hybrid=1))
