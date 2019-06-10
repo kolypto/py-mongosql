@@ -13,7 +13,7 @@ class MongoLimit(MongoQueryHandlerBase):
         * 'offset': None, or int: OFFSET for the query
     """
 
-    query_object_section_name = 'sort'
+    query_object_section_name = 'limit'
 
     def __init__(self, model, bags, max_items=None):
         """ Init a limit

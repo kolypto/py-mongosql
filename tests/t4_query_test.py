@@ -1,19 +1,17 @@
 import unittest
 
 from sqlalchemy import inspect
-from sqlalchemy.orm import Load
 
 from mongosql import Reusable, MongoQuery, MongoQuerySettingsDict
 
 from . import t_raiseload_col_test
 from . import models
-from .util import ExpectedQueryCounter
-
+from .util import QueryLogger, TestQueryStringsMixin
 
 row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
 
 
-class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
+class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin, unittest.TestCase):
     """ Test MongoQuery """
 
     # Enable SQL query logging
@@ -334,3 +332,96 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, unittest.TestCase):
                          'article'},
             unloaded={}
         )
+
+    def test_end_count(self):
+        """ Test CountingQuery """
+
+        m = models.Article
+
+        # Get the actual count and the ids
+        ssn = self.Session()
+        COUNT = ssn.query(m).count()
+        IDS = sorted([r[0] for r in ssn.query(m.id)])
+
+        assert COUNT == 6  # we rely on this number
+
+        resultIds = lambda results: sorted([r.id for r in results])
+
+        # === Test: simple count: qc.count() and then qc.__iter()
+        qc = m.mongoquery(ssn).query(project=('id',), sort=('id+',)).end_count()
+
+        with QueryLogger(self.engine) as ql:
+            # count is alright
+            self.assertEqual(qc.count, COUNT)
+
+            # results are alright
+            self.assertListEqual(IDS, resultIds(list(qc)))
+
+        # the query is what we expect
+        self.assertEqual(len(ql), 1)
+        self.assertQuery(ql[0],
+                         'SELECT a.id AS a_id, count(*) OVER () AS anon_1',
+                         'FROM a ORDER BY a.id')
+
+        # === Test: simple count: qc.__iter(), and then qc.count()
+        # These two scenarios are distinct:
+        # sometimes we may get the count, and then iterate over the results, but
+        # sometimes we may iterate first, and only then get the count.
+        qc = m.mongoquery(ssn).query(project=('id',), sort=('id+',)).end_count()
+
+        with QueryLogger(self.engine) as ql:
+            # results are right
+            self.assertListEqual(IDS, resultIds(list(qc)))
+
+            # the count is right
+            self.assertEqual(qc.count, COUNT)
+
+        # the query is what we expect
+        self.assertEqual(len(ql), 1)
+        self.assertQuery(ql[0],
+                         'SELECT a.id AS a_id, count(*) OVER () AS anon_1',
+                         'FROM a ORDER BY a.id')
+
+        # === Test: count with an offset
+        qc = m.mongoquery(ssn).query(project=('id',), sort=('id+',),
+                                     skip=1, limit=3  # limit, offset
+                                     ).end_count()
+
+        with QueryLogger(self.engine) as ql:
+            # count is alright
+            self.assertEqual(qc.count, COUNT)  # still the big total!
+
+            # results are alright
+            self.assertListEqual(IDS[1:4], resultIds(list(qc)))  # but the results are limited
+
+        # Just one query
+        self.assertEqual(len(ql), 1)
+
+        # === Test: count with a large offset: an extra query has to be made
+        qc = m.mongoquery(ssn).query(project=('id',), sort=('id+',),
+                                     skip=9, limit=3  # skip everything
+                                     ).end_count()
+
+        with QueryLogger(self.engine) as ql:
+            # count is alright
+            self.assertEqual(qc.count, COUNT)  # still the big total!
+
+            # results are alright
+            self.assertListEqual([], resultIds(list(qc)))  # no results
+
+        # Two queries were made this time
+        self.assertEqual(len(ql), 2)
+        # First query: attempted load
+        self.assertQuery(ql[0],
+                         'SELECT a.id AS a_id, count(*) OVER () AS anon_1',
+                         'FROM a ORDER BY a.id',
+                         'LIMIT 3 OFFSET 9')
+        # Second query: count
+        self.assertQuery(ql[1],
+                         'SELECT count(*) AS count_1',
+                         'FROM (SELECT a.id AS a_id',
+                         'FROM a ORDER BY a.id) AS anon_1')
+
+        # LIMIT and OFFSET were removed from the second query
+        self.assertNotIn('OFFSET', ql[1])
+        self.assertNotIn('LIMIT', ql[1])

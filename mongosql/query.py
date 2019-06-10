@@ -6,17 +6,13 @@ from sqlalchemy.orm import Query, Load, defaultload
 from .bag import ModelPropertyBags
 from . import handlers
 from .exc import InvalidQueryError
-from .util import MongoQuerySettingsHandler
+from .util import MongoQuerySettingsHandler, CountingQuery
 
 from typing import Union, Mapping, Iterable, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import RelationshipProperty
 from .util import MongoQuerySettingsDict
-
-# TODO: Run a query with a LIMIT/OFFSET and also get the total number of rows?
-#   https://stackoverflow.com/questions/28888375/
-
 
 
 class MongoQuery:
@@ -246,6 +242,17 @@ class MongoQuery:
                 q = handler.alter_query(q, as_relation=self._as_relation)
 
         return q
+
+    def end_count(self) -> CountingQuery:
+        """ Get the result, and also count the total number of rows.
+
+            Be aware that the cost will be substantially higher than without the total number,
+            but still cheaper than two separate queries.
+
+            Numbers: this gives about 50% boost to small result sets, and about 15% boost to larger result sets.
+        """
+        # Get the query and wrap it with a counting query
+        return CountingQuery(self.end())
 
     # Extra features
 

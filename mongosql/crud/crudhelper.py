@@ -268,7 +268,7 @@ class StrictCrudHelper(CrudHelper):
 
     def _update_model(self, entity_dict: Mapping, instance: object) -> object:
         # Remove ro & const fields
-        self._remove_entity_dict_fields(entity_dict, self.ro_fields)
+        self._remove_entity_dict_fields(entity_dict, self._ro_and_const_fields)
 
         # Super
         return super()._update_model(entity_dict, instance)

@@ -32,5 +32,7 @@ from mongosql.util import Reusable
 from mongosql.util import raiseload_col
 # selectinquery() relationship loader that supports custom queries
 from mongosql.util import selectinquery
+# `Query` object wrapper that is able to query and count() at the same time
+from mongosql.util import CountingQuery
 # Settings objects for MongoQuery and StrictCrudHelper
 from mongosql.util import MongoQuerySettingsDict, StrictCrudHelperSettingsDict
