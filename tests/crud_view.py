@@ -1,4 +1,4 @@
-from mongosql import CrudViewMixin, StrictCrudHelper, StrictCrudHelperSettingsDict
+from mongosql import CrudViewMixin, StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
 
 from . import models
 from flask import request, g
@@ -60,9 +60,6 @@ class ArticlesView(RestfulView, CrudViewMixin):
     entity_name = 'article'
     entity_names = 'articles'
 
-    # Can save relationships
-    saves_relations = ('comments',)
-
     # Implement the method that fetches the Query Object for this request
     def _get_query_object(self):
         """ Get Query Object from request
@@ -110,10 +107,6 @@ class ArticlesView(RestfulView, CrudViewMixin):
         # Even if our code loads some more columns (and it does!), the client will always get what they requested.
         return list(map(self._return_instance, entities))
 
-    def _save_relations(self, _new, _prev=None, comments=None):
-        pass  # TODO: unit-test saving relationships
-
-
     def get(self, id):
         item = self._method_get(id=id)
         return {self.entity_name: self._return_instance(item)}
@@ -149,3 +142,17 @@ class ArticlesView(RestfulView, CrudViewMixin):
         return {self.entity_name: self._return_instance(instance)}
 
     # endregion
+
+    @saves_relations('comments')
+    def save_comments(self, new, prev=None, comments=None):
+        # Just store it in the class for unit-test to find it
+        self.__class__._save_comments__args = dict(new=new, prev=prev, comments=comments)
+
+    @saves_relations('user', 'comments')
+    def save_relations(self, new, prev=None, user=None, comments=None):
+        # Just store it in the class for unit-test to find it
+        self.__class__._save_relations__args = dict(new=new, prev=prev, user=user, comments=comments)
+
+    _save_comments__args = None
+    _save_relations__args = None
+

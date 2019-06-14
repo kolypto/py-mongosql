@@ -1,10 +1,12 @@
 from enum import Enum
+from functools import partial, reduce, lru_cache
 
+from mongosql.util.method_decorator import method_decorator
 from ..query import MongoQuery
 from ..util.history_proxy import ModelHistoryProxy
 from .crudhelper import CrudHelper, StrictCrudHelper
 
-from typing import Iterable, Mapping, Set, Union, Tuple, Callable
+from typing import Iterable, Mapping, Set, Union, Tuple, Callable, List
 from sqlalchemy.orm import Query, Session
 
 
@@ -27,6 +29,7 @@ class CrudViewMixin:
         4. If necessary, implement the _save_hook() to customize new & updated entities
         5. Override _method_list() and _method_get() to customize its output
         6. Override _method_create(), _method_update(), _method_delete() and implement saving to the DB
+        7. Use @saves_relations method decorator to handle custom fields in the input dict
 
         For an example on how to use CrudViewMixin, see this implementation:
 
@@ -44,9 +47,6 @@ class CrudViewMixin:
     #: Note that you can also use related columns: "relation.col_name" to ensure it's loaded (join-project)
     #: Remember that every time you use ensure_loaded() on a relationship, you disable filtering for it!
     ensure_loaded = ()
-
-    #: The names of relationships that this View is capable of saving. They will be given to _save_relations() as kwargs
-    saves_relations = ()
 
     def __init__(self):
         #: The MongoQuery for this request, if it was indeed initialized by _mquery()
@@ -83,27 +83,7 @@ class CrudViewMixin:
         """
         return mongoquery
 
-    def _save_relations(self, _new: object, _prev: Union[object, None] = None, **relations: dict):
-        """ A hook that implements saving related models.
-
-        Whenever a relationship is named in the 'saves_relations' class attribute,
-        they are plucked out of the incoming JSON dict, and after an entity is created,
-        it is passed to this hook.
-
-        Saving a relationship is always a custom procedure; that's why it is implemented through this method.
-
-        In addition to saving relationships, this method can be used to save any custom properties:
-        they're plucked out, and handled manually anyway.
-
-        NOTE: this method is executed before _save_hook() is.
-
-        :param _new: The new instance
-        :param _prev: Previously persisted version (is provided only when updating).
-        :param relations: Values for every relation
-        """
-        raise NotImplementedError('Saving relations is not yet implemented for this view')
-
-    def _save_hook(self, new: object, prev: Union[object, None] = None):
+    def _save_hook(self, new: object, prev: object = None):
         """ Hook into create(), update() methods, before an entity is saved.
 
             This allows to make some changes to the instance before it's actually saved.
@@ -315,13 +295,12 @@ class CrudViewMixin:
     @_mongoquery.setter
     def _mongoquery(self, mongoquery: MongoQuery):
         self.__mongoquery = mongoquery
-        return self.__mongoquery
 
     def _mquery_end(self, mongoquery: MongoQuery) -> Query:
         """ Finalize a MongoQuery and generate a Query """
         return mongoquery.end()
 
-    def _mquery(self, query_object: Union[dict, None] = None, *filter, **filter_by) -> Query:
+    def _mquery(self, query_object: Mapping = None, *filter, **filter_by) -> Query:
         """ Run a MongoQuery and invoke the View's hooks.
 
             This method is used by other methods to initialize all CRUD queries in this view.
@@ -353,7 +332,7 @@ class CrudViewMixin:
         # Done
         return q
 
-    def _mquery_simple(self, query_object: dict = None, *filter, **filter_by) -> MongoQuery:
+    def _mquery_simple(self, query_object: Mapping = None, *filter, **filter_by) -> MongoQuery:
         """ Use a MongoQuery to make a Query, with the Query Object, and initial custom filtering applied.
 
             This method does not run the View's hooks; that's why it is "simple".
@@ -380,7 +359,7 @@ class CrudViewMixin:
         # Done
         return mquery
 
-    def _get_one(self, query_obj: dict, *filter, **filter_by) -> object:
+    def _get_one(self, query_obj: Mapping, *filter, **filter_by) -> object:
         """ Utility method that fetches a single entity.
 
             You will probably want to override it with custom error handling
@@ -401,29 +380,92 @@ class CrudViewMixin:
     def _handle_saving_relationships(self, entity_dict: dict, prev_instance: object, wrapped_method: Callable) -> object:
         """ A helper wrapper that will save relationships of an instance while it's being created or updated.
 
+            Every method decorated with @saves_relations handles one relationship.
             The idea is that this method will pluck `self.saves_relations` relatioships from the entity_dict,
             and then pass them to the `_save_relations()` handler.
 
             Args:
                 entity_dict:
                     A dict that has come from the user that's going to save an entity
-                old_instance:
+                prev_instance:
                     The previous version of the instance (if available)
                 wrapped_method:
                     The method wrapped with this helper.
         """
         # Pluck relations out of the entity dict
         relations_to_be_saved = {k: entity_dict.pop(k, None)
-                                 for k in self.saves_relations}
+                                 for k in saves_relations.all_relation_names_from(self.__class__)}
 
         # Update it
         new_instance = wrapped_method(entity_dict)
 
         # Save relations
-        if relations_to_be_saved:
-            self._save_relations(new_instance, prev_instance, **relations_to_be_saved)
+        saves_relations.execute_handler_methods(
+            self, relations_to_be_saved,
+            new_instance, prev_instance
+        )
 
         # Done
         return new_instance
 
     # endregion
+
+
+class saves_relations(method_decorator):
+    """ A decorator that marks a method that handles saving some related models (or any other custom values)
+
+        Whenever a relationship is marked for saving with the help of this decorator,
+        it is plucked out of the incoming JSON dict, and after an entity is created,
+        it is passed to the method that this decorator decorates.
+
+        In addition to saving relationships, a decorated mthod can be used to save any custom properties:
+        they're plucked out of the incoming entity dict, and handled manually anyway.
+        Note that all attributes that do not exist on the model are plucked out, and the only way to handle them
+        is through this method.
+
+        NOTE: this method is executed before _save_hook() is.
+
+        Example:
+
+            class UserView(CrudViewMixin):
+                @saves_relations('articles')
+                def save_articles(self, new: object, prev: object = None, articles = None):
+                    # ... articles-saving logic
+
+        NOTE: the handler method is called with two positional arguments, and the rest being keyword arguments:
+
+            save_articles(new_instance, prev_instance, **relations_to_be_saved)
+
+        NOTE: If the user did not submit any related entity, the method is still called, with relationship argument = None.
+
+        Multiple relations can be provided: in this case, all of them are handled with one method.
+    """
+    METHOD_PROPERTY_NAME = 'saves_relations'
+
+    def __init__(self, *field_names: Iterable[str]):
+        assert isinstance(field_names, Iterable), "No `field_name` provided to @saves_relations which requires an argument"
+        self.field_names = field_names
+
+        super().__init__()
+
+    @classmethod
+    def all_relation_names_from(cls, View: type) -> Set[str]:
+        """ Go through all @saves_relations and collect the field names that they handle """
+        return reduce(lambda acc, d: acc.update(d.field_names) or acc,
+                      cls.all_decorators_from(View),
+                      set())
+
+    @classmethod
+    def execute_handler_methods(cls, view: object, input_data: Mapping, *decorator_args):
+        """ Given the input data, execute all decorated methods.
+
+            It will go through all the decorated methods that you've provided (for performance reasons)
+
+        """
+        View = view.__class__
+        for decorator in cls.all_decorators_from(View):
+            # Get the kwargs: the relationships (or whatever fields)
+            decorator_kwargs = {name: input_data.get(name, None)
+                                for name in decorator.field_names}
+            # Call it
+            decorator.method(view, *decorator_args, **decorator_kwargs)

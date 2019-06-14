@@ -1,5 +1,6 @@
 
 import unittest
+from typing import Callable
 
 from flask import Flask, g
 from flask_jsontools import FlaskJsonClient, DynamicJSONEncoder
@@ -7,7 +8,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from . import models
 from .crud_view import ArticlesView
-from mongosql import StrictCrudHelper, StrictCrudHelperSettingsDict
+from mongosql import StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
 
 
 class CrudTest(unittest.TestCase):
@@ -382,3 +383,132 @@ class CrudTest(unittest.TestCase):
                 assert False, 'Should throw an exception'
             except:
                 pass
+
+    def test_saves_relations(self):
+        """ Test how @saves_relations works """
+
+        # === Test: @saves_relations
+        # Test the behavior of the decorator on a custom view class
+        class View:
+            def __init__(self):
+                self.log = set()
+
+            # simple: save once
+            @saves_relations('a')
+            def save_a(self, new, old=None, a=None):
+                self.log.add('save_a: new={new}, old={old}, a={a}'.format(**locals()))
+
+            # save twice
+            @saves_relations('a')
+            def save_a_again(self, new, old=None, a=None):
+                self.log.add('save_a_again: new={new}, old={old}, a={a}'.format(**locals()))
+
+            # save another
+            @saves_relations('b')
+            def save_b(self, new, old=None, b=None):
+                self.log.add('save_b: new={new}, old={old}, b={b}'.format(**locals()))
+
+            # save both
+            @saves_relations('a', 'b')
+            def save_ab(self, new, old=None, a=None, b=None):
+                self.log.add('save_ab: new={new}, old={old}, a={a}, b={b}'.format(**locals()))
+
+        # Construct a view
+        view = View()
+
+        # Test: a descriptor can only be accessed through the dict
+        self.assertNotIsInstance(View.save_a, saves_relations)
+        self.assertNotIsInstance(view.save_a, saves_relations)
+        self.assertIsInstance(View.save_a, Callable)
+        self.assertIsInstance(view.save_a, Callable)
+        self.assertIsInstance(View.__dict__['save_a'], saves_relations)
+
+        # Test: getting the descriptor through the class
+        self.assertIsInstance(View.save_a.saves_relations, saves_relations)
+        self.assertIsInstance(saves_relations.get_method_decorator(View, 'save_a'), saves_relations)
+
+        # Test: the descriptor returns the wrapped method
+        self.assertIs(
+            View.save_a,
+            View.__dict__['save_a'].method
+        )
+
+        # Test: collects decorators correctly
+        decorators = saves_relations.all_decorators_from(View)
+        self.assertEqual(
+            {'save_a', 'save_a_again', 'save_b', 'save_ab'},
+            {d.method_name for d in decorators}
+        )
+
+        # Test: collects relationship names correctly
+        self.assertEqual(
+            saves_relations.all_relation_names_from(View),
+            {'a', 'b'}
+        )
+
+        # Fails with an object
+        with self.assertRaises(ValueError):
+            saves_relations.all_decorators_from(view)
+        with self.assertRaises(ValueError):
+            saves_relations.all_relation_names_from(view)
+
+        # === Test: execute_handler_methods(), empty input
+        view = View()
+        saves_relations.execute_handler_methods(view, dict(), 'a', None)
+
+        self.assertEqual(view.log, {
+            # all handlers were executed,even though there was no input
+            'save_a: new=a, old=None, a=None',
+            'save_a_again: new=a, old=None, a=None',
+            'save_ab: new=a, old=None, a=None, b=None',
+            'save_b: new=a, old=None, b=None',
+        })
+
+        # === Test: execute_handler_methods(), 'a' provided
+        view = View()
+        saves_relations.execute_handler_methods(view, dict(a='A'), 'a', None)
+
+        self.assertEqual(view.log, {
+            # all handlers executed, 'a' now provided
+            'save_a: new=a, old=None, a=A',
+            'save_a_again: new=a, old=None, a=A',
+            'save_ab: new=a, old=None, a=A, b=None',
+            'save_b: new=a, old=None, b=None',
+        })
+
+        # === Test: @saves_relations actually handles requests
+        with self.app.test_client() as c:
+            # Post
+            rv = c.post('/article/', json=dict(
+                article=dict(uid=999, title='999',
+                             # `user` provided, `comments` not provided
+                             user=dict(example=1)
+                             )))
+            self.assertIn('article', rv.get_json())
+
+            # See what happened
+            self.assertEqual(ArticlesView._save_comments__args['new'].title, '999')
+            self.assertIsNone(ArticlesView._save_comments__args['prev'])
+            self.assertIsNone(ArticlesView._save_comments__args['comments'])
+
+            self.assertEqual(ArticlesView._save_relations__args['new'].title, '999')
+            self.assertIsNone(ArticlesView._save_relations__args['prev'])
+            self.assertIsNone(ArticlesView._save_relations__args['comments'])
+            self.assertEqual(ArticlesView._save_relations__args['user'], dict(example=1))
+
+        # === Test: on a class with __slots__
+        class ViewSlots:
+            __slots__ = ()
+
+            @saves_relations('a')
+            def save_a(self, new, old=None, a=None):
+                pass
+
+        view = ViewSlots()
+
+        # Test: collects decorators correctly
+        decorators = saves_relations.all_decorators_from(ViewSlots)
+        self.assertEqual(
+            {'save_a'},
+            {d.method_name for d in decorators}
+        )
