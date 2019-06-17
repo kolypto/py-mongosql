@@ -1,3 +1,96 @@
+"""
+### Filter Operation
+Filtering corresponds to the `WHERE` part of an SQL query.
+
+MongoSQL-powered API endpoints would typically return the list of *all* items, and leave it up to
+the API user to filter them the way they like.
+
+Example of filtering:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    // only select grown-up females
+    filter: {
+        // all conditions are AND-ed together
+        age: { $gte: 18, $lte: 25 },  // age 18..25
+        sex: 'female',  // sex = "female"
+    }
+}))
+```
+
+#### Field Operators
+The following [MongoDB query operators](https://docs.mongodb.com/manual/reference/operator/query/)
+operators are supported:
+
+Supports the following MongoDB operators:
+
+* `{ a: 1 }` - equality check: `field = value`. This is a shortcut for the `$eq` operator.
+* `{ a: { $eq: 1 } }` - equality check: `field = value` (alias).
+* `{ a: { $lt: 1 } }`  - less than: `field < value`
+* `{ a: { $lte: 1 } }` - less or equal than: `field <= value`
+* `{ a: { $ne: 1 } }` - inequality check: `field != value`.
+* `{ a: { $gte: 1 } }` - greater or equal than: `field >= value`
+* `{ a: { $gt: 1 } }` - greater than: `field > value`
+* `{ a: { $in: [...] } }` - any of. Field is equal to any of the given array of values.
+* `{ a: { $nin: [...] } }` - none of. Field is not equal to any of the given array of values.
+* `{ a: { $exists: true } }` - value is not `null`.
+
+Supports the following operators on an `ARRAY` field, for a scalar value:
+
+* `{ arr: 1 }`  - containment check: field array contains the given value: `ANY(array) = value`.
+* `{ arr: { $ne: 1 } }` - non-containment check: field array does not contain value: `ALL(array_col) != value`.
+* `{ arr: { $size: 0 } }` - Has a length of N (zero, to check for an empty array)
+
+
+Supports the following operators on an `ARRAY` field, for an array value:
+
+* `{ arr: [...] }`  - equality check: two arrays are completely equal: `arr = value`.
+* `{ arr: { $ne: [...] } }` - inequality check: two arrays are not equal: `arr != value`.
+* `{ arr: { $in: [...] } }` - intersection check. Check that the two arrays have common elements.
+* `{ arr: { $nin: [...] } }` - no intersection check. Check that the two arrays have no common elements.
+* `{ arr: { $all: [...] } }` - Contains all values from the given array
+
+#### Boolean Operators
+
+In addition to comparing fields to a value, the following boolean operators are supported
+that enable you to make complex queries:
+
+* `{ $or: [ {..criteria..}, .. ] }`  - any is true
+* `{ $and: [ {..criteria..}, .. ] }` - all are true
+* `{ $nor: [ {..criteria..}, .. ] }` - none is true
+* `{ $not: { ..criteria.. } }` - negation
+
+Example usage:
+
+```javascript
+$.get('/api/books?query=' + JSON.stringify({
+    // either of the two options are fine
+    $or: [
+        // First option: sci-fi by Gardner Dozois
+        { genre: 'sci-fi', editor: 'Gardner Dozois' },
+        // Second option: any documentary
+        { genre: 'documentary' },
+    ]
+}))
+```
+
+#### Related columns
+You can also filter the data by the *columns on a related model*.
+This is achieved by using a dot after the relationship name:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    filter: {
+        // Fields of the 'user' model
+        first_name: 'John',
+        last_name: 'Doe',
+        // Field of a related 'address' model
+        'address.zip': '100098',
+    }
+}))
+```
+"""
+
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func

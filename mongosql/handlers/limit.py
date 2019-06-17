@@ -1,3 +1,26 @@
+"""
+### Slice Operation
+Slicing corresponds to the `LIMIT .. OFFSET ..` part of an SQL query.
+
+The Slice operation consists of two optional parts:
+
+* `limit` would limit the number of items returned by the API
+* `skip` would shift the "window" a number of items
+
+Together, these two elements implement pagination.
+
+Example:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    limit: 100, // 100 items per page
+    skip: 200,  // skip 200 items, meaning, we're on the third page
+}))
+```
+
+Values: can be a number, or a `null`.
+"""
+
 from sqlalchemy import inspect
 from sqlalchemy.sql import func, literal_column
 

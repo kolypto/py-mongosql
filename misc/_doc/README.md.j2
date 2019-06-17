@@ -1,0 +1,281 @@
+[![Build Status](https://api.travis-ci.org/kolypto/py-mongosql.png?branch=master)](https://travis-ci.org/kolypto/py-mongosql)
+[![Pythons](https://img.shields.io/badge/python-3.6%E2%80%933.8-blue.svg)](.travis.yml)
+
+
+MongoSQL
+========
+
+{{ mongosql['doc'] }}
+
+
+
+Table of Contents
+=================
+
+
+Querying
+========
+
+{{ handlers['doc'] }}
+
+Operations
+----------
+
+{{ operations['project']['doc'] }}
+{{ operations['sort']['doc'] }}
+{{ operations['filter']['doc'] }}
+{{ operations['join']['doc'] }}
+{{ operations['joinf']['doc'] }}
+{{ operations['aggregate']['doc'] }}
+{{ operations['group']['doc'] }}
+{{ operations['limit']['doc'] }}
+{{ operations['count']['doc'] }}
+
+
+JSON Column Support
+-------------------
+
+A `JSON` (or `JSONB`) field is a column that contains an embedded object,
+which itself has fields too. You can access these fields using a dot.
+
+Given a model fields:
+
+```javascript
+model.data = { rating: 5.5, list: [1, 2, 3], obj: {a: 1} }
+```
+
+You can reference JSON field's internals:
+
+```javascript
+'data.rating'
+'data.list.0'
+'data.obj.a'
+'data.obj.z'  // gives NULL when a field does not exist
+```
+
+Operations that support it:
+
+* [Sort](#sort-operation) and [Group](#group-operation) operations:
+
+    ```javascript
+    $.get('/api/user?query=' + JSON.stringify({
+        sort: ['data.rating']  // JSON field sorting
+    }))
+    ```
+
+* [Filter](#filter-operation) operation:
+
+    ```javascript
+    $.get('/api/user?query=' + JSON.stringify({
+        filter: {
+            'data.rating': { $gte: 5.5 },  // JSON field condition
+        }
+    }))
+    ```
+
+    or this is how you test that a property is missing:
+
+    ```javascript
+    { 'data.rating': null }  // Test for missing property
+    ```
+
+    *CAVEAT*: PostgreSQL is a bit capricious about data types, so MongoSql tries to guess it *using the operand you provide*.
+    Hence, when filtering with a property known to contain a `float`-typed field, please provide a `float` value!.
+
+* [Aggregate](#aggregate-operation):
+
+    ```javascript
+    $.get('/api/user?query=' + JSON.stringify({
+        aggregate: {
+            avg_rating: { $avg: 'data.rating' }
+        }
+    }))
+    ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{% macro doc_class_method(method) -%}
+
+### `{{ method['qrtsignature'] }}`
+{{ method['doc'] }}
+
+{% if method['args'] %}
+Arguments:
+
+{% for arg in method['args'] %}
+* `{{ arg['name'] }}{% if arg['type'] %}: {{ arg['type'] }}{% endif %}{% if 'default' in arg %} = {{ arg['default'] }}{%
+ endif %}`: {{
+arg['doc']|indent(4) }}
+{% endfor %}
+{% endif %}
+
+{% if method['ret'] %}
+Returns{% if method['ret']['type'] %} `{{ method['ret']['type'] }}`{% endif %}{% if method['ret']['doc'] %}: {{ method['ret']['doc'] }}{% endif %}
+{% endif %}
+
+{% if method['exc'] %}
+Exceptions:
+
+{% for exc in method['exc'] %}
+* `{{ exc['name'] }}`: {{ exc['doc']|indent(4) }}
+{% endfor %}
+
+{% endif %}
+
+{% if method['example'] %}
+Example:
+
+{{ method['example'] }}
+
+{% endif %}
+
+{%- endmacro %}
+
+
+
+MongoSQL Programming Interface
+==============================
+
+MongoQuery
+----------
+{{ mongosql_query['doc'] }}
+
+MongoQuery Configuration
+------------------------
+
+{{ MongoQuerySettingsDict_init['doc'] }}
+
+Example:
+
+{{ MongoQuerySettingsDict_init['example'] }}
+
+The available settings are:
+
+{% for arg in MongoQuerySettingsDict_init['args'] %}
+* `{{ arg['name'] }}`: {{ arg['doc']|indent(4) }}
+{% endfor %}
+
+
+
+{{ StrictCrudHelperSettingsDict_init['doc'] }}
+
+{% for arg in StrictCrudHelperSettingsDict_init['args'] %}
+* `{{ arg['name'] }}`: {{ arg['doc']|indent(4) }}
+{% endfor %}
+
+
+MongoQuery API
+--------------
+
+### `{{ MongoQuery['cls']['signature'] }}`
+{{ MongoQuery['cls']['clsdoc'] }}
+
+{{ doc_class_method(MongoQuery['attrs']['from_query']) }}
+{{ doc_class_method(MongoQuery['attrs']['with_session']) }}
+{{ doc_class_method(MongoQuery['attrs']['query']) }}
+{{ doc_class_method(MongoQuery['attrs']['end']) }}
+{{ doc_class_method(MongoQuery['attrs']['end_count']) }}
+{{ doc_class_method(MongoQuery['attrs']['result_contains_entities']) }}
+{{ doc_class_method(MongoQuery['attrs']['result_is_scalar']) }}
+{{ doc_class_method(MongoQuery['attrs']['result_is_tuples']) }}
+{{ doc_class_method(MongoQuery['attrs']['ensure_loaded']) }}
+{{ doc_class_method(MongoQuery['attrs']['get_projection_tree']) }}
+{{ doc_class_method(MongoQuery['attrs']['get_full_projection_tree']) }}
+{{ doc_class_method(MongoQuery['attrs']['pluck_instance']) }}
+
+### Handlers
+In addition to this, `MongoQuery` lets you inspect the internals of the MongoQuery.
+Every handler is available as a property of the `MongoQuery`:
+
+* `MongoQuery.handler_project`: [handlers.MongoProject](mongosql/handlers/project.py)
+* `MongoQuery.handler_sort`: [handlers.MongoSort](mongosql/handlers/sort.py)
+* `MongoQuery.handler_group`: [handlers.MongoGroup](mongosql/handlers/group.py)
+* `MongoQuery.handler_join`: [handlers.MongoJoin](mongosql/handlers/join.py)
+* `MongoQuery.handler_joinf`: [handlers.MongoFilteringJoin](mongosql/handlers/joinf.py)
+* `MongoQuery.handler_filter`: [handlers.MongoFilter](mongosql/handlers/filter.py)
+* `MongoQuery.handler_aggregate`: [handlers.MongoAggregate](mongosql/handlers/aggregate.py)
+* `MongoQuery.handler_limit`: [handlers.MongoLimit](mongosql/handlers/limit.py)
+* `MongoQuery.handler_count`: [handlers.MongoCount](mongosql/handlers/count.py)
+
+Some of them have methods which may be useful for the application you're building,
+especially if you need to get some information out of `MongoQuery`.
+
+
+
+
+
+CRUD Helpers
+============
+
+{{ crudhelper['doc'] }}
+
+## `{{ CrudHelper['cls']['signature'] }}`
+{{ CrudHelper['cls']['clsdoc'] }}
+
+{{ doc_class_method(CrudHelper['attrs']['query_model']) }}
+{{ doc_class_method(CrudHelper['attrs']['create_model']) }}
+{{ doc_class_method(CrudHelper['attrs']['update_model']) }}
+
+
+## `{{ StrictCrudHelper['cls']['name'] }}`
+{{ StrictCrudHelper['cls']['clsdoc'] }}
+
+{{ doc_class_method(StrictCrudHelper['cls']) }}
+
+
+## `{{ CrudViewMixin['cls']['signature'] }}`
+{{ CrudViewMixin['cls']['clsdoc'] }}
+
+{{ doc_class_method(CrudViewMixin['attrs']['_get_db_session']) }}
+{{ doc_class_method(CrudViewMixin['attrs']['_get_query_object']) }}
+
+{{ doc_class_method(CrudViewMixin['attrs']['_method_get']) }}
+{{ doc_class_method(CrudViewMixin['attrs']['_method_list']) }}
+{{ doc_class_method(CrudViewMixin['attrs']['_method_create']) }}
+{{ doc_class_method(CrudViewMixin['attrs']['_method_update']) }}
+{{ doc_class_method(CrudViewMixin['attrs']['_method_delete']) }}
+
+{{ doc_class_method(CrudViewMixin['attrs']['_mongoquery_hook']) }}
+{{ doc_class_method(CrudViewMixin['attrs']['_save_hook']) }}
+
+
+## `@{{ saves_relations['cls']['signature'] }}`
+{{ saves_relations['cls']['clsdoc'] }}
+
+
+
+
+
+Other Useful Tools
+==================
+
+## `{{ ModelPropertyBags['cls']['signature'] }}`
+{{ ModelPropertyBags['cls']['clsdoc'] }}
+
+## `{{ CombinedBag['cls']['signature'] }}`
+{{ CombinedBag['cls']['clsdoc'] }}
+
+## `{{ CountingQuery['cls']['signature'] }}`
+{{ CountingQuery['cls']['clsdoc'] }}
+
+

@@ -1,3 +1,39 @@
+"""
+### Sort Operation
+
+Sorting corresponds to the `ORDER BY` part of an SQL query.
+
+The UI would normally require the records to be sorted by some field, or fields.
+
+The sort operation lets the API user specify the sorting of the results,
+which makes sense for API endpoints that return a list of items.
+
+An example of a sort operation would look like this:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    // sort by age, descending;
+    // then sort by first name, alphabetically
+    sort: ['age-', 'first_name+'],
+}))
+```
+
+### Syntax
+
+* Array syntax.
+
+    List of column names, optionally suffixed by the sort direction: `-` for `DESC`, `+` for `ASC`.
+    The default is `+`.
+
+    Example:
+
+    ```javascript
+    [ 'a+', 'b-', 'c' ]  // -> a ASC, b DESC, c DESC
+    ```
+
+Object syntax is not supported because it does not preserve the ordering of keys.
+"""
+
 from collections import OrderedDict
 
 from .base import MongoQueryHandlerBase

@@ -1,3 +1,12 @@
+"""
+MongoSql is designed to help with data selection for the APIs.
+To ease the pain of implementing CRUD for all of your models,
+MongoSQL comes with a CRUD helper that exposes MongoSQL capabilities for querying to the API user.
+Together with [RestfulView](https://github.com/kolypto/py-flask-jsontools#restfulview)
+from [flask-jsontools](https://github.com/kolypto/py-flask-jsontools),
+CRUD controllers are extremely easy to build.
+"""
+
 from sqlalchemy.orm import Query
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -5,20 +14,42 @@ from mongosql import exc
 from mongosql import MongoQuery, ModelPropertyBags
 from mongosql.util import Reusable
 
-from typing import Union, Mapping, Iterable, Set, Callable
+from typing import Union, Mapping, Iterable, Set, Callable, MutableMapping
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
 
 class CrudHelper:
-    """ Crud helper: an object that helps implement CRUD
+    """ Crud helper: an object that helps implement CRUD operations for an API endpoint:
 
-        Create: construct sqlalchemy instances from dict
-        Read: use MongoQuery for querying
-        Update: update sqlalchemy instances using a dict
-        Delete: use MongoQuery for deletion
+        * Create: construct SqlAlchemy instances from the submitted entity dict
+        * Read: use MongoQuery for querying
+        * Update: update SqlAlchemy instances from the submitted entity using a dict
+        * Delete: use MongoQuery for deletion
 
-        This object is supposed to be ininitialized only once;
+        Source: [mongosql/crud/crudhelper.py](mongosql/crud/crudhelper.py)
+
+        This object is supposed to be initialized only once;
         don't do it for every query, keep it at the class level!
+
+        Most likely, you'll want to keep it at the class level of your view:
+
+        ```python
+        from .models import User
+        from mongosql import CrudHelper
+
+        class UserView:
+            crudhelper = CrudHelper(
+                # The model to work with
+                User,
+                # Settings for MongoQuery
+                **MongoQuerySettingsDict(
+                    allowed_relations=('user_profile',),
+                )
+            )
+            # ...
+        ```
+
+        The following methods are available:
     """
 
     # The class to use for getting structural data from a model
@@ -93,7 +124,6 @@ class CrudHelper:
         if unk_cols:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
         return attr_names
-
 
     def create_model(self, entity_dict: Mapping) -> object:
         """ Create an instance from entity dict.
@@ -170,7 +200,9 @@ class CrudHelper:
 
 
 class StrictCrudHelper(CrudHelper):
-    """ Crud helper with limitations
+    """ A Strict Crud Helper imposes defaults and limitations on the API user:
+
+        Source: [mongosql/crud/crudhelper.py](mongosql/crud/crudhelper.py)
 
         - Read-only fields can not be set: not with create, nor with update
         - Constant fields can be set initially, but never be updated
@@ -197,16 +229,40 @@ class StrictCrudHelper(CrudHelper):
                  const_fields: Union[Iterable[str], Callable, None] = None,
                  query_defaults: Union[Iterable[str], Callable, None] = None,
                  **handler_settings):
-        """ Init a strict CRUD helper
+        """ Initializes a strict CRUD helper
 
-            Note: use a **StrictCrudHelperSettingsDict() to help you with the argument names and their docs!
+            Note: use a `**StrictCrudHelperSettingsDict()` to help you with the argument names and their docs!
 
-            :param model: The model to work with
-            :param ro_fields: List of read-only property names, or a callable which gives the list
-            :param rw_fields: List of writable property names, or a callable which gives the list
-            :param const_fields: List of property names that are constant once set, or a callable which gives the list
-            :param query_defaults: Defaults for every Query Object: Query Object will be merged into it.
-            :param handler_settings: Settings for the MongoQuery used to make queries
+            Args:
+                model: The model to work with
+                ro_fields: List of read-only property names, or a callable which gives the list
+                rw_fields: List of writable property names, or a callable which gives the list
+                const_fields: List of property names that are constant once set, or a callable which gives the list
+                query_defaults: Defaults for every Query Object: Query Object will be merged into it.
+                handler_settings: Settings for the `MongoQuery` used to make queries
+
+            Example:
+
+                ```python
+                from .models import User
+                from mongosql import StrictCrudHelper, StrictCrudHelperSettingsDict
+
+                class UserView:
+                    crudhelper = StrictCrudHelper(
+                        # The model to work with
+                        User,
+                        # Settings for MongoQuery and StrictCrudHelper
+                        **StrictCrudHelperSettingsDict(
+                            # Can never be set of modified
+                            ro_fields=('id',),
+                            # Can only be set once
+                            const_fields=('login',),
+                            # Relations that can be `join`ed
+                            allowed_relations=('user_profile',),
+                        )
+                    )
+                    # ...
+                ```
         """
         super(StrictCrudHelper, self).__init__(model, **handler_settings)
 
@@ -254,19 +310,19 @@ class StrictCrudHelper(CrudHelper):
         # Done
         return frozenset(ro_fields), frozenset(rw_fields), frozenset(cn_fields)
 
-    def _remove_entity_dict_fields(self, entity_dict: Mapping, rm_fields: Set[str]):
+    def _remove_entity_dict_fields(self, entity_dict: MutableMapping, rm_fields: Set[str]):
         """ Remove certain fields from the incoming entity dict """
         for k in set(entity_dict.keys()) & rm_fields:
             entity_dict.pop(k)
 
-    def _create_model(self, entity_dict: Mapping) -> object:
+    def _create_model(self, entity_dict: MutableMapping) -> object:
         # Remove ro fields
         self._remove_entity_dict_fields(entity_dict, self.ro_fields)
 
         # Super
         return super()._create_model(entity_dict)
 
-    def _update_model(self, entity_dict: Mapping, instance: object) -> object:
+    def _update_model(self, entity_dict: MutableMapping, instance: object) -> object:
         # Remove ro & const fields
         self._remove_entity_dict_fields(entity_dict, self._ro_and_const_fields)
 

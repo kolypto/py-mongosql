@@ -13,6 +13,20 @@ class CountingQuery:
 
         In order to be transparent, this class eliminates all those tuples in results and still returns objects
         like a normal query would. The total count is available through a property.
+
+        Example:
+
+            ```python
+            qc = CountingQuery(ssn.query(...))
+
+            # Get the count
+            qc.count  # -> 127
+
+            # Get the results
+            list(qc)
+
+            # (!) only one SQL query was made
+            ```
     """
     __slots__ = ('_query', '_original_query',
                  '_count', '_query_iterator',

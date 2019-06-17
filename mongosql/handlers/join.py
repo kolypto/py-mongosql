@@ -1,3 +1,64 @@
+"""
+### Join Operation
+Joining corresponds to the `LEFT JOIN` part of an SQL query (although implemented as a separate query).
+
+In the back-end database, the data is often kept in a *normalized form*:
+items of different types are kept in different places.
+This means that whenever you need a related item, you'll have to explicitly request it.
+
+The Join operation lets you load those related items.
+
+Please keep in mind that most relationships would be disabled on the back-end because of security concerns about
+exposing sensitive data. Therefore, whenever a front-end developer needs to have a relationship loaded,
+it has to be manually enabled on the back-end! Please feel free to ask.
+
+Examples follow.
+
+#### Syntax
+
+* Array syntax.
+
+    In its most simple form, all you need to do is just to provide the list of names of the relationships that you
+    want to have loaded:
+
+    ```javascript
+    $.get('/api/user?query=' + JSON.stringify({
+        join: ['user_profile', 'user_posts'],
+    }))
+    ```
+
+* Object syntax.
+
+    This syntax offers you great flexibility: with a nested Query Object, it is now posible to apply operations
+    to related entities: select just a few fields (projection), sort it, filter it, even limit it!
+
+    The nested Query Object supports projections, sorting, filtering, even joining further relations, and
+    limiting the number of related entities that are loaded!
+
+    In this object syntax, the object is an embedded Query Object. For instance:
+
+    ```javascript
+    $.get('/api/user?query=' + JSON.stringify({
+        join: {
+            // Load related 'posts'
+            posts: {
+                filter: { rating: { $gte: 4.0 } },  // Only load posts with raing > 4.0
+                sort: ['date-'],  // newest first
+                skip: 0,  // first page
+                limit: 100,  // 100 per page
+            },
+
+            // Load another relationship
+            'comments': null,  # No specific options, just load
+            }
+        }
+    }))
+    ```
+
+    Note that `null` can be used to load a relationship without custom querying.
+"""
+
+
 import json
 from sqlalchemy.orm import aliased, Query
 

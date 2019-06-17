@@ -6,15 +6,15 @@ SHELL := /bin/bash
 .PHONY: clean
 clean:
 	@rm -rf build/ dist/ *.egg-info/
-#README.md:
-#	@python misc/_doc/README.py | j2 --format=json -o README.md misc/_doc/README.md.j2
+README.md: $(shell find mongosql/) $(wildcard misc/_doc/**)
+	@python misc/_doc/README.py | j2 --format=json -o README.md misc/_doc/README.md.j2
 
 .PHONY: build publish-test publish
-build: README.rst
+build: README.md
 	@./setup.py build sdist bdist_wheel
-publish-test: README.rst
+publish-test: README.md
 	@twine upload --repository pypitest dist/*
-publish: README.rst
+publish: README.md
 	@twine upload dist/*
 
 

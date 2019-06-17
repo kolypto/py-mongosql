@@ -1,3 +1,24 @@
+"""
+### Count
+Slicing corresponds to the `SELECT COUNT(*)` part of an SQL query.
+
+Simply, return the number of items, without returning the items themselves. Just a number. That's it.
+
+Example:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    count: 1,
+}))
+```
+
+The `1` is the *on* switch. Replace it with `0` to stop counting.
+
+NOTE: In MongoSQL 2.0, there is a way to get both the list of items, *and* their count *simultaneously*.
+This would have way better performance than two separate queries.
+Please have a look: [CountingQuery](#counting-query) and [MongoQuery.end_count()](#mongoquery-end_count).
+"""
+
 from sqlalchemy import func
 from sqlalchemy import exc as sa_exc
 

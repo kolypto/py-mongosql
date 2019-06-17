@@ -20,20 +20,21 @@ class CRUD_METHOD(Enum):
 
 
 class CrudViewMixin:
-    """ Base class for implementations of CRUD views. This class is supposed to be re-initialized for every request.
+    """ A mixin class for implementations of CRUD views.
+
+        This class is supposed to be re-initialized for every request.
 
         To implement a CRUD view:
         1. Implement some method to extract the Query Object from the request
         2. Set `crudhelper` at the class level, initialize it with the proper settings
-        3. Implement the _get_db_session() method
-        4. If necessary, implement the _save_hook() to customize new & updated entities
-        5. Override _method_list() and _method_get() to customize its output
-        6. Override _method_create(), _method_update(), _method_delete() and implement saving to the DB
-        7. Use @saves_relations method decorator to handle custom fields in the input dict
+        3. Implement the `_get_db_session()` and the `_get_query_object()` methods
+        4. If necessary, implement the `_save_hook()` to customize new & updated entities
+        5. Override `_method_list()` and `_method_get()` to customize its output
+        6. Override `_method_create()`, `_method_update()`, `_method_delete()` and implement saving to the DB
+        7. Use [`@saves_relations`](#saves_relations) method decorator to handle custom fields in the input dict
 
         For an example on how to use CrudViewMixin, see this implementation:
-
-            tests/crud_view.py
+        [tests/crud_view.py](tests/crud_view.py)
 
         Attrs:
             _mongoquery (MongoQuery):
@@ -55,8 +56,10 @@ class CrudViewMixin:
         #: The current CRUD method
         self._current_crud_method = None
 
+    # region Abstract Methods
+
     def _get_db_session(self) -> Session:
-        """ Get a DB session to be used for queries made in this view
+        """ (Abstract method) Get a DB session to be used for queries made in this view
 
         :return: sqlalchemy.orm.Session
         """
@@ -64,17 +67,19 @@ class CrudViewMixin:
                                   .format(type(self)))
 
     def _get_query_object(self) -> Mapping:
-        """ Get the Query Object for the current query.
+        """ (Abstract method) Get the Query Object for the current query.
 
             Note that the Query Object is not only supported for get() and list() methods, but also for
             create(), update(), and delete(). This enables the API use to request a relationship right away.
         """
         raise NotImplementedError
 
+    # endregion
+
     # region Hooks
 
     def _mongoquery_hook(self, mongoquery: MongoQuery) -> MongoQuery:
-        """ A hook invoked in _mquery() to modify MongoQuery, if necessary
+        """ (Hook) A hook invoked in _mquery() to modify MongoQuery, if necessary
 
             This is the last chance to modify a MongoQuery.
             Right after this hook, it end()s, and generates an sqlalchemy Query.
@@ -84,7 +89,7 @@ class CrudViewMixin:
         return mongoquery
 
     def _save_hook(self, new: object, prev: object = None):
-        """ Hook into create(), update() methods, before an entity is saved.
+        """ (Hook) Hooks into create(), update() methods, before an entity is saved.
 
             This allows to make some changes to the instance before it's actually saved.
             The hook is provided with both the old and the new versions of the instance (!).
@@ -94,15 +99,15 @@ class CrudViewMixin:
         """
         pass
 
-    # endregion
-
     # NOTE: there's no delete hook. Override _method_delete() to implement it.
+
+    # endregion
 
     # ###
     # CRUD methods' implementations
 
     def _method_get(self, *filter, **filter_by) -> object:
-        """ Fetch a single entity: as in READ, single entity
+        """ (CRUD method) Fetch a single entity: as in READ, single entity
 
             Normally, used when the user has supplied a primary key:
 
@@ -120,7 +125,7 @@ class CrudViewMixin:
         return instance
 
     def _method_list(self, *filter, **filter_by) -> Iterable[object]:
-        """ Fetch a list of entities: as in READ, list of entities
+        """ (CRUD method) Fetch a list of entities: as in READ, list of entities
 
             Normally, used when the user has supplied no primary key:
 
@@ -181,7 +186,7 @@ class CrudViewMixin:
         return n
 
     def _method_create(self, entity_dict: dict) -> object:
-        """ Create a new entity: as in CREATE
+        """ (CRUD method) Create a new entity: as in CREATE
 
             Normally, used when the user has supplied no primary key:
 
@@ -210,7 +215,7 @@ class CrudViewMixin:
         return instance
 
     def _method_update(self, entity_dict: dict, *filter, **filter_by) -> object:
-        """ Update an existing entity by merging the fields: as in UPDATE
+        """ (CRUD method) Update an existing entity by merging the fields: as in UPDATE
 
             Normally, used when the user has supplied a primary key:
 
@@ -247,7 +252,7 @@ class CrudViewMixin:
         return instance
 
     def _method_delete(self, *filter, **filter_by) -> object:
-        """ Delete an existing entity: as in DELETE
+        """ (CRUD method) Delete an existing entity: as in DELETE
 
             Normally, used when the user has supplied a primary key:
 
@@ -425,12 +430,14 @@ class saves_relations(method_decorator):
 
         NOTE: this method is executed before _save_hook() is.
 
-        Example:
+        Example usage:
 
-            class UserView(CrudViewMixin):
-                @saves_relations('articles')
-                def save_articles(self, new: object, prev: object = None, articles = None):
-                    # ... articles-saving logic
+        ```python
+        class UserView(CrudViewMixin):
+            @saves_relations('articles')
+            def save_articles(self, new: object, prev: object = None, articles = None):
+                # ... articles-saving logic
+        ```
 
         NOTE: the handler method is called with two positional arguments, and the rest being keyword arguments:
 

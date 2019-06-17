@@ -71,7 +71,31 @@ class MongoQuerySettingsDict(dict):
                  related = None,
                  related_models = None,
                  ):
-        """ Settings for Query Object handlers.
+        """ `MongoQuery` has plenty of settings that lets you configure the way queries are made,
+        to fine-tune their security limitations, and to implement some custom behaviors.
+
+        These settings can be nicely kept in a [MongoQuerySettingsDict](mongosql/util/settings_dict.py)
+        and given to MongoQuery as the second argument.
+
+        Example:
+            ```python
+            from mongosql import MongoQuery, MongoQuerySettingsDict
+
+            mq = MongoQuery(models.User, MongoQuerySettingsDict(
+                bundled_project=dict(
+                    # can only join to the following relations
+                    allowed_relations=('articles', 'comments'),
+                    # configure nested queries
+                    related=dict(
+                        manager=dict(
+                            force_exclude=('password',),
+                        )
+                    ),
+                    # enable aggregation for columns
+                    aggregate_columns=('age',),
+                ),
+            ))
+            ```
         
         Args:
             default_projection (dict[str, int] | list[str]): (for: project)
@@ -140,55 +164,62 @@ class MongoQuerySettingsDict(dict):
                 The maximum number of items that can be loaded with this query.
                 The user can never go any higher than that, and this value is forced onto every query.
 
-            aggregate_enabled (bool): Enable/disable handler
-            count_enabled (bool): Enable/disable handler
-            filter_enabled (bool): Enable/disable handler
-            group_enabled (bool): Enable/disable handler
-            join_enabled (bool): Enable/disable handler
-            joinf_enabled (bool): Enable/disable handler
-            limit_enabled: (bool): Enable/disable handler
-            project_enabled (bool): Enable/disable handler
-            sort_enabled (bool): Enable/disable handler
+            aggregate_enabled (bool): Enable/disable the `aggregate` handler
+            count_enabled (bool): Enable/disable the `count` handler
+            filter_enabled (bool): Enable/disable the `filter` handler
+            group_enabled (bool): Enable/disable the `group` handler
+            join_enabled (bool): Enable/disable the `join` handler
+            joinf_enabled (bool): Enable/disable the `joinf` handler
+            limit_enabled (bool): Enable/disable the `limit` handler
+            project_enabled (bool): Enable/disable the `project` handler
+            sort_enabled (bool): Enable/disable the `sort` handler
 
             related (dict | Callable | None):
                 Settings for queries on related models, based on the relationship name.
+
                 For example, when a `User` has a relationship named 'articles',
                 you can put the 'articles' key into this setting, and configure
                 how queries to the related models are made.
+
                 This way, you can define a completely different set of settings when a model is
                 queried through another model's relationship.
 
-                    related = dict(
-                        # handler_settings for nested queries may be configured per relationship
-                        relation-name: dict,
-                        relation-name: lambda: dict,
-                        relation-name: None,  # will fall back to '*'
-                        # The default
-                        # If there's no default, or gives None, `related_models` will be used
-                        '*': lambda relationship_name, target_model: dict | None,
-                    )
-                    # or
-                    related = lambda: dict
+                ```python
+                related = dict(
+                    # handler_settings for nested queries may be configured per relationship
+                    relation-name: dict,
+                    relation-name: lambda: dict,
+                    relation-name: None,  # will fall back to '*'
+                    # The default
+                    # If there's no default, or gives None, `related_models` will be used
+                    '*': lambda relationship_name, target_model: dict | None,
+                )
+                # or
+                related = lambda: dict
+                ```
 
             related_models (dict | Callable | None):
                 When configuring every relationship seems to be too much, and you just want to define
                 common settings for every model, use this setting instead of 'related'.
+
                 It will automatically configure every relationship based on the target model.
 
-                    related_models = dict(
-                        # handler_settings for nested queries may be configured per model
-                        # note that you're supposed to use models, not their names!
-                        Model: dict,
-                        Model: lambda: dict,
-                        Model: None,  # will fall back to '*'
-                        # The default
-                        # If there's no default, or it yields None, the default handler_settings is used
-                        '*': lambda relationship_name, target_model: dict | None,
-                        # Example:
-                        '*': lambda *args: dict(join=False)  # disallow further joins
-                    )
-                    # or
-                    related_models = lambda: dict
+                ```python
+                related_models = dict(
+                    # handler_settings for nested queries may be configured per model
+                    # note that you're supposed to use models, not their names!
+                    Model: dict,
+                    Model: lambda: dict,
+                    Model: None,  # will fall back to '*'
+                    # The default
+                    # If there's no default, or it yields None, the default handler_settings is used
+                    '*': lambda relationship_name, target_model: dict | None,
+                    # Example:
+                    '*': lambda *args: dict(join=False)  # disallow further joins
+                )
+                # or
+                related_models = lambda: dict
+                ```
 
                 It can also be used as a default, when there's no custom configuration provided in
                 the 'related' settings.
@@ -197,19 +228,19 @@ class MongoQuerySettingsDict(dict):
                 define the "default" rules that apply to an entity, no matter how it's loaded:
                 directly, or through a relationship of another model.
 
-                Example:
+                ```python
+                # Collect all your settings into one global dict
+                all_settings = {
+                    User: user_settings,
+                    Article: article_settings,
+                    Comment: comment_settings,
+                }
 
-                    # Collect all your settings into one global dict
-                    all_settings = {
-                        User: user_settings,
-                        Article: article_settings,
-                        Comment: comment_settings,
-                    }
-
-                    # and reference it recursively from every model:
-                    user_settings = dict(
-                        related_models=lambda: all_settings
-                    )
+                # and reference it recursively from every model:
+                user_settings = dict(
+                    related_models=lambda: all_settings
+                )
+                ```
 
                 Be careful, though: if every model inherits its `allowed_relations`,
                 it would be possible to get almost any object through a series of nested joins!
@@ -246,19 +277,42 @@ class MongoQuerySettingsDict(dict):
 class StrictCrudHelperSettingsDict(MongoQuerySettingsDict):
     """ StrictCrudHelper + MongoQuery settings container. """
     def __init__(self,
-                 # The list of read-only fields
                  ro_fields: Union[Tuple[str], Callable] = None,
-                 # The list of read-write fields; all the rest will be read-only
                  rw_fields: Union[Tuple[str], Callable] = None,
-                 # The list of contant fields: only writable once (upon insert)
                  const_fields: Union[Tuple[str], Callable] = None,
-                 # Default values for every Query Object: Query Object will be merged into it.
                  query_defaults: dict = None,
 
                  # The rest is MongoQuery settings
                  # StrictCrudHelper is able to put them apart
                  **mongoquery_settings
                  ):
+        """ More settings are available through the [CRUD helper](#crud-helper) settings,
+        which is an extension of [MongoQuery Configuration](#mongoquery-configuration):
+
+        Args:
+            ro_fields (list[str]): The list of read-only fields.
+
+                These fields can only be modified in the code.
+                Whenever any of those fields is submitted to the API endpoint, it's ignored,
+                and even removed from the incoming entity dict.
+
+            rw_fields (list[str]): The list of writable fields.
+
+                When you have too many `ro_fields`, it may be easier to provide a list of
+                those that are writable; all the rest become read-only.
+
+            const_fields (list[str]): The list of constant fields.
+
+                These fields can only be set when an object is created, but never changed
+                when it is modified.
+
+            query_defaults (dict): Default values for every Query Object.
+
+                This is the default Query Object that provides the defaults for every query.
+                For instance, this may be the default `limit: 100`, or a default `project` operator.
+
+            **mongoquery_settings: more settings for `MongoQuery` (as described above)
+        """
         super(StrictCrudHelperSettingsDict, self).__init__(**mongoquery_settings)
         self.update({k: v  # See the parent method for an apology... :)
                      for k, v in locals().items()

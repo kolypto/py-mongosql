@@ -1,3 +1,91 @@
+"""
+### Project Operation
+
+Projection corresponds to the `SELECT` part of an SQL query.
+
+In MongoDB terminology, *projection* is the process of selection a subset of fields from a document.
+
+Your models have many fields, but you do not always need them all. Oftentimes, all you need is just a small number
+of them. That's when you use this operation that *projects* some fields for you.
+
+The `projéct` operation lets you list the fields that you want to have in the data you get from the API endpoint.
+You do this by either listing the fields that you need (called *include mode*), or listing the fields that you
+*do not* need (called *exclude mode*).
+
+The resulting data query on the back-end will only fetch the fields that you've requested, potentially saving a lot
+of bandwidth.
+
+An example of a projection would look like this:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    // only include the following fields
+    project: ['id', 'first_name', 'last_name'],
+}))
+```
+
+#### Syntax
+
+The Project operation supports the following syntaxes:
+
+* Array syntax.
+
+    Provide an array of field names to be included.
+    All the rest will be excluded.
+
+    Example:
+
+    ```javascript
+    { project: ['login', 'first_name'] }
+    ```
+
+* Object syntax.
+
+    Provide an object of field names mapped to either a `1` (include) or a `0` (exclude).
+
+    Examples:
+
+    ```javascript
+    { 'a': 1, 'b': 1 }  # Include specific fields. All other fields are excluded
+    { 'a': 0, 'b': 0 }  # Exclude specific fields. All other fields are included
+    ```
+
+    Note that you can't intermix the two: you either use all `1`s to specify the fields you want included,
+    or use all `0`s to specify the fields you want excluded.
+
+    NOTE: One special case is a so-called *full projection*: when your projection object mentions every single property
+    of a model, then you're allowed to set `1`s to some, and `0`s to others in the same object. Use wisely.
+
+#### Fields Excluded by Default
+Note that some fields that exist on the model may not be included *by default*: this is something that
+back-end developers may have configured with `default_exclude` setting on the server.
+
+You will not receive those fields unless you explicitly require them.
+This may be appropriate for some field that contain a lot of data, or require some calculation.
+
+To include those fields, you have to request them explicitly: just use their name
+in the list of fields that you request.
+
+#### Related Models
+Normally, in order to load a related model (say, user's `user_profile`, or some other data related to this model),
+you would use the [Join Operation](#join-operation).
+
+However, for convenience, you can now also load related models by just giving their name in the projection,
+as if it was a field. For example:
+
+```javascript
+{ project: {
+    id: 1,
+    name: 1,
+    user_articles: 1  // the related model will be loaded
+}}
+```
+
+This request will load the related `user_articles` for you.
+
+Note that some relationships will be disabled for security reasons.
+"""
+
 from sqlalchemy.orm.base import InspectionAttr
 
 from .base import MongoQueryHandlerBase
@@ -33,6 +121,13 @@ class MongoProject(MongoQueryHandlerBase):
         * __contains__() will test whether a column was requested by this projection operator:
             p = MongoProject(Article).input(...)
             if 'title' in p: ...
+
+        Supported columns:
+
+        * Columns
+        * Hybrid properties
+        * Python Propeties (`@property`)
+        * Relationships
     """
 
     query_object_section_name = 'project'

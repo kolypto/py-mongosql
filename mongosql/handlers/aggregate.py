@@ -1,3 +1,100 @@
+"""
+### Aggregate Operation
+Aggregation corresponds to the `SELECT ...` part of an SQL query with aggregation functions.
+
+Sometimes the API user wouldn't need the data itself, but rather some statistics on that data: the smallest value,
+the largest value, the average value, the sum total of all values.
+
+This is what aggregation does: lets the API user execute statistical queries on the data.
+Its features are limited, but in the spirit of MongoSQL, will save some routine work for back-end developers.
+
+Example:
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    // The youngest and the oldest
+    min_age: { $min: 'age' },
+    max_age: { $max: 'age' },
+
+    // SUM(1) for every user produces the total number of users
+    number_of_users: { $sum: 1 },
+
+    // Count the number of youngsters: age < 18
+    // This is a SUM() of a boolean expression, which gives 1 for every matching row.
+    youngster_count: { $sum: { age: { $lt: 18 } } },
+}))
+```
+
+Note that for security reasons, aggregation must be manually enabled for every field on the back-end.
+
+#### Syntax
+The syntax is an object that declares custom field names to be used for keeping results:
+
+    aggregate: { computed-field-name: <expression> }
+
+The *expression* can be:
+
+* Column name: essentially, projecting a column into the result set so that you can have the original value
+
+    Example:
+
+    ```javascript
+    aggregate: {
+        age: 'age'
+    }
+    ```
+
+    This is only useful when combined with the [Group Operation](#group-operation).
+    It is disabled by default on the back-end.
+
+* Aggregation functions:
+
+    * `{ $min: operand }` - smallest value
+    * `{ $max: operand }` - largest value
+    * `{ $avg: operand }` - average value
+    * `{ $sum: operand }` - sum of values
+
+    The *operand* can be:
+
+    * Column name: to apply the aggregation function to a column
+
+        Example:
+
+        ```javascript
+        aggregate: {
+            min_age: { $min: 'age' }
+        }
+        ```
+
+    * Boolean expression: see [Filter Operation](#filter-operation).
+
+        This is a very useful trick.
+        Because the result of a boolean expression is `1` when it's true, you can take a `$sum` of them,
+        and count the number of rows that match that condition.
+
+        Example:
+
+        ```javascript
+        // Count the number of youngsters: age < 18
+        // This is a SUM() of a boolean expression, which gives 1 for every matching row.
+        aggregate: {
+            youngster_count: { $sum: { age: { $lt: 18 } } },
+        }
+        ```
+
+    * Integer value (only supported by `$sum` operator)
+
+        Example:
+
+        ```javascript
+        // Gives the total number of rows
+        aggregate: {
+            total: { $sum: 1 }  // one for every row. Can be 2 or 3 if you like
+        }
+        ```
+
+Note that aggregation often makes sense only when used together with the [Group Operation](#group-operation).
+"""
+
 from copy import copy
 
 from sqlalchemy import Integer, Float

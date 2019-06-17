@@ -1,3 +1,36 @@
+"""
+### Filtering Join Operation
+The [Join Operation](#join-operation) has the following behavior:
+when you requested the loading of a relation, and there were no items found, an empty value is returned
+(a `null`, or an empty array).
+
+```javascript
+// This one will return all users
+// (even those that have no articles)
+$.get('/api/user?query=' + JSON.stringify({
+    join: ["articles"]  // Regular Join: `join`
+}))
+```
+
+This `joinf` Filtering Join operation does just the same thing that `join` does;
+however, if there were no related items, the primary one is also removed.
+
+```javascript
+// This one will return *only those users that have articles*
+// (users with no articles will be excluded)
+$.get('/api/user?query=' + JSON.stringify({
+    joinf: ["articles"]  // Filtering Join: `joinf`
+}))
+```
+
+This feature is, quite honestly, weird, and is only available for backward-compatibility with a bug that existed
+in some early MongoSQL versions. It has proven to be useful in some cases, so the bug has been given a name and a
+place within the MongoSQL library :)
+
+Note that `joinf`` does not support `skip` and `limit`
+on nested entities because of the way it's implemented with Postgres.
+"""
+
 from .join import MongoJoin
 
 class MongoFilteringJoin(MongoJoin):

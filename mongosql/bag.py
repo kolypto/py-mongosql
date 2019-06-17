@@ -15,7 +15,7 @@ from sqlalchemy.sql.elements import BinaryExpression
 
 
 class ModelPropertyBags:
-    """ Model property bags
+    """ Model Property Bags is the class that lets you get information about the model's columns.
 
     This is the class that binds them all together: Columns, Relationships, PKs, etc.
     All the meta-information about a certain Model is stored here:
@@ -24,9 +24,12 @@ class ModelPropertyBags:
     - Relationships
     - Primary keys
     - Nullable columns
-    - and whatnot
+    - Properties and Hybrid Properties
+    - Columns of related models
+    - Writable properties
 
-    Whenever it's too much to inspect several properties, use CombinedBag() over them.
+    Whenever it's too much to inspect several properties, use a `CombinedBag()` over them,
+    which lets you get a column from a number of bags.
     """
     __bags_per_model_cache = {}
 
