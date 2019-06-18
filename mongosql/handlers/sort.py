@@ -18,7 +18,7 @@ $.get('/api/user?query=' + JSON.stringify({
 }))
 ```
 
-### Syntax
+#### Syntax
 
 * Array syntax.
 

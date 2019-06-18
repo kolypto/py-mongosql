@@ -286,7 +286,7 @@ class StrictCrudHelperSettingsDict(MongoQuerySettingsDict):
                  # StrictCrudHelper is able to put them apart
                  **mongoquery_settings
                  ):
-        """ More settings are available through the [CRUD helper](#crud-helper) settings,
+        """ More settings are available through the [CRUD helper](#crud-helpers) settings,
         which is an extension of [MongoQuery Configuration](#mongoquery-configuration):
 
         Args:

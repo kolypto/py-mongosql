@@ -31,7 +31,7 @@ class CrudViewMixin:
         4. If necessary, implement the `_save_hook()` to customize new & updated entities
         5. Override `_method_list()` and `_method_get()` to customize its output
         6. Override `_method_create()`, `_method_update()`, `_method_delete()` and implement saving to the DB
-        7. Use [`@saves_relations`](#saves_relations) method decorator to handle custom fields in the input dict
+        7. Use [`@saves_relations`](#saves_relationsfield_names) method decorator to handle custom fields in the input dict
 
         For an example on how to use CrudViewMixin, see this implementation:
         [tests/crud_view.py](tests/crud_view.py)

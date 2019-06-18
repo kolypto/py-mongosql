@@ -12,6 +12,51 @@ MongoSQL
 Table of Contents
 =================
 
+* <a href="#querying">Querying</a>
+    * <a href="#query-object-syntax">Query Object Syntax</a>
+    * <a href="#operations">Operations</a>
+        * <a href="#project-operation">Project Operation</a>
+        * <a href="#sort-operation">Sort Operation</a>
+        * <a href="#filter-operation">Filter Operation</a>
+        * <a href="#join-operation">Join Operation</a>
+        * <a href="#filtering-join-operation">Filtering Join Operation</a>
+        * <a href="#aggregate-operation">Aggregate Operation</a>
+        * <a href="#group-operation">Group Operation</a>
+        * <a href="#slice-operation">Slice Operation</a>
+        * <a href="#count-operation">Count Operation</a>
+    * <a href="#json-column-support">JSON Column Support</a>
+* <a href="#mongosql-programming-interface">MongoSQL Programming Interface</a>
+    * <a href="#mongoquery">MongoQuery</a>
+        * <a href="#creating-a-mongoquery">Creating a MongoQuery</a>
+        * <a href="#reusable">Reusable</a>
+        * <a href="#querying-mongoqueryquery">Querying: MongoQuery.query()</a>
+        * <a href="#getting-results-mongoqueryend">Getting Results: MongoQuery.end()</a>
+        * <a href="#getting-all-sorts-of-results">Getting All Sorts of Results</a>
+    * <a href="#mongoquery-configuration">MongoQuery Configuration</a>
+    * <a href="#mongoquery-api">MongoQuery API</a>
+        * <a href="#mongoquerymodel-handler_settingsnone">MongoQuery(model, handler_settings=None)</a>
+        * <a href="#mongoqueryfrom_queryquery---mongoquery">MongoQuery.from_query(query) -> MongoQuery</a>
+        * <a href="#mongoquerywith_sessionssn---mongoquery">MongoQuery.with_session(ssn) -> MongoQuery</a>
+        * <a href="#mongoqueryqueryquery_object---mongoquery">MongoQuery.query(**query_object) -> MongoQuery</a>
+        * <a href="#mongoqueryend---query">MongoQuery.end() -> Query</a>
+        * <a href="#mongoqueryend_count---countingquery">MongoQuery.end_count() -> CountingQuery</a>
+        * <a href="#mongoqueryresult_contains_entities---bool">MongoQuery.result_contains_entities() -> bool</a>
+        * <a href="#mongoqueryresult_is_scalar---bool">MongoQuery.result_is_scalar() -> bool</a>
+        * <a href="#mongoqueryresult_is_tuples---bool">MongoQuery.result_is_tuples() -> bool</a>
+        * <a href="#mongoqueryensure_loadedcols---mongoquery">MongoQuery.ensure_loaded(*cols) -> MongoQuery</a>
+        * <a href="#mongoqueryget_projection_tree---dict">MongoQuery.get_projection_tree() -> dict</a>
+        * <a href="#mongoqueryget_full_projection_tree---dict">MongoQuery.get_full_projection_tree() -> dict</a>
+        * <a href="#mongoquerypluck_instanceinstance---dict">MongoQuery.pluck_instance(instance) -> dict</a>
+        * <a href="#handlers">Handlers</a>
+* <a href="#crud-helpers">CRUD Helpers</a>
+    * <a href="#crudhelpermodel-handler_settings">CrudHelper(model, **handler_settings)</a>
+    * <a href="#strictcrudhelper">StrictCrudHelper</a>
+    * <a href="#crudviewmixin">CrudViewMixin()</a>
+    * <a href="#saves_relationsfield_names">@saves_relations(*field_names)</a>
+* <a href="#other-useful-tools">Other Useful Tools</a>
+    * <a href="#modelpropertybagsmodel">ModelPropertyBags(model)</a>
+    * <a href="#combinedbagbags">CombinedBag(**bags)</a>
+    * <a href="#countingqueryquery">CountingQuery(query)</a>"
 
 Querying
 ========

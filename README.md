@@ -34,6 +34,51 @@ NOTE: currently, only tested with PostgreSQL.
 Table of Contents
 =================
 
+* <a href="#querying">Querying</a>
+    * <a href="#query-object-syntax">Query Object Syntax</a>
+    * <a href="#operations">Operations</a>
+        * <a href="#project-operation">Project Operation</a>
+        * <a href="#sort-operation">Sort Operation</a>
+        * <a href="#filter-operation">Filter Operation</a>
+        * <a href="#join-operation">Join Operation</a>
+        * <a href="#filtering-join-operation">Filtering Join Operation</a>
+        * <a href="#aggregate-operation">Aggregate Operation</a>
+        * <a href="#group-operation">Group Operation</a>
+        * <a href="#slice-operation">Slice Operation</a>
+        * <a href="#count-operation">Count Operation</a>
+    * <a href="#json-column-support">JSON Column Support</a>
+* <a href="#mongosql-programming-interface">MongoSQL Programming Interface</a>
+    * <a href="#mongoquery">MongoQuery</a>
+        * <a href="#creating-a-mongoquery">Creating a MongoQuery</a>
+        * <a href="#reusable">Reusable</a>
+        * <a href="#querying-mongoqueryquery">Querying: MongoQuery.query()</a>
+        * <a href="#getting-results-mongoqueryend">Getting Results: MongoQuery.end()</a>
+        * <a href="#getting-all-sorts-of-results">Getting All Sorts of Results</a>
+    * <a href="#mongoquery-configuration">MongoQuery Configuration</a>
+    * <a href="#mongoquery-api">MongoQuery API</a>
+        * <a href="#mongoquerymodel-handler_settingsnone">MongoQuery(model, handler_settings=None)</a>
+        * <a href="#mongoqueryfrom_queryquery---mongoquery">MongoQuery.from_query(query) -> MongoQuery</a>
+        * <a href="#mongoquerywith_sessionssn---mongoquery">MongoQuery.with_session(ssn) -> MongoQuery</a>
+        * <a href="#mongoqueryqueryquery_object---mongoquery">MongoQuery.query(**query_object) -> MongoQuery</a>
+        * <a href="#mongoqueryend---query">MongoQuery.end() -> Query</a>
+        * <a href="#mongoqueryend_count---countingquery">MongoQuery.end_count() -> CountingQuery</a>
+        * <a href="#mongoqueryresult_contains_entities---bool">MongoQuery.result_contains_entities() -> bool</a>
+        * <a href="#mongoqueryresult_is_scalar---bool">MongoQuery.result_is_scalar() -> bool</a>
+        * <a href="#mongoqueryresult_is_tuples---bool">MongoQuery.result_is_tuples() -> bool</a>
+        * <a href="#mongoqueryensure_loadedcols---mongoquery">MongoQuery.ensure_loaded(*cols) -> MongoQuery</a>
+        * <a href="#mongoqueryget_projection_tree---dict">MongoQuery.get_projection_tree() -> dict</a>
+        * <a href="#mongoqueryget_full_projection_tree---dict">MongoQuery.get_full_projection_tree() -> dict</a>
+        * <a href="#mongoquerypluck_instanceinstance---dict">MongoQuery.pluck_instance(instance) -> dict</a>
+        * <a href="#handlers">Handlers</a>
+* <a href="#crud-helpers">CRUD Helpers</a>
+    * <a href="#crudhelpermodel-handler_settings">CrudHelper(model, **handler_settings)</a>
+    * <a href="#strictcrudhelper">StrictCrudHelper</a>
+    * <a href="#crudviewmixin">CrudViewMixin()</a>
+    * <a href="#saves_relationsfield_names">@saves_relations(*field_names)</a>
+* <a href="#other-useful-tools">Other Useful Tools</a>
+    * <a href="#modelpropertybagsmodel">ModelPropertyBags(model)</a>
+    * <a href="#combinedbagbags">CombinedBag(**bags)</a>
+    * <a href="#countingqueryquery">CountingQuery(query)</a>"
 
 Querying
 ========
@@ -201,7 +246,7 @@ $.get('/api/user?query=' + JSON.stringify({
 }))
 ```
 
-### Syntax
+#### Syntax
 
 * Array syntax.
 
@@ -554,7 +599,7 @@ $.get('/api/user?query=' + JSON.stringify({
 ```
 
 Values: can be a number, or a `null`.
-### Count
+### Count Operation
 Slicing corresponds to the `SELECT COUNT(*)` part of an SQL query.
 
 Simply, return the number of items, without returning the items themselves. Just a number. That's it.
@@ -571,7 +616,7 @@ The `1` is the *on* switch. Replace it with `0` to stop counting.
 
 NOTE: In MongoSQL 2.0, there is a way to get both the list of items, *and* their count *simultaneously*.
 This would have way better performance than two separate queries.
-Please have a look: [CountingQuery](#counting-query) and [MongoQuery.end_count()](#mongoquery-end_count).
+Please have a look: [CountingQuery](#countingqueryquery) and [MongoQuery.end_count()](#mongoqueryend_count---countingquery).
 
 
 JSON Column Support
@@ -1003,7 +1048,7 @@ The available settings are:
 
 
 
-More settings are available through the [CRUD helper](#crud-helper) settings,
+More settings are available through the [CRUD helper](#crud-helpers) settings,
 which is an extension of [MongoQuery Configuration](#mongoquery-configuration):
 
 
@@ -1128,7 +1173,7 @@ but still cheaper than two separate queries.
 
 Numbers: this gives about 50% boost to small result sets, and about 15% boost to larger result sets.
 
-See [CountingQuery](#countingquery) for more details.
+See [CountingQuery](#countingqueryquery) for more details.
 
 
 
@@ -1561,7 +1606,7 @@ To implement a CRUD view:
 4. If necessary, implement the `_save_hook()` to customize new & updated entities
 5. Override `_method_list()` and `_method_get()` to customize its output
 6. Override `_method_create()`, `_method_update()`, `_method_delete()` and implement saving to the DB
-7. Use [`@saves_relations`](#saves_relations) method decorator to handle custom fields in the input dict
+7. Use [`@saves_relations`](#saves_relationsfield_names) method decorator to handle custom fields in the input dict
 
 For an example on how to use CrudViewMixin, see this implementation:
 [tests/crud_view.py](tests/crud_view.py)

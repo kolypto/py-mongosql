@@ -382,7 +382,7 @@ class MongoQuery:
 
             Numbers: this gives about 50% boost to small result sets, and about 15% boost to larger result sets.
 
-            See [CountingQuery](#countingquery) for more details.
+            See [CountingQuery](#countingqueryquery) for more details.
 
             Example:
 
