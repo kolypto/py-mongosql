@@ -116,6 +116,30 @@ class CrudTest(unittest.TestCase):
         self.assertEqual(ch.rw_fields, {'title', 'theme', 'data'})  # no 'id'
         self.assertEqual(ch.const_fields, {'uid'})
 
+        # === Test: query_defaults
+        ch = make_crudhelper(
+            query_defaults=dict(
+                join=('user',),
+            )
+        )
+
+        # Default
+        mq = ch._query_model({})
+        self.assertEqual(mq.get_projection_tree(), {
+            'calculated': 0,
+            'hybrid': 0,
+            'user': {'user_calculated': 0},
+        })
+
+        # Override
+        mq = ch._query_model({'join': None})
+        self.assertEqual(mq.get_projection_tree(), {
+            'calculated': 0,
+            'hybrid': 0,
+            # no more 'user'
+        })
+
+
     def test_list(self):
         """ Test list() """
 
