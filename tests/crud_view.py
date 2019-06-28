@@ -1,8 +1,20 @@
+from functools import wraps
+
 from mongosql import CrudViewMixin, StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
 
 from . import models
 from flask import request, g
 from flask_jsontools import jsonapi, RestfulView
+
+
+def passthrough_decorator(f):
+    """ A no-op decorator.
+        It's only purpose is to see whether @saves_relations() works even when decorated with something else.
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    return wrapper
 
 
 class ArticlesView(RestfulView, CrudViewMixin):
@@ -143,11 +155,13 @@ class ArticlesView(RestfulView, CrudViewMixin):
 
     # endregion
 
+    @passthrough_decorator  # no-op to demonstrate that it still works
     @saves_relations('comments')
     def save_comments(self, new, prev=None, comments=None):
         # Just store it in the class for unit-test to find it
         self.__class__._save_comments__args = dict(new=new, prev=prev, comments=comments)
 
+    @passthrough_decorator  # no-op to demonstrate that it still works
     @saves_relations('user', 'comments')
     def save_relations(self, new, prev=None, user=None, comments=None):
         # Just store it in the class for unit-test to find it

@@ -2,7 +2,18 @@ from functools import partial, lru_cache
 from typing import Iterable
 
 
-class method_decorator:
+class method_decorator_meta(type):
+    def __instancecheck__(self, method):
+        """ Metaclass magic enables isinstance() checks even for decorators wrapped with other decorators """
+        # Recursion stopper
+        if method is None:
+            return False
+        # Check the type: isinstance() on self, or on the wrapped object
+        return type(method) is self \
+               or isinstance(getattr(method, '__wrapped__', None), self)
+
+
+class method_decorator(metaclass=method_decorator_meta):
     """ A decorator that marks a method, receives arguments, adds metadata, and provides custom group behavior
 
         Sometimes in Python there's a need to mark some methods of a class and then use them for some sort
@@ -70,6 +81,15 @@ class method_decorator:
     # region: Usage API
 
     @classmethod
+    def is_decorated(cls, method) -> bool:
+        """ Check whether the given method is decorated with @cls()
+
+            It also supports detecting methods wrapped with multiple decorators, one of them being @cls.
+            Note that it works only when update_wrapper() was properly used.
+        """
+        return isinstance(method, cls)
+
+    @classmethod
     def get_method_decorator(cls, Klass: type, name: str) -> 'method_decorator':
         """ Get the decorator object, stored as `METHOD_PROPERTY_NAME` on the wrapped method """
         return getattr(getattr(Klass, name), cls.METHOD_PROPERTY_NAME)
@@ -88,6 +108,6 @@ class method_decorator:
         return tuple(
             attr
             for attr in Klass.__dict__.values()
-            if isinstance(attr, cls))
+            if cls.is_decorated(attr))
 
     # endregion

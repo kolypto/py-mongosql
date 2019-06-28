@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-""" SqlAlchemy queries with MongoDB-style """
+""" A JSON query engine with SqlAlchemy as a back-end """
 
 import sys
 from setuptools import setup, find_packages
