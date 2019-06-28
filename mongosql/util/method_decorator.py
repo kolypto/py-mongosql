@@ -1,5 +1,5 @@
-from functools import partial, lru_cache
 from typing import Iterable
+from functools import partial, lru_cache, update_wrapper
 
 
 class method_decorator_meta(type):
@@ -9,7 +9,9 @@ class method_decorator_meta(type):
         if method is None:
             return False
         # Check the type: isinstance() on self, or on the wrapped object
-        return type(method) is self \
+        # Have to implement isinstance() manually.
+        # We use issubclass() to enable it detecting a generic method_decorator: isinstance(something, method_decorator)
+        return issubclass(type(method), self) \
                or isinstance(getattr(method, '__wrapped__', None), self)
 
 
@@ -52,9 +54,12 @@ class method_decorator(metaclass=method_decorator_meta):
         self.method = handler_method
         self.method_name = handler_method.__name__
 
-        # Store itself as a property of the wrapped function :)
+        # Store ourselves as a property of the wrapped function :)
         if self.METHOD_PROPERTY_NAME:
             setattr(self.method, self.METHOD_PROPERTY_NAME, self)
+
+        # Use the proper update_wrapper() for we are a decorator
+        update_wrapper(self, self.method)
 
         # Done
         return self  # This is what is saved on the class' __dict__
@@ -71,8 +76,13 @@ class method_decorator(metaclass=method_decorator_meta):
         # We, however, will have to pass the `self` argument manually, because this descriptor magic
         # breaks python's passing of `self` to the method
         if instance is None:
+            # Accessing a class attribute directly
+            # We return the method function, so that subclasses can actually call invoke it unwrapped.
             return self.method  # got from the class
+            # TODO: would't it make more sense to return the method_decorator object?
         else:
+            # Accessing an object's attribute
+            # We prepare for calling the method.
             return partial(self.method, instance)  # pass the `self`
 
     def __repr__(self):
