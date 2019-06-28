@@ -441,20 +441,22 @@ class CrudTest(unittest.TestCase):
         view = View()
 
         # Test: a descriptor can only be accessed through the dict
-        self.assertNotIsInstance(View.save_a, saves_relations)
-        self.assertNotIsInstance(view.save_a, saves_relations)
+        # On a class
+        self.assertIsInstance(View.save_a, saves_relations)
         self.assertIsInstance(View.save_a, Callable)
-        self.assertIsInstance(view.save_a, Callable)
         self.assertIsInstance(View.__dict__['save_a'], saves_relations)
+        # On an object
+        self.assertNotIsInstance(view.save_a, saves_relations)
+        self.assertIsInstance(view.save_a, Callable)
 
         # Test: getting the descriptor through the class
         self.assertIsInstance(View.save_a.saves_relations, saves_relations)
         self.assertIsInstance(saves_relations.get_method_decorator(View, 'save_a'), saves_relations)
 
-        # Test: the descriptor returns the wrapped method
+        # Test: the descriptor returns the decorator, not the wrapped method
         self.assertIs(
             View.save_a,
-            View.__dict__['save_a'].method
+            View.__dict__['save_a']#.method  # not anymore
         )
 
         # Test: collects decorators correctly

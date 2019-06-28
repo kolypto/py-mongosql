@@ -77,9 +77,13 @@ class method_decorator(metaclass=method_decorator_meta):
         # breaks python's passing of `self` to the method
         if instance is None:
             # Accessing a class attribute directly
-            # We return the method function, so that subclasses can actually call invoke it unwrapped.
-            return self.method  # got from the class
-            # TODO: would't it make more sense to return the method_decorator object?
+            # We return the decorator object. It's callable.
+            return self
+
+            # Old behavior:
+            # # Accessing a class attribute directly
+            # # We return the method function, so that subclasses can actually call invoke it unwrapped.
+            # return self.method  # got from the class
         else:
             # Accessing an object's attribute
             # We prepare for calling the method.
