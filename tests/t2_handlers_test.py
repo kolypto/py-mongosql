@@ -2,7 +2,7 @@ import unittest
 from collections import OrderedDict
 from sqlalchemy.orm import Load
 
-from mongosql import Reusable, MongoQuery, ModelPropertyBags
+from mongosql import Reusable, MongoQuery, ModelPropertyBags, MongoQuerySettingsDict
 from mongosql.handlers import *
 from mongosql.exc import InvalidColumnError, DisabledError, InvalidQueryError, InvalidRelationError
 from .models import *
@@ -887,7 +887,6 @@ class HandlersTest(unittest.TestCase):
         mq = MongoQuery(u, dict(default_projection={'articles': 1})).query()
         self.assertEqual(mq.get_projection_tree(), {'articles': {'calculated': 0, 'hybrid': 0}, 'user_calculated': 0})
 
-
     def test_mongoquery_pluck_instance(self):
         """ Test MongoQuery.pluck_instance() """
         # === Test: pluck one user
@@ -968,3 +967,69 @@ class HandlersTest(unittest.TestCase):
             mq.pluck_instance(u)  # can pluck Article, not User
 
     # NOTE: we don't test 'join', 'aggregate', 'limit', 'count' here, because they're tested in t3_statements_test.py
+
+    def test_legacy_fields(self):
+        """ Test legacy_fields, with different handlers """
+        LEGACY_NAME = 'old_field'
+        legacy_fields = (LEGACY_NAME,)
+
+        init_handler = lambda Handler, legacy_fields=(): \
+            Handler(Article,
+                    ModelPropertyBags.for_model(Article),
+                    legacy_fields=legacy_fields)
+
+        # === Test: project
+        with self.assertRaises(InvalidColumnError):
+            init_handler(MongoProject).input([LEGACY_NAME])
+
+        init_handler(MongoProject, legacy_fields).input([LEGACY_NAME])  # ok
+
+        # === Test: sort
+        with self.assertRaises(InvalidColumnError):
+            init_handler(MongoSort).input([LEGACY_NAME])
+
+        init_handler(MongoSort, legacy_fields).input([LEGACY_NAME])  # ok
+
+        # === Test: group
+        with self.assertRaises(InvalidColumnError):
+            init_handler(MongoGroup).input([LEGACY_NAME])
+
+        init_handler(MongoGroup, legacy_fields).input([LEGACY_NAME])  # ok
+
+        # === Test: filter
+        with self.assertRaises(InvalidColumnError):
+            init_handler(MongoFilter).input({LEGACY_NAME: 1})
+
+        init_handler(MongoFilter, legacy_fields).input({LEGACY_NAME: 1})  # ok
+        init_handler(MongoFilter, legacy_fields).input({'$or': [
+            {LEGACY_NAME: 1}  # nested
+        ]})  # ok
+
+        # === Test: join
+        mq = MongoQuery(Article)
+        with self.assertRaises(InvalidColumnError):
+            init_handler(MongoJoin).with_mongoquery(mq).input([LEGACY_NAME])
+
+        init_handler(MongoJoin, legacy_fields).with_mongoquery(mq).input([LEGACY_NAME])  # ok
+
+        # === Test: aggregate
+        mq = MongoQuery(Article, MongoQuerySettingsDict(legacy_fields=legacy_fields))
+        init_handler(MongoAggregate, legacy_fields).with_mongoquery(mq).input({
+            'label': {'$avg': LEGACY_NAME},
+        })  # ok
+
+
+        # === Test: MongoQuery
+        mq = Reusable(MongoQuery(Article, MongoQuerySettingsDict(legacy_fields=legacy_fields)))  # type: MongoQuery
+
+        mq.query(project={LEGACY_NAME: 1})
+        mq.query(sort=[LEGACY_NAME+'-'])
+        mq.query(sort=[LEGACY_NAME+'.field'])
+        mq.query(filter={LEGACY_NAME: 1})
+        mq.query(filter={LEGACY_NAME+'.field': 1})
+        mq.query(join={LEGACY_NAME: dict(filter={'a': 1})})
+        mq.query(joinf={LEGACY_NAME: dict(filter={'a': 1})})
+        mq.query(aggregate={'label': {'$avg': LEGACY_NAME}})
+        mq.query(aggregate={'label': {'$avg': LEGACY_NAME+'.field'}})
+        mq.query(aggregate={'label': {'$sum': {LEGACY_NAME: 1}}})
+        mq.query(aggregate={'label': {'$sum': {LEGACY_NAME+'.field': 1}}})

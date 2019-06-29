@@ -89,7 +89,7 @@ Note that some relationships will be disabled for security reasons.
 from sqlalchemy.orm.base import InspectionAttr
 
 from .base import MongoQueryHandlerBase
-from ..bag import CombinedBag
+from ..bag import CombinedBag, FakeBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 from ..util import Marker
 
@@ -142,7 +142,8 @@ class MongoProject(MongoQueryHandlerBase):
                  default_exclude_properties=True,
                  default_unexclude_properties=None,
                  force_include=None, force_exclude=None,
-                 raiseload_col=False):
+                 raiseload_col=False,
+                 legacy_fields=None):
         """ Init projection
 
         :param model: Sqlalchemy model to work with
@@ -167,6 +168,10 @@ class MongoProject(MongoQueryHandlerBase):
             Solution: `raiseload_col=True` will raise an exception every time a deferred loading occurs;
             Make sure you manually do `.options(undefer())` on all the columns you need.
         """
+        # Legacy
+        self.legacy_fields = frozenset(legacy_fields or ())
+
+        # Parent
         super(MongoProject, self).__init__(model, bags)
 
         # Settings
@@ -241,6 +246,7 @@ class MongoProject(MongoQueryHandlerBase):
             prop=self.bags.properties,
             # NOTE: please do not add `self.bags.relations` here: relations are handled separately:
             # _input_process() plucks them out, and _pass_relations_to_mongojoin() forwards them to MongoJoin.
+            legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 
     #: MongoSQL projection handler operation modes

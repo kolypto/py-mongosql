@@ -63,15 +63,19 @@ class MongoGroup(MongoSort):
 
     query_object_section_name = 'group'
 
-    def __init__(self, model, bags):
-        super(MongoSort, self).__init__(model, bags)
+    def __init__(self, model, bags, legacy_fields=None):
+        # Legacy fields
+        self.legacy_fields = frozenset(legacy_fields or ())
+
+        # Parent
+        super(MongoSort, self).__init__(model, bags)  # yes, call the base; not the parent
 
         # On input
         #: OderedDict() of a group spec: {key: +1|-1}
         self.group_spec = None
 
     def input(self, group_spec):
-        super(MongoSort, self).input(group_spec)
+        super(MongoSort, self).input(group_spec)  # call base; not the parent
         self.group_spec = self._input(group_spec)
         return self
 

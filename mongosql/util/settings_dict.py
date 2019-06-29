@@ -57,6 +57,8 @@ class MongoQuerySettingsDict(dict):
                  banned_relations = None,
                  # --- limit
                  max_items = None,
+                 # --- Misc
+                 legacy_fields: Iterable[str] = None,
                  # --- enabled_handlers?
                  aggregate_enabled: bool = True,
                  count_enabled: bool = True,
@@ -163,6 +165,12 @@ class MongoQuerySettingsDict(dict):
             max_items: (for: limit)
                 The maximum number of items that can be loaded with this query.
                 The user can never go any higher than that, and this value is forced onto every query.
+            legacy_fields (list[str] | None): (for: everything)
+                The list of fields (columns, relationships) that used to exist, but do not anymore.
+                These fields will be quietly ignored by all handlers.
+
+                This is implemented for introducing breaking changes into the code when developers might still refer
+                to the old column which is simply not there anymore.
 
             aggregate_enabled (bool): Enable/disable the `aggregate` handler
             count_enabled (bool): Enable/disable the `count` handler

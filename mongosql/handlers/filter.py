@@ -97,7 +97,7 @@ from sqlalchemy.sql.functions import func
 
 from sqlalchemy.dialects import postgresql as pg
 from .base import MongoQueryHandlerBase
-from ..bag import CombinedBag
+from ..bag import CombinedBag, FakeBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
 
@@ -365,7 +365,7 @@ class MongoFilter(MongoQueryHandlerBase):
 
     query_object_section_name = 'filter'
 
-    def __init__(self, model, bags, force_filter=None, scalar_operators=None, array_operators=None):
+    def __init__(self, model, bags, force_filter=None, scalar_operators=None, array_operators=None, legacy_fields=None):
         """ Init a filter expression
 
         :param model: Sqlalchemy model to work with
@@ -381,6 +381,10 @@ class MongoFilter(MongoQueryHandlerBase):
         :param array_operators: A dict of additional operators for array columns to recognize
         :type array_operators: dict[str, lambda]
         """
+        # Legacy fields
+        self.legacy_fields = frozenset(legacy_fields or ())
+
+        # Parent
         super(MongoFilter, self).__init__(model, bags)
 
         # On input
@@ -408,7 +412,8 @@ class MongoFilter(MongoQueryHandlerBase):
         return CombinedBag(
             col=self.bags.columns,
             rcol=self.bags.related_columns,
-            hybrid=self.bags.hybrid_properties
+            hybrid=self.bags.hybrid_properties,
+            legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 
     # Supported operation. Operation name, function that checks params,
@@ -554,6 +559,8 @@ class MongoFilter(MongoQueryHandlerBase):
             column_name = key
             try:
                 bag_name, bag, column = self.supported_bags[column_name]
+                if bag_name == 'legacy':
+                    continue  # ignore legacy columns
             except KeyError:
                 raise InvalidColumnError(self.bags.model_name, column_name, self.query_object_section_name)
 

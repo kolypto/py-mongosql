@@ -77,7 +77,7 @@ class MongoJoin(MongoQueryHandlerBase):
 
     query_object_section_name = 'join'
 
-    def __init__(self, model, bags, allowed_relations=None, banned_relations=None, raiseload_rel=False):
+    def __init__(self, model, bags, allowed_relations=None, banned_relations=None, raiseload_rel=False, legacy_fields=None):
         """ Init a join expression
 
         :param model: Sqlalchemy model to work with
@@ -101,6 +101,9 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Raiseload?
         self.raiseload_rel = raiseload_rel
+
+        # Legacy
+        self.legacy_fields = frozenset(legacy_fields or ())
 
         # Validate
         if self.allowed_relations:
@@ -163,13 +166,17 @@ class MongoJoin(MongoQueryHandlerBase):
         else:
             raise InvalidQueryError('Join must be one of: null, array, object')
 
-        self.validate_properties(relations.keys())
+        self.validate_properties(set(relations.keys()) - self.legacy_fields)
 
         # Go over all relationships and simply build MJP objects that will carry the necessary
         # information to the Query on the outside, which will use those MJP objects to handle the
         # actual joining process
         mjp_list = []
         for relation_name, query_object in relations.items():
+            # Skip legacy
+            if relation_name in self.legacy_fields:
+                continue
+
             # Get the relationship and its target model
             rel = self._get_relation_securely(relation_name)
             target_model = self.bags.relations.get_target_model(relation_name)

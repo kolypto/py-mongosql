@@ -1,3 +1,8 @@
+## 2.0.2
+* `legacy_fields` setting will make handlers ignore certain fields that are not available anymore.
+    Works with: `filter`, `sort`, `group`, `join`, `joinf`, `aggregate`.
+* `method_decorator` has had a few improvements that no one would notice
+
 ## 2.0.0
 * Version 2.0 is released!
 * Complete redesign

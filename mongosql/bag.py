@@ -518,6 +518,39 @@ class DotRelatedColumnsBag(ColumnsBag):
         return self._rel_bag.is_relationship_array(rel_name)
 
 
+class FakeBag(PropertiesBagBase):
+    """ A bag that supports dot-notation and contains fake column names that do not actually exist.
+
+        This is used to support legacy columns. They are assumed to support dot-notation.
+    """
+
+    def __init__(self, fake_columns: Mapping[str, None]):
+        self._fake_columns = fake_columns
+        self._fake_column_names = frozenset(self._fake_columns.keys())
+
+    def aliased(self, aliased_class: AliasedClass):
+        return self  # same thing
+
+    @property
+    def names(self) -> FrozenSet[str]:
+        return self._fake_column_names
+
+    def __iter__(self) -> Iterable[Tuple[str, None]]:
+        return iter(self._fake_columns.items())
+
+    def __contains__(self, name: str) -> bool:
+        return get_plain_column_name(name) in self._fake_columns
+
+    def __getitem__(self, name: str) -> Union[ColumnProperty, BinaryExpression]:
+        return self._fake_columns[get_plain_column_name(name)]
+
+    def get_invalid_names(self, names: Iterable[str]) -> Set[str]:
+        return {name
+                for name in names
+                if get_plain_column_name(name) not in self._fake_column_names
+                }
+
+
 class CombinedBag(PropertiesBagBase):
     """ A bag that combines elements from multiple bags.
 
@@ -551,7 +584,11 @@ class CombinedBag(PropertiesBagBase):
         for bag in self._bags.values():
             # We'll access a protected property, so got to make sure we've got the right class
             if isinstance(bag, ColumnsBag):
+                # Get the list of JSON columns from a ColumnsBag
                 json_column_names.extend(bag._json_column_names)
+            elif isinstance(bag, FakeBag):
+                # Get the list of fake columns from a Fake bag
+                json_column_names.extend(bag.names)
         self._json_column_names = frozenset(json_column_names)
 
     def aliased(self, aliased_class: AliasedClass) -> 'CombinedBag':
@@ -560,6 +597,10 @@ class CombinedBag(PropertiesBagBase):
         new._bags = {name: bag.aliased(aliased_class)
                      for name, bag in self._bags.items()}
         return new
+
+    def bag(self, name) -> PropertiesBagBase:
+        """ Get a specific bag by name """
+        return self._bags[name]
 
     def __contains__(self, name: str) -> bool:
         # Simple

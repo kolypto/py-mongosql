@@ -103,7 +103,7 @@ from sqlalchemy.sql.expression import cast
 from sqlalchemy.sql.functions import func
 
 from .base import MongoQueryHandlerBase
-from ..bag import CombinedBag
+from ..bag import CombinedBag, FakeBag
 from ..exc import InvalidQueryError, DisabledError, InvalidColumnError
 
 
@@ -268,7 +268,7 @@ class MongoAggregate(MongoQueryHandlerBase):
 
     query_object_section_name = 'aggregate'
 
-    def __init__(self, model, bags, aggregate_columns=(), aggregate_labels=False):
+    def __init__(self, model, bags, aggregate_columns=(), aggregate_labels=False, legacy_fields=None):
         """ Init aggregation
 
         :param model: Model
@@ -277,6 +277,10 @@ class MongoAggregate(MongoQueryHandlerBase):
         :param aggregate_labels: whether labelling columns is enabled
         :type aggregate_labels: bool
         """
+        # Legacy fields
+        self.legacy_fields = frozenset(legacy_fields or ())
+
+        # Parent
         super(MongoAggregate, self).__init__(model, bags)
 
         # Security
@@ -295,11 +299,13 @@ class MongoAggregate(MongoQueryHandlerBase):
     def with_mongoquery(self, mongoquery):
         super(MongoAggregate, self).with_mongoquery(mongoquery)
         self._mongofilter = copy(mongoquery.handler_filter)
+        return self
 
     def _get_supported_bags(self):
         return CombinedBag(
             col=self.bags.columns,
             hybrid=self.bags.hybrid_properties,
+            legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 
     def _get_column_insecurely(self, column_name, for_label=False):
@@ -361,6 +367,9 @@ class MongoAggregate(MongoQueryHandlerBase):
             # string: Column reference
             if isinstance(comp_expression, str):
                 column_name = comp_expression
+                # Skip legacy columns
+                if column_name in self.supported_bags.bag('legacy'):
+                    continue
                 # get the column, give it a label
                 column = self._get_column_securely(column_name, True)
                 # add it to the output
@@ -392,6 +401,8 @@ class MongoAggregate(MongoQueryHandlerBase):
             elif isinstance(expression, str):
                 # 2) column name
                 column_name = expression
+                if column_name in self.supported_bags.bag('legacy'):
+                    continue
                 column = self._get_column_securely(column_name)
                 is_column_json = column_name in self.bags.columns and self.bags.columns.is_column_json(column_name)
                 operator_obj = self._COLUMN_OPERATOR_CLS(comp_field_label, agg_operator,

@@ -37,7 +37,7 @@ Object syntax is not supported because it does not preserve the ordering of keys
 from collections import OrderedDict
 
 from .base import MongoQueryHandlerBase
-from ..bag import CombinedBag
+from ..bag import CombinedBag, FakeBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
 
@@ -54,7 +54,11 @@ class MongoSort(MongoQueryHandlerBase):
 
     query_object_section_name = 'sort'
 
-    def __init__(self, model, bags):
+    def __init__(self, model, bags, legacy_fields=None):
+        # Legacy fields
+        self.legacy_fields = frozenset(legacy_fields or ())
+
+        # Parent
         super(MongoSort, self).__init__(model, bags)
 
         # On input
@@ -64,7 +68,8 @@ class MongoSort(MongoQueryHandlerBase):
     def _get_supported_bags(self):
         return CombinedBag(
             col=self.bags.columns,
-            hybrid=self.bags.hybrid_properties
+            hybrid=self.bags.hybrid_properties,
+            legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 
     def _input(self, spec):
@@ -120,6 +125,7 @@ class MongoSort(MongoQueryHandlerBase):
         return [
             self.supported_bags.get(name).desc() if d == -1 else self.supported_bags.get(name)
             for name, d in self.sort_spec.items()
+            if name not in self.supported_bags.bag('legacy')  # remove fake items
         ]
 
     # Not Implemented for this Query Object handler
