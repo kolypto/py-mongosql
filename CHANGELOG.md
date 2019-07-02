@@ -1,9 +1,14 @@
-## 2.0.2
+## 2.0.3 (??)
+* Fix: `bundled_project` now takes care of `force_include`d fields as well
+* Recommendation when a legacy column is removed: use `legacy_fields` together with `force_include` 
+    on a `@property` that fakes the missing column or relationship.
+
+## 2.0.2 (2019-06-29)
 * `legacy_fields` setting will make handlers ignore certain fields that are not available anymore.
     Works with: `filter`, `sort`, `group`, `join`, `joinf`, `aggregate`.
 * `method_decorator` has had a few improvements that no one would notice
 
-## 2.0.0
+## 2.0.0 (2019-06-18)
 * Version 2.0 is released!
 * Complete redesign
 * Query Object format is the same: backwards-compatible

@@ -395,18 +395,6 @@ class MongoProject(MongoQueryHandlerBase):
         """ Process force_include, force_exclude, bundled_project """
         relations = {}
 
-        # bundled_project
-        if self.bundled_project:
-            more_keys = set()
-            for bundle_key, bundled_keys in self.bundled_project.items():
-                if bundle_key in self:
-                    more_keys.update(bundled_keys)
-
-            # Merge
-            self.mode, self._projection, more_rels = \
-                self._process_simple_merge(self.mode, self._projection, dict.fromkeys(more_keys, 1))
-            relations.update(more_rels)
-
         # force_include
         if self.force_include:
             self.mode, self._projection, more_rels = \
@@ -418,6 +406,20 @@ class MongoProject(MongoQueryHandlerBase):
             self.mode, self._projection, more_rels = \
                 self._process_simple_merge(self.mode, self._projection, dict.fromkeys(self.force_exclude, 0))
             relations.update(more_rels)
+
+        # bundled_project
+        # Got to do it last, because you never know who might've added more keys
+        if self.bundled_project:
+            more_keys = set()
+            for bundle_key, bundled_keys in self.bundled_project.items():
+                if bundle_key in self:
+                    more_keys.update(bundled_keys)
+
+            # Merge
+            self.mode, self._projection, more_rels = \
+                self._process_simple_merge(self.mode, self._projection, dict.fromkeys(more_keys, 1))
+            relations.update(more_rels)
+
 
         # Done
         return relations

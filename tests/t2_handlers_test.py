@@ -309,6 +309,15 @@ class HandlersTest(unittest.TestCase):
         mq = mq.query(project=dict(calculated=1))
         self.assertEqual(mq.get_projection_tree(), dict(calculated=1, comments=dict(comment_calc=0)))
 
+        # === Test: bundled_project, force_include
+        mq = MongoQuery(Article, dict(bundled_project={'calculated': ['title', 'id']}, force_include=('calculated',)))
+        mq = mq.query(project=dict(data=1))
+        self.assertEqual(mq.get_projection_tree(), dict(
+            calculated=1,  # the force-included field
+            id=1, title=1,  # dependencies loaded
+            data=1,  # asked by the user
+        ))
+
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
         with self.assertRaises(InvalidColumnError):
             Article_project(default_projection=dict(id=1, INVALID=1))
@@ -1033,3 +1042,25 @@ class HandlersTest(unittest.TestCase):
         mq.query(aggregate={'label': {'$avg': LEGACY_NAME+'.field'}})
         mq.query(aggregate={'label': {'$sum': {LEGACY_NAME: 1}}})
         mq.query(aggregate={'label': {'$sum': {LEGACY_NAME+'.field': 1}}})
+        
+        # === Test: what happens if an existing field is both "legacy" and "force_include"?
+        LEGACY_NAME = 'calculated'  # let's assume that it used to be a relationship, but is now a @property that 
+        # fakes it
+        mq = Reusable(MongoQuery(Article, MongoQuerySettingsDict(
+            legacy_fields=(LEGACY_NAME,),  # let's assume that `calculated` used to be a "join"
+            force_include=(LEGACY_NAME,),  # always include it
+        )))  # type: MongoQuery
+
+        # try projecting it
+        q = mq.query(project=[LEGACY_NAME,])
+        self.assertEqual(q.get_full_projection_tree()['calculated'], 1)
+    
+        # try joining it
+        q = mq.query(join=[LEGACY_NAME])
+        self.assertEqual(q.get_full_projection_tree()['calculated'], 1)
+        
+        # try joining it with a filter
+        # the fake field won't actually filter, and even ignore the nonexistent field
+        q = mq.query(join={LEGACY_NAME: dict(filter=dict(NONEXISTENT_FIELD=1))})
+        self.assertEqual(q.get_full_projection_tree()['calculated'], 1)
+

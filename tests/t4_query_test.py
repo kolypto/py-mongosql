@@ -62,11 +62,27 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
 
         # Test: no join(), relationships are unloaded
         user = models.User.mongoquery(ssn).query().end().first()
-        self.assertEqual(inspect(user).unloaded, {'articles', 'comments', 'roles'})
+        self.assertIn('articles', inspect(user).unloaded)
+        self.assertIn('comments', inspect(user).unloaded)
+        self.assertIn('roles', inspect(user).unloaded)
 
         # Test:    join(), relationships are   loaded
         user = models.User.mongoquery(ssn).query(join=['articles']).end().first()
-        self.assertEqual(inspect(user).unloaded, {'comments', 'roles'})
+        self.assertNotIn('articles', inspect(user).unloaded)  # now loaded
+        self.assertIn('comments', inspect(user).unloaded)
+        self.assertIn('roles', inspect(user).unloaded)
+
+        # Test: join() to a legacy field that has `force_include=1` and faked with a @property
+        mq = MongoQuery(models.User, MongoQuerySettingsDict(
+            legacy_fields=('user_calculated',),
+            force_include=('user_calculated',),
+            bundled_project={
+                'user_calculated': ['age'],
+            }
+        ))
+        user = mq.with_session(ssn).query(project=['id'],
+                                          join=['user_calculated']).end().first()
+        self.assertEqual(mq.get_projection_tree(), dict(id=1, user_calculated=1, age=1))
 
     def test_join_query(self):
         """ Test join(dict) """

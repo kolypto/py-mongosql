@@ -172,6 +172,10 @@ class MongoQuerySettingsDict(dict):
                 This is implemented for introducing breaking changes into the code when developers might still refer
                 to the old column which is simply not there anymore.
 
+                When a relationship or a column has disappeared from the model, the recommended
+                backwards-compatible approach is to have it both in `legacy_fields` and `force_include`.
+                This way, clients will always get something, even though they cannot join manually anymore.
+
             aggregate_enabled (bool): Enable/disable the `aggregate` handler
             count_enabled (bool): Enable/disable the `count` handler
             filter_enabled (bool): Enable/disable the `filter` handler
