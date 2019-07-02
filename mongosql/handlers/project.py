@@ -170,6 +170,7 @@ class MongoProject(MongoQueryHandlerBase):
         """
         # Legacy
         self.legacy_fields = frozenset(legacy_fields or ())
+        self.legacy_fields_not_faked = self.legacy_fields - bags.all_names  # legacy_fields not faked as a @property
 
         # Parent
         super(MongoProject, self).__init__(model, bags)
@@ -226,6 +227,7 @@ class MongoProject(MongoQueryHandlerBase):
 
     def __copy__(self):
         obj = super(MongoProject, self).__copy__()
+        obj._projection = obj._projection.copy() if obj._projection is not None else None
         obj.quietly_included = obj.quietly_included.copy()
         return obj
 
@@ -521,6 +523,8 @@ class MongoProject(MongoQueryHandlerBase):
             if set(self._projection) == self.default_exclude_properties:
                 return empty  # no restrictions: all fields are to be loaded
 
+        # NOTE: we don't have to ignore legacy_fields here because compile_columns() only goes through real columns
+
         # load_only() all those columns
         load_only_columns = self.compile_columns()
         ret = [as_relation.load_only(*load_only_columns)]
@@ -567,20 +571,6 @@ class MongoProject(MongoQueryHandlerBase):
         return query.options(self.compile_options(as_relation))
 
     # Extra features
-
-    @property
-    def projection(self):
-        """ Get the current projection as a dict
-
-            Depending on self.mode, it can be:
-
-            self.mode = MODE_INCLUDE:   all {key: 1}
-            self.mode = MODE_EXCLUDE:   all {key: 0}
-            self.mode = MODE_MIXED:     mixed {key: 0, key: 1}, but having every key of the model
-        """
-        proj = self._projection.copy()
-        proj.update({k: 0 for k in self.quietly_included})  # force 0s on them
-        return proj
 
     def merge(self, projection, quietly=False, strict=False):
         """ Merge another projection into the current one.
@@ -690,6 +680,23 @@ class MongoProject(MongoQueryHandlerBase):
         column_names = self._columns2names(columns)
         return self.merge(dict.fromkeys(column_names, 0))
 
+    @property
+    def projection(self):
+        """ Get the current projection as a dict
+
+            Depending on self.mode, it can be:
+
+            self.mode = MODE_INCLUDE:   all {key: 1}
+            self.mode = MODE_EXCLUDE:   all {key: 0}
+            self.mode = MODE_MIXED:     mixed {key: 0, key: 1}, but having every key of the model
+        """
+        proj = self._projection.copy()
+
+        # Force 0s on quietly included fields
+        proj.update({k: 0 for k in self.quietly_included})
+
+        return proj
+
     def get_full_projection(self):
         """ Generate a full, normalized projection for a model.
 
@@ -734,7 +741,8 @@ class MongoProject(MongoQueryHandlerBase):
         return {key: getattr(instance, key)
                 for key, include in self.get_full_projection().items()
                 if include
-                and key not in self.quietly_included}
+                and key not in self.quietly_included
+                and key not in self.legacy_fields_not_faked}
 
 
 class Default(Marker):

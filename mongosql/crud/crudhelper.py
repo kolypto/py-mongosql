@@ -65,7 +65,11 @@ class CrudHelper:
         """
         self.model = model
         self.bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(model)
-        self.reusable_mongoquery = Reusable(self._MONGOQUERY_CLS(self.model, handler_settings))
+        self.reusable_mongoquery = Reusable(self._MONGOQUERY_CLS(self.model, handler_settings))  # type: MongoQuery
+
+        # We also need `legacy_fields`
+        # we're going to ignore them in the input
+        self.legacy_fields = self.reusable_mongoquery.handler_project.legacy_fields
 
     def query_model(self, query_obj: Union[Mapping, None] = None, from_query: Union[Query, None] = None) -> MongoQuery:
         """ Make a MongoQuery using the provided Query Object
@@ -91,7 +95,7 @@ class CrudHelper:
         """ Make a MongoQuery """
         return self.reusable_mongoquery.from_query(from_query).query(**query_obj)
 
-    def _validate_columns(self, column_names: Iterable[str], where: str):
+    def _validate_columns(self, column_names: Iterable[str], where: str) -> Set[str]:
         """ Validate column names
 
             :raises exc.InvalidColumnError: Invalid column name
@@ -99,9 +103,10 @@ class CrudHelper:
         unk_cols = self.bags.columns.get_invalid_names(column_names)
         if unk_cols:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
+        return set(column_names)
 
     def _validate_attributes(self, column_names: Iterable[str], where: str) -> Set[str]:
-        """ Validate attribute names (any)
+        """ Validate attribute names (any, inc. properties)
 
             :raises exc.InvalidColumnError: Invalid column name
         """
@@ -116,7 +121,7 @@ class CrudHelper:
 
             This list does not include attributes like relationships and read-only properties
 
-            :raises exc.InvalidColumnError: Invalid column name
+            :raises exc.InvalidColumnError: Column name was not writable
             :rtype: set[set]
         """
         attr_names = set(attr_names)
@@ -124,6 +129,11 @@ class CrudHelper:
         if unk_cols:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
         return attr_names
+
+    def _remove_entity_dict_fields(self, entity_dict: MutableMapping, rm_fields: Set[str]):
+        """ Remove certain fields from the incoming entity dict """
+        for k in set(entity_dict.keys()) & rm_fields:
+            entity_dict.pop(k)
 
     def create_model(self, entity_dict: Mapping) -> object:
         """ Create an instance from entity dict.
@@ -139,6 +149,9 @@ class CrudHelper:
         if not isinstance(entity_dict, dict):
             raise exc.InvalidQueryError('Create model: the value has to be an object, not {}'
                                         .format(type(entity_dict)))
+
+        # Remove legacy fields
+        self._remove_entity_dict_fields(entity_dict, self.legacy_fields)
 
         # Check columns
         self._validate_columns(entity_dict.keys(), 'create')
@@ -172,6 +185,9 @@ class CrudHelper:
         if not isinstance(entity_dict, dict):
             raise exc.InvalidQueryError('Update model: the value has to be an object, not {}'
                                         .format(type(entity_dict)))
+
+        # Remove legacy fields
+        self._remove_entity_dict_fields(entity_dict, self.legacy_fields)
 
         # Check columns
         self._validate_columns(entity_dict.keys(), 'update')
@@ -310,11 +326,6 @@ class StrictCrudHelper(CrudHelper):
         # Done
         return frozenset(ro_fields), frozenset(rw_fields), frozenset(cn_fields)
 
-    def _remove_entity_dict_fields(self, entity_dict: MutableMapping, rm_fields: Set[str]):
-        """ Remove certain fields from the incoming entity dict """
-        for k in set(entity_dict.keys()) & rm_fields:
-            entity_dict.pop(k)
-
     def _create_model(self, entity_dict: MutableMapping) -> object:
         # Remove ro fields
         self._remove_entity_dict_fields(entity_dict, self.ro_fields)
@@ -323,7 +334,7 @@ class StrictCrudHelper(CrudHelper):
         return super()._create_model(entity_dict)
 
     def _update_model(self, entity_dict: MutableMapping, instance: object) -> object:
-        # Remove ro & const fields
+        # Remove ro & const
         self._remove_entity_dict_fields(entity_dict, self._ro_and_const_fields)
 
         # Super

@@ -60,6 +60,8 @@ Examples follow.
 
 
 import json
+from types import SimpleNamespace
+
 from sqlalchemy.orm import aliased, Query
 
 from .base import MongoQueryHandlerBase
@@ -104,6 +106,7 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Legacy
         self.legacy_fields = frozenset(legacy_fields or ())
+        self.legacy_fields_not_faked = self.legacy_fields - self.bags.all_names  # legacy_fields not faked as a @property
 
         # Validate
         if self.allowed_relations:
@@ -173,8 +176,13 @@ class MongoJoin(MongoQueryHandlerBase):
         # actual joining process
         mjp_list = []
         for relation_name, query_object in relations.items():
-            # Skip legacy
+            # Add an ignored object for legacy_fields
             if relation_name in self.legacy_fields:
+                mjp = LegacyMongoJoinParams(
+                    relationship_name=relation_name,
+                    query_object=query_object or None
+                )
+                mjp_list.append(mjp)
                 continue
 
             # Get the relationship and its target model
@@ -244,7 +252,8 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Process joins
         for mjp in self.mjps:
-            query = self._load_relationship(query, as_relation, mjp)
+            if not isinstance(mjp, LegacyMongoJoinParams):
+                query = self._load_relationship(query, as_relation, mjp)
 
         # Put a raiseload_rel() on every other relationship!
         if self.raiseload_rel:
@@ -747,8 +756,9 @@ class MongoJoin(MongoQueryHandlerBase):
             :rtype: dict
         """
         projection = self.projection
+        all_names = set([*self.bags.relations.names, *self.legacy_fields])
         return {relation_name: projection.get(relation_name, 0)
-                for relation_name in self.bags.relations.names}
+                for relation_name in all_names}
 
     def merge(self, relations, quietly=False, strict=False):
         """ Add another relationship to be eagerly loaded.
@@ -909,7 +919,11 @@ class MongoJoin(MongoQueryHandlerBase):
         """
         ret = {}
         for mjp in self.mjps:
+            # Do not include quietly-included fields
             if mjp.quietly_included:
+                continue
+            # Skip legacy fields that are not backed by a @property
+            if mjp.relationship_name in self.legacy_fields_not_faked:
                 continue
 
             # The relationship we're handling. It's been loaded.
@@ -1024,15 +1038,21 @@ class MongoJoinParams:
                ')>'.format(self)
 
 
+class LegacyMongoJoinParams:
+    """ An MJP object that's actually ignored. It's used for legacy_fields """
 
+    def __init__(self, relationship_name, query_object):
+        self.relationship_name = relationship_name
+        self.query_object = query_object
 
+        # Follow the protocol: fake some fields
+        self.quietly_included = False
+        self.nested_mongoquery = SimpleNamespace()  # empty object
+        self.nested_mongoquery.get_projection_tree = lambda: 1
+        self.nested_mongoquery.get_full_projection_tree = lambda: 1
 
-
-
-
-
-
-
+    def __repr__(self):
+        return f'<LegacyMongoJoinParams(relationship_name={self.relationship_name}, query_object={self.query_object!r})>'
 
 
 # region Join helpers

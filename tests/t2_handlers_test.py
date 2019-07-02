@@ -1,6 +1,6 @@
 import unittest
 from collections import OrderedDict
-from sqlalchemy.orm import Load
+from sqlalchemy.orm import Load, Query
 
 from mongosql import Reusable, MongoQuery, ModelPropertyBags, MongoQuerySettingsDict
 from mongosql.handlers import *
@@ -979,7 +979,7 @@ class HandlersTest(unittest.TestCase):
 
     def test_legacy_fields(self):
         """ Test legacy_fields, with different handlers """
-        LEGACY_NAME = 'old_field'
+        LEGACY_NAME = 'removed-field'
         legacy_fields = (LEGACY_NAME,)
 
         init_handler = lambda Handler, legacy_fields=(): \
@@ -991,57 +991,75 @@ class HandlersTest(unittest.TestCase):
         with self.assertRaises(InvalidColumnError):
             init_handler(MongoProject).input([LEGACY_NAME])
 
-        init_handler(MongoProject, legacy_fields).input([LEGACY_NAME])  # ok
+        mq = init_handler(MongoProject, legacy_fields).input([LEGACY_NAME])  # ok
+        self.assertEqual(mq.projection[LEGACY_NAME], 1)
+        self.assertEqual(mq.get_full_projection()[LEGACY_NAME], 1)
+        self.assertTrue(LEGACY_NAME in mq)  # remembered
+        mq.alter_query(Query(Article), Load(Article))  # query okay
+
 
         # === Test: sort
         with self.assertRaises(InvalidColumnError):
             init_handler(MongoSort).input([LEGACY_NAME])
 
-        init_handler(MongoSort, legacy_fields).input([LEGACY_NAME])  # ok
+        mq = init_handler(MongoSort, legacy_fields).input([LEGACY_NAME])  # ok
+        self.assertEqual(mq.sort_spec, {'removed-field': 1})  # still there
+        mq.alter_query(Query(Article), Load(Article))  # query okay
 
         # === Test: group
         with self.assertRaises(InvalidColumnError):
             init_handler(MongoGroup).input([LEGACY_NAME])
 
-        init_handler(MongoGroup, legacy_fields).input([LEGACY_NAME])  # ok
+        mq = init_handler(MongoGroup, legacy_fields).input([LEGACY_NAME])  # ok
+        self.assertEqual(mq.group_spec, {'removed-field': 1})  # still there
+        mq.alter_query(Query(Article), Load(Article))  # query okay
 
         # === Test: filter
         with self.assertRaises(InvalidColumnError):
             init_handler(MongoFilter).input({LEGACY_NAME: 1})
 
         init_handler(MongoFilter, legacy_fields).input({LEGACY_NAME: 1})  # ok
-        init_handler(MongoFilter, legacy_fields).input({'$or': [
+        mq = init_handler(MongoFilter, legacy_fields).input({'$or': [
             {LEGACY_NAME: 1}  # nested
         ]})  # ok
+        # is ignored in the filter
+        mq.alter_query(Query(Article), Load(Article))  # query okay
 
         # === Test: join
         mq = MongoQuery(Article)
         with self.assertRaises(InvalidColumnError):
             init_handler(MongoJoin).with_mongoquery(mq).input([LEGACY_NAME])
 
-        init_handler(MongoJoin, legacy_fields).with_mongoquery(mq).input([LEGACY_NAME])  # ok
+        mq = init_handler(MongoJoin, legacy_fields).with_mongoquery(mq).input([LEGACY_NAME])  # ok  # type: MongoJoin
+        self.assertEqual(mq.projection[LEGACY_NAME], 1)
+        self.assertEqual(mq.get_full_projection()[LEGACY_NAME], 1)
+        self.assertEqual(mq.get_projection_tree()[LEGACY_NAME], 1)
+        self.assertEqual(mq.get_full_projection_tree()[LEGACY_NAME], 1)
+        self.assertTrue(LEGACY_NAME in mq)
+        mq.alter_query(Query(Article), Load(Article))  # query okay
 
         # === Test: aggregate
         mq = MongoQuery(Article, MongoQuerySettingsDict(legacy_fields=legacy_fields))
-        init_handler(MongoAggregate, legacy_fields).with_mongoquery(mq).input({
+        mq = init_handler(MongoAggregate, legacy_fields).with_mongoquery(mq).input({
             'label': {'$avg': LEGACY_NAME},
         })  # ok
+        mq.alter_query(Query(Article), Load(Article))  # query okay
 
 
         # === Test: MongoQuery
         mq = Reusable(MongoQuery(Article, MongoQuerySettingsDict(legacy_fields=legacy_fields)))  # type: MongoQuery
 
-        mq.query(project={LEGACY_NAME: 1})
-        mq.query(sort=[LEGACY_NAME+'-'])
-        mq.query(sort=[LEGACY_NAME+'.field'])
-        mq.query(filter={LEGACY_NAME: 1})
-        mq.query(filter={LEGACY_NAME+'.field': 1})
-        mq.query(join={LEGACY_NAME: dict(filter={'a': 1})})
-        mq.query(joinf={LEGACY_NAME: dict(filter={'a': 1})})
-        mq.query(aggregate={'label': {'$avg': LEGACY_NAME}})
-        mq.query(aggregate={'label': {'$avg': LEGACY_NAME+'.field'}})
-        mq.query(aggregate={'label': {'$sum': {LEGACY_NAME: 1}}})
-        mq.query(aggregate={'label': {'$sum': {LEGACY_NAME+'.field': 1}}})
+        mq.query(project={LEGACY_NAME: 1}).end()
+        mq.query(sort=[LEGACY_NAME+'-']).end()
+        mq.query(sort=[LEGACY_NAME+'.field']).end()
+        mq.query(filter={LEGACY_NAME: 1}).end()
+        mq.query(filter={LEGACY_NAME+'.field': 1}).end()
+        mq.query(join={LEGACY_NAME: dict(filter={'a': 1})}).end()
+        mq.query(joinf={LEGACY_NAME: dict(filter={'a': 1})}).end()
+        mq.query(aggregate={'label': {'$avg': LEGACY_NAME}}).end()
+        mq.query(aggregate={'label': {'$avg': LEGACY_NAME+'.field'}}).end()
+        mq.query(aggregate={'label': {'$sum': {LEGACY_NAME: 1}}}).end()
+        mq.query(aggregate={'label': {'$sum': {LEGACY_NAME+'.field': 1}}}).end()
         
         # === Test: what happens if an existing field is both "legacy" and "force_include"?
         LEGACY_NAME = 'calculated'  # let's assume that it used to be a relationship, but is now a @property that 

@@ -116,6 +116,15 @@ class CrudTest(unittest.TestCase):
         self.assertEqual(ch.rw_fields, {'title', 'theme', 'data'})  # no 'id'
         self.assertEqual(ch.const_fields, {'uid'})
 
+        # === Test: legacy_fields
+        ch = make_crudhelper(
+            rw_fields=('title', 'theme', 'data'),
+            const_fields=('uid',),
+            legacy_fields=('removed_column',),
+            # everything else is rw
+        )
+        self.assertEqual(ch.legacy_fields, {'removed_column'})
+
         # === Test: query_defaults
         ch = make_crudhelper(
             query_defaults=dict(
@@ -212,21 +221,22 @@ class CrudTest(unittest.TestCase):
             'data': {'wow': True}
         }
 
+        expected_response_object = {
+            'id': 1,  # Auto-set
+            'uid': 3,  # Set manually
+            'title': '999',
+            'theme': None,
+            'data': {'wow': True},
+        }
+
         # Create
         # 'ro' field should be set manually
         with self.app.test_client() as c:
             rv = c.post('/article/', json={'article': article_json})
-            self.assertEqual(rv['article'], {
-                'id': 1,  # Auto-set
-                'uid': 3,  # Set manually
-                'title': '999',
-                'theme': None,
-                'data': {'wow': True},
-            })
+            self.assertEqual(rv['article'], expected_response_object)
 
-            self.db.begin()
-
-            # Create: test that MongoSQL projections & joins are supported
+            # Create: test that MongoSQL projections & joins are supported even when creating
+            self.db.begin()  # the previous request has closed it
             rv = c.post('/article/', json={
                 'article': article_json,
                 'query': {
@@ -235,6 +245,14 @@ class CrudTest(unittest.TestCase):
                 }
             })
             self.assertEqual(rv['article'], {'title': '999', 'user': {'id': 3, 'name': 'c'}})  # respects projections
+
+            # Test: legacy_field
+            self.db.begin()  # the previous request has closed it
+            article_json['removed_column'] = 'something'  # legacy_column should be ignored
+            expected_response_object['id'] = 3
+
+            rv = c.post('/article/', json={'article': article_json})
+            self.assertEqual(rv['article'], expected_response_object)  # same response; went ok
 
     def test_get(self):
         """ Test get() """
@@ -325,9 +343,8 @@ class CrudTest(unittest.TestCase):
                 'data': {'?': ':)', 'o': {'a': True}, 'rating': 5},  # merged
             })
 
-            self.db.begin()
-
             # Update: respects MongoSQL projections & joins
+            self.db.begin()  # the previous request has closed it
             rv = c.post('/article/10', json={
                 'article': {},
                 'query': {
@@ -335,6 +352,13 @@ class CrudTest(unittest.TestCase):
                 }
             })
             self.assertEqual(rv['article'], {'title': '10'})
+
+            # Test: legacy_field
+            self.db.begin()  # the previous request has closed it
+            rv = c.post('/article/10', json={
+                'article': {'removed_column': 'something'},  # got to be ignored
+            })
+            self.assertNotIn('error', rv.get_json())
 
 
     def test_delete(self):

@@ -637,15 +637,15 @@ class MongoQuery:
         return self._handlers()
 
     # for IDE completion
-    handler_project = None  # type: mongosql.handlers.MongoProject
-    handler_sort = None  # type: mongosql.handlers.MongoSort
-    handler_group = None  # type: mongosql.handlers.MongoGroup
-    handler_join = None  # type: mongosql.handlers.MongoJoin
-    handler_joinf = None  # type: mongosql.handlers.MongoJoinf
-    handler_filter = None  # type: mongosql.handlers.MongoFilter
-    handler_aggregate = None  # type: mongosql.handlers.MongoAggregate
-    handler_limit = None  # type: mongosql.handlers.MongoLimit
-    handler_count = None  # type: mongosql.handlers.MongoCount
+    handler_project = None  # type: handlers.MongoProject
+    handler_sort = None  # type: handlers.MongoSort
+    handler_group = None  # type: handlers.MongoGroup
+    handler_join = None  # type: handlers.MongoJoin
+    handler_joinf = None  # type: handlers.MongoJoinf
+    handler_filter = None  # type: handlers.MongoFilter
+    handler_aggregate = None  # type: handlers.MongoAggregate
+    handler_limit = None  # type: handlers.MongoLimit
+    handler_count = None  # type: handlers.MongoCount
 
     def _init_query_object_handlers(self):
         """ Initialize every Query Object handler """

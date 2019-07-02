@@ -27,6 +27,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
         **StrictCrudHelperSettingsDict(
             # Read-only fields, as a callable (just because)
             ro_fields=lambda: ('id', 'uid',),
+            legacy_fields=('removed_column',),
             # MongoQuery settings
             aggregate_columns=('id', 'data',),  # have to explicitly enable aggregation for columns
             query_defaults=dict(
