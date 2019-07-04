@@ -960,10 +960,17 @@ The available settings are:
 
 * `legacy_fields`: (for: everything)
     The list of fields (columns, relationships) that used to exist, but do not anymore.
-    These fields will be quietly ignored by all handlers.
+    These fields will be quietly ignored by all handlers. Note that they will still appear in projections
+    from `project` and `join` handlers. If you rely on them, your code will have to be able to ignore
+    those fields as well.
 
     This is implemented for introducing breaking changes into the code when developers might still refer
     to the old column which is simply not there anymore.
+
+    When a relationship or a column has disappeared from the model, the recommended
+    backwards-compatible approach is to have it both in `legacy_fields` and `force_include`,
+    and a @property that provides some fake value for compatibility.
+    This way, clients will always get something, even though they cannot join manually anymore.
 
 * `aggregate_enabled`: Enable/disable the `aggregate` handler
 
