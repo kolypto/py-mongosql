@@ -47,13 +47,13 @@ class CrudTest(unittest.TestCase):
             ro_fields=('id',),  # everything else must be RW
         )
         self.assertEqual(ch.ro_fields, {'id'})
-        self.assertEqual(ch.rw_fields, {'uid', 'title', 'theme', 'data'})
+        self.assertEqual(ch.rw_fields, {'uid', 'title', 'theme', 'data', 'calculated'})
         self.assertEqual(ch.const_fields, set())
 
         # === Test: defaults to all fields writable
         ch = StrictCrudHelper(models.Article)
         self.assertEqual(ch.ro_fields, set())
-        self.assertEqual(ch.rw_fields, {'id', 'uid', 'title', 'theme', 'data'})
+        self.assertEqual(ch.rw_fields, {'id', 'uid', 'title', 'theme', 'data', 'calculated'})
         self.assertEqual(ch.const_fields, set())
 
         # === Test: ro_fields=()
@@ -61,7 +61,7 @@ class CrudTest(unittest.TestCase):
             ro_fields=(),  # everything is RW
         )
         self.assertEqual(ch.ro_fields, set())
-        self.assertEqual(ch.rw_fields, {'id', 'uid', 'title', 'theme', 'data'})
+        self.assertEqual(ch.rw_fields, {'id', 'uid', 'title', 'theme', 'data', 'calculated'})
         self.assertEqual(ch.const_fields, set())
 
         # === Test: rw_fields
@@ -90,7 +90,7 @@ class CrudTest(unittest.TestCase):
             const_fields=('uid',),  # everything else is rw
         )
         self.assertEqual(ch.ro_fields, set())
-        self.assertEqual(ch.rw_fields, {'id', 'title', 'theme', 'data'})
+        self.assertEqual(ch.rw_fields, {'id', 'title', 'theme', 'data', 'calculated'})
         self.assertEqual(ch.const_fields, {'uid'})
 
         # === Test: const_fields & ro_fields
@@ -100,7 +100,7 @@ class CrudTest(unittest.TestCase):
             # everything else is rw
         )
         self.assertEqual(ch.ro_fields, {'id'})
-        self.assertEqual(ch.rw_fields, {'title', 'theme', 'data'})  # no 'id'
+        self.assertEqual(ch.rw_fields, {'title', 'theme', 'data', 'calculated'})  # no 'id'
         self.assertEqual(ch.const_fields, {'uid'})
 
         # === Test: const_fields & rw_fields
@@ -362,6 +362,14 @@ class CrudTest(unittest.TestCase):
                 'article': {'removed_column': 'something'},  # got to be ignored
             })
             self.assertNotIn('error', rv.get_json())
+
+            # Test: update a @property
+            self.db.begin()  # the previous request has closed it
+            rv = c.post('/article/10', json={
+                'article': {'calculated': '!!! :)'}
+            }).get_json()
+            self.assertEqual(rv['article']['title'], '10'+'!!! :)')
+
 
 
     def test_delete(self):

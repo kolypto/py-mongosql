@@ -1,4 +1,5 @@
-## 2.0.3 (??)
+## 2.0.3 (2019-07-06)
+* CrudHelper is not able to save `@property` values: welcome `writable_properties`!
 * Fix: `bundled_project` now takes care of `force_include`d fields as well
 * Recommendation when a legacy column is removed: use `legacy_fields` together with `force_include` 
     on a `@property` that fakes the missing column or relationship.

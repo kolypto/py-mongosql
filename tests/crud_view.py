@@ -33,6 +33,7 @@ class ArticlesView(RestfulView, CrudViewMixin):
             query_defaults=dict(
                 sort=('id-',),
             ),
+            writable_properties=True,
             max_items=2,
             # Related entities configuration
             allowed_relations=('user', 'comments'),

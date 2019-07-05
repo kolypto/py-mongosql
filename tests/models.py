@@ -85,6 +85,10 @@ class Article(Base):
     def calculated(self):
         return len(self.title) + self.uid
 
+    @calculated.setter
+    def calculated(self, value):
+        self.title += value
+
     @hybrid_property
     def hybrid(self):
         return self.id > 10 and self.user.age > 18

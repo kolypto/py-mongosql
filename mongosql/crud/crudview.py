@@ -56,8 +56,9 @@ class CrudViewMixin:
         #: The current CRUD method
         self._current_crud_method = None
 
+    def __init_subclass__(cls, **kwargs):
         #: The list of all `@saves_relations()` fields
-        self._saves_relations_names = saves_relations.all_relation_names_from(self.__class__)
+        cls._saves_relations_names = saves_relations.all_relation_names_from(cls)
 
     # region Abstract Methods
 

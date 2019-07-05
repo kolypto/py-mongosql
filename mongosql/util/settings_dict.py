@@ -292,6 +292,7 @@ class MongoQuerySettingsDict(dict):
 class StrictCrudHelperSettingsDict(MongoQuerySettingsDict):
     """ StrictCrudHelper + MongoQuery settings container. """
     def __init__(self,
+                 writable_properties: bool = True,
                  ro_fields: Union[Tuple[str], Callable] = None,
                  rw_fields: Union[Tuple[str], Callable] = None,
                  const_fields: Union[Tuple[str], Callable] = None,
@@ -305,6 +306,16 @@ class StrictCrudHelperSettingsDict(MongoQuerySettingsDict):
         which is an extension of [MongoQuery Configuration](#mongoquery-configuration):
 
         Args:
+            writable_properties (bool): Are `@property` model attributes writable?
+
+                When `False`, and incoming JSON object will only be allowed to set/modify real
+                columns. The only way to save a value for a `@property` would be to use the
+                `@saves_relations` decorator and handle the value manually.
+
+                When `True`, even `@property` and `@hybrid_property` objects will be writable.
+                Note that validation, as with other fields, is up to you.
+                In order to be completely writable, it also has to be in the `rw_fields` list.
+
             ro_fields (list[str]): The list of read-only fields.
 
                 These fields can only be modified in the code.

@@ -1066,6 +1066,16 @@ More settings are available through the [CRUD helper](#crud-helpers) settings,
 which is an extension of [MongoQuery Configuration](#mongoquery-configuration):
 
 
+* `writable_properties`: Are `@property` model attributes writable?
+
+    When `False`, and incoming JSON object will only be allowed to set/modify real
+    columns. The only way to save a value for a `@property` would be to use the
+    `@saves_relations` decorator and handle the value manually.
+
+    When `True`, even `@property` and `@hybrid_property` objects will be writable.
+    Note that validation, as with other fields, is up to you.
+    In order to be completely writable, it also has to be in the `rw_fields` list.
+
 * `ro_fields`: The list of read-only fields.
 
     These fields can only be modified in the code.
@@ -1402,7 +1412,7 @@ Together with [RestfulView](https://github.com/kolypto/py-flask-jsontools#restfu
 from [flask-jsontools](https://github.com/kolypto/py-flask-jsontools),
 CRUD controllers are extremely easy to build.
 
-## `CrudHelper(model, **handler_settings)`
+## `CrudHelper(model, writable_properties=True, **handler_settings)`
 Crud helper: an object that helps implement CRUD operations for an API endpoint:
 
 * Create: construct SqlAlchemy instances from the submitted entity dict
@@ -1432,6 +1442,11 @@ class UserView:
     )
     # ...
 ```
+
+Note that during "create" and "update" operations, this class lets you write values
+to column attributes, and also to @property that are writable (have a setter).
+If this behavior (with writable properties) is undesirable,
+set `writable_properties=False`
 
 The following methods are available:
 
@@ -1474,7 +1489,8 @@ Exceptions:
 ### `CrudHelper.create_model(entity_dict) -> object`
 Create an instance from entity dict.
 
-This only allows to assign column properties and not relations.
+This method lets you set the value of columns and writable properties,
+but not relations. Use @saves_relations to handle additional fields.
 
 
 Arguments:
@@ -1503,11 +1519,14 @@ Exceptions:
 ### `CrudHelper.update_model(entity_dict, instance) -> object`
 Update an instance from an entity dict by merging the fields
 
-- Properties are copied over
+- Attributes are copied over
 - JSON dicts are shallowly merged
 
 Note that because properties are *copied over*,
 this operation does not replace the entity; it merely updates the entity.
+
+In other words, this method does a *partial update*:
+only updates the fields that were provided by the client, leaving all the rest intact.
 
 
 Arguments:
@@ -1554,7 +1573,7 @@ The following behavior is implemented:
 * If const_fields, it is seen as a further limitation on rw_fields: those fields would be writable,
     but only once.
 
-### `StrictCrudHelper(model, ro_fields=None, rw_fields=None, const_fields=None, query_defaults=None, **handler_settings)`
+### `StrictCrudHelper(model, writable_properties=True, ro_fields=None, rw_fields=None, const_fields=None, query_defaults=None, **handler_settings)`
 Initializes a strict CRUD helper
 
 Note: use a `**StrictCrudHelperSettingsDict()` to help you with the argument names and their docs!
@@ -1564,6 +1583,8 @@ Arguments:
 
 
 * `model: DeclarativeMeta`: The model to work with
+
+* `writable_properties: bool = True`: 
 
 * `ro_fields: Union[Iterable[str], Callable, NoneType] = None`: List of read-only property names, or a callable which gives the list
 

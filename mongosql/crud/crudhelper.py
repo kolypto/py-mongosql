@@ -49,6 +49,11 @@ class CrudHelper:
             # ...
         ```
 
+        Note that during "create" and "update" operations, this class lets you write values
+        to column attributes, and also to @property that are writable (have a setter).
+        If this behavior (with writable properties) is undesirable,
+        set `writable_properties=False`
+
         The following methods are available:
     """
 
@@ -57,7 +62,7 @@ class CrudHelper:
     # The class to use for MongoQuery
     _MONGOQUERY_CLS = MongoQuery
 
-    def __init__(self, model: DeclarativeMeta, **handler_settings):
+    def __init__(self, model: DeclarativeMeta, writable_properties=True, **handler_settings):
         """ Init CRUD helper
 
         :param model: The model to work with
@@ -66,6 +71,9 @@ class CrudHelper:
         self.model = model
         self.bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(model)
         self.reusable_mongoquery = Reusable(self._MONGOQUERY_CLS(self.model, handler_settings))  # type: MongoQuery
+
+        # Settings
+        self.writable_properties = writable_properties
 
         # We also need `legacy_fields`
         # we're going to ignore them in the input
@@ -130,6 +138,32 @@ class CrudHelper:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
         return attr_names
 
+    def validate_incoming_entity_dict_fields(self, entity_dict: dict, action: str) -> dict:
+        """ Validate the incoming JSON data """
+        # Validate
+        if not isinstance(entity_dict, dict):
+            raise exc.InvalidQueryError(f'Model "{action}": the value has to be an object, '
+                                        f'not {type(entity_dict)}')
+
+        # Remove certain fields from the entity dict
+        if action == 'create':
+            self._remove_entity_dict_fields(entity_dict, self._fields_to_remove_on_create)
+        elif action == 'update':
+            self._remove_entity_dict_fields(entity_dict, self._fields_to_remove_on_update)
+        else:
+            raise ValueError(action)
+
+        # Check fields
+        if self.writable_properties:
+            # let both columns and @properties
+            self._validate_writable_attributes(entity_dict.keys(), action)
+        else:
+            # let only columns
+            self._validate_columns(entity_dict.keys(), action)
+
+        # Done
+        return entity_dict
+
     @property
     def _fields_to_remove_on_create(self):
         """ The list of fields to remove when creating an instance from an entity dict """
@@ -148,23 +182,16 @@ class CrudHelper:
     def create_model(self, entity_dict: Mapping) -> object:
         """ Create an instance from entity dict.
 
-            This only allows to assign column properties and not relations.
+            This method lets you set the value of columns and writable properties,
+            but not relations. Use @saves_relations to handle additional fields.
 
             :param entity_dict: Entity dict
             :return: Created instance
             :raises InvalidQueryError: validation errors
             :raises InvalidColumnError: invalid column
         """
-        # Validate
-        if not isinstance(entity_dict, dict):
-            raise exc.InvalidQueryError('Create model: the value has to be an object, not {}'
-                                        .format(type(entity_dict)))
-
-        # Remove legacy fields
-        self._remove_entity_dict_fields(entity_dict, self._fields_to_remove_on_create)
-
-        # Check columns
-        self._validate_columns(entity_dict.keys(), 'create')
+        # Validate and prepare it
+        entity_dict = self.validate_incoming_entity_dict_fields(entity_dict, 'create')
 
         # Create
         return self._create_model(entity_dict)
@@ -179,11 +206,14 @@ class CrudHelper:
     def update_model(self, entity_dict: Mapping, instance: object) -> object:
         """ Update an instance from an entity dict by merging the fields
 
-            - Properties are copied over
+            - Attributes are copied over
             - JSON dicts are shallowly merged
 
             Note that because properties are *copied over*,
             this operation does not replace the entity; it merely updates the entity.
+
+            In other words, this method does a *partial update*:
+            only updates the fields that were provided by the client, leaving all the rest intact.
 
             :param entity_dict: Entity dict
             :param instance: The instance to update
@@ -191,16 +221,8 @@ class CrudHelper:
             :raises InvalidQueryError: validation errors
             :raises InvalidColumnError: invalid column
         """
-        # Validate
-        if not isinstance(entity_dict, dict):
-            raise exc.InvalidQueryError('Update model: the value has to be an object, not {}'
-                                        .format(type(entity_dict)))
-
-        # Remove legacy fields
-        self._remove_entity_dict_fields(entity_dict, self._fields_to_remove_on_update)
-
-        # Check columns
-        self._validate_columns(entity_dict.keys(), 'update')
+        # Validate and prepare it
+        entity_dict = self.validate_incoming_entity_dict_fields(entity_dict, 'update')
 
         # Update
         return self._update_model(entity_dict, instance)
@@ -243,6 +265,7 @@ class StrictCrudHelper(CrudHelper):
             but only once.
 
         Attributes:
+            writable_properties (bool): Enable saving values from incoming JSON into @property attrs?
             ro_fields (set[str]): The list of read-only field names
             rw_fields (set[str]): The list of writable field names
             const_fields (set[str]): The list of constant field names
@@ -250,6 +273,7 @@ class StrictCrudHelper(CrudHelper):
     """
 
     def __init__(self, model: DeclarativeMeta,
+                 writable_properties: bool = True,
                  ro_fields: Union[Iterable[str], Callable, None] = None,
                  rw_fields: Union[Iterable[str], Callable, None] = None,
                  const_fields: Union[Iterable[str], Callable, None] = None,
@@ -261,11 +285,13 @@ class StrictCrudHelper(CrudHelper):
 
             Args:
                 model: The model to work with
+                writable_properties: enable writing to @property attributes?
                 ro_fields: List of read-only property names, or a callable which gives the list
                 rw_fields: List of writable property names, or a callable which gives the list
                 const_fields: List of property names that are constant once set, or a callable which gives the list
                 query_defaults: Defaults for every Query Object: Query Object will be merged into it.
                 handler_settings: Settings for the `MongoQuery` used to make queries
+                writable_properties:
 
             Example:
 
@@ -290,7 +316,7 @@ class StrictCrudHelper(CrudHelper):
                     # ...
                 ```
         """
-        super(StrictCrudHelper, self).__init__(model, **handler_settings)
+        super().__init__(model, writable_properties=writable_properties, **handler_settings)
 
         # ro, rw, const fields
         ro, rw, cn = self._init_ro_rw_cn_fields(ro_fields, rw_fields, const_fields)
