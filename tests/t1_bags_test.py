@@ -10,6 +10,8 @@ from mongosql.bag import *
 class BagsTest(unittest.TestCase):
     """ Test bags """
 
+    maxDiff = None
+
     def test_user_bags(self):
         bags = ModelPropertyBags.for_model(models.User)
 
@@ -34,6 +36,13 @@ class BagsTest(unittest.TestCase):
 
         self.assertEqual(bag.get_invalid_names(['id', 'name', 'NOPE']), {'NOPE'})
 
+        self.assertEqual(sorted(list(bag)), [
+            ('age', models.User.age),
+            ('id', models.User.id),
+            ('name', models.User.name),
+            ('tags', models.User.tags),
+        ])
+
         #=== columns. dot-notation
         pass
 
@@ -52,6 +61,8 @@ class BagsTest(unittest.TestCase):
 
         self.assertEqual(bag.get_invalid_names(['roles', 'NOPE']), {'NOPE'})
 
+        self.assertEqual(set(dict(bag)), {'roles', 'comments', 'articles'})
+
         #=== pk, nullable, properties, hybrid properties
         self.assertEqual(bags.pk.names, {'id'})
         self.assertEqual(bags.nullable.names, {'name', 'tags', 'age'})
@@ -68,6 +79,8 @@ class BagsTest(unittest.TestCase):
         self.assertNotIn('roles', bag)
 
         self.assertEqual(bag.get_invalid_names(['roles', 'roles.id', 'NOPE']), {'roles', 'NOPE'})
+
+        self.assertGreaterEqual(set(dict(bag)), {'comments.uid', 'articles.id', 'articles.data'})
 
 
         #== combined: rel_columns + columns + hybrid
@@ -103,6 +116,14 @@ class BagsTest(unittest.TestCase):
         self.assertEqual(type(bag), DotRelatedColumnsBag)
         self.assertFalse(bag.is_column_array('id'))
         self.assertTrue(bag.is_relationship_array('articles'))
+
+        # Iteration: tuples of 4
+        listed_bag = sorted(list(cbag))
+        bag_name, bag, col_name, col = listed_bag[0]
+        self.assertEqual(bag_name, 'col')
+        self.assertEqual(bag, cbag.bag('col'))
+        self.assertEqual(col_name, 'age')
+        self.assertIs(col, models.User.age)
 
     def test_article_bags(self):
         bags = ModelPropertyBags.for_model(models.Article)

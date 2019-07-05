@@ -330,6 +330,10 @@ class HybridPropertiesBag(ColumnsBag):
         def __getitem__(self, key):
             return self._l(key)
 
+        def items(self):
+            return ((k, self._l(k))
+                    for k in self._ks)
+
     def aliased(self, aliased_class: AliasedClass) -> 'HybridPropertiesBag':
         new = copy(self)
         # For some reason, hybrid properties do not get a proper alias with adapt_to_entity()
@@ -576,8 +580,16 @@ class CombinedBag(PropertiesBagBase):
 
     def __init__(self, **bags):
         self._bags = bags
+
         # Combined names from all bags
         self._names = frozenset(chain(*(bag.names for bag in bags.values())))
+
+        # Combined lookup by name from all bags
+        self._bag_name_lookup_by_column_name = {
+            column_name: bag_name
+            for bag_name, bag  in self._bags.items()
+            for column_name, column in bag
+        }
 
         # List of JSON columns
         json_column_names = []
@@ -613,13 +625,15 @@ class CombinedBag(PropertiesBagBase):
         return False
 
     def __getitem__(self, name: str) -> Tuple[str, PropertiesBagBase, MapperProperty]:
-        # Try every bag in order
-        for bag_name, bag in self._bags.items():
-            try:
-                return (bag_name, bag, bag[name])
-            except KeyError:
-                continue
-        raise KeyError(name)
+        # Get the column name: remove the '.'-notation only if the column is a json column
+        plain_name = get_plain_column_name(name)
+        plain_name = plain_name if plain_name in self._json_column_names else name
+        # Locate the bag by quick lookup
+        bag_name = self._bag_name_lookup_by_column_name[plain_name]
+        # Get the column
+        bag = self._bags[bag_name]
+        # Done
+        return (bag_name, bag, bag[name])
 
     def get_invalid_names(self, names: Iterable[str]) -> Set[str]:
         # This method is copy-paste from ColumnsBag
@@ -641,8 +655,12 @@ class CombinedBag(PropertiesBagBase):
     def names(self) -> FrozenSet[str]:
         return self._names
 
-    def __iter__(self) -> Iterable[Tuple[str, MapperProperty]]:
-        return chain(*self._bags.values())
+    def __iter__(self) -> Iterable[Tuple[str, PropertiesBagBase, str, MapperProperty]]:
+        return (
+            (bag_name, bag, column_name, column)
+            for bag_name, bag in self._bags.items()
+            for column_name, column in bag
+        )
 
 
 def _get_model_columns(model, ins):
