@@ -56,6 +56,9 @@ class CrudViewMixin:
         #: The current CRUD method
         self._current_crud_method = None
 
+        #: The list of all `@saves_relations()` fields
+        self._saves_relations_names = saves_relations.all_relation_names_from(self.__class__)
+
     # region Abstract Methods
 
     def _get_db_session(self) -> Session:
@@ -399,7 +402,7 @@ class CrudViewMixin:
         """
         # Pluck relations out of the entity dict
         relations_to_be_saved = {k: entity_dict.pop(k, None)
-                                 for k in saves_relations.all_relation_names_from(self.__class__)}
+                                 for k in self._saves_relations_names}
 
         # Update it
         new_instance = wrapped_method(entity_dict)

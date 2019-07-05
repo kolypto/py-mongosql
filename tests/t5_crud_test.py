@@ -249,10 +249,13 @@ class CrudTest(unittest.TestCase):
             # Test: legacy_field
             self.db.begin()  # the previous request has closed it
             article_json['removed_column'] = 'something'  # legacy_column should be ignored
-            expected_response_object['id'] = 3
+            expected_response_object['id'] = 3  # expecting it to be alright
 
             rv = c.post('/article/', json={'article': article_json})
             self.assertEqual(rv['article'], expected_response_object)  # same response; went ok
+
+            # @saves_relations() called even though it's a legacy field
+            self.assertEqual(ArticlesView._save_removed_column, dict(removed_column='something'))
 
     def test_get(self):
         """ Test get() """

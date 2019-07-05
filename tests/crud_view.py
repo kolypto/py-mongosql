@@ -168,6 +168,13 @@ class ArticlesView(RestfulView, CrudViewMixin):
         # Just store it in the class for unit-test to find it
         self.__class__._save_relations__args = dict(new=new, prev=prev, user=user, comments=comments)
 
+    @saves_relations('removed_column')
+    def save_removed_column(self, new, prev=None, removed_column=None):
+        # Store
+        self.__class__._save_removed_column = dict(removed_column=removed_column)
+
+
     _save_comments__args = None
     _save_relations__args = None
+    _save_removed_column = None
 

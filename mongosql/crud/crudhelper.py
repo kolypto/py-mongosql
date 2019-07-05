@@ -130,6 +130,16 @@ class CrudHelper:
             raise exc.InvalidColumnError(self.bags.model_name, unk_cols.pop(), where)
         return attr_names
 
+    @property
+    def _fields_to_remove_on_create(self):
+        """ The list of fields to remove when creating an instance from an entity dict """
+        return self.legacy_fields
+
+    @property
+    def _fields_to_remove_on_update(self):
+        """ The list of fields to remove when updating an instance from an entity dict """
+        return self.legacy_fields
+
     def _remove_entity_dict_fields(self, entity_dict: MutableMapping, rm_fields: Set[str]):
         """ Remove certain fields from the incoming entity dict """
         for k in set(entity_dict.keys()) & rm_fields:
@@ -151,7 +161,7 @@ class CrudHelper:
                                         .format(type(entity_dict)))
 
         # Remove legacy fields
-        self._remove_entity_dict_fields(entity_dict, self.legacy_fields)
+        self._remove_entity_dict_fields(entity_dict, self._fields_to_remove_on_create)
 
         # Check columns
         self._validate_columns(entity_dict.keys(), 'create')
@@ -187,7 +197,7 @@ class CrudHelper:
                                         .format(type(entity_dict)))
 
         # Remove legacy fields
-        self._remove_entity_dict_fields(entity_dict, self.legacy_fields)
+        self._remove_entity_dict_fields(entity_dict, self._fields_to_remove_on_update)
 
         # Check columns
         self._validate_columns(entity_dict.keys(), 'update')
@@ -287,7 +297,6 @@ class StrictCrudHelper(CrudHelper):
         self.ro_fields = ro
         self.rw_fields = rw
         self.const_fields = cn
-        self._ro_and_const_fields = ro | cn
 
         # Defaults for the Query Object
         self.query_defaults = query_defaults or {}  # type: dict
@@ -326,19 +335,15 @@ class StrictCrudHelper(CrudHelper):
         # Done
         return frozenset(ro_fields), frozenset(rw_fields), frozenset(cn_fields)
 
-    def _create_model(self, entity_dict: MutableMapping) -> object:
-        # Remove ro fields
-        self._remove_entity_dict_fields(entity_dict, self.ro_fields)
+    @property
+    def _fields_to_remove_on_create(self):
+        """ The list of fields to remove when creating an instance from an entity dict """
+        return super()._fields_to_remove_on_create | self.ro_fields
 
-        # Super
-        return super()._create_model(entity_dict)
-
-    def _update_model(self, entity_dict: MutableMapping, instance: object) -> object:
-        # Remove ro & const
-        self._remove_entity_dict_fields(entity_dict, self._ro_and_const_fields)
-
-        # Super
-        return super()._update_model(entity_dict, instance)
+    @property
+    def _fields_to_remove_on_update(self):
+        """ The list of fields to remove when updating an instance from an entity dict """
+        return super()._fields_to_remove_on_update | self.ro_fields | self.const_fields
 
     def _query_model(self, query_obj: Mapping, from_query: Union[Query, None] = None) -> MongoQuery:
         # Default Query Object
