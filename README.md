@@ -65,6 +65,7 @@ Table of Contents
         * <a href="#mongoqueryresult_contains_entities---bool">MongoQuery.result_contains_entities() -> bool</a>
         * <a href="#mongoqueryresult_is_scalar---bool">MongoQuery.result_is_scalar() -> bool</a>
         * <a href="#mongoqueryresult_is_tuples---bool">MongoQuery.result_is_tuples() -> bool</a>
+        * <a href="#mongoqueryget_final_query_object---dict">MongoQuery.get_final_query_object() -> dict</a>
         * <a href="#mongoqueryensure_loadedcols---mongoquery">MongoQuery.ensure_loaded(*cols) -> MongoQuery</a>
         * <a href="#mongoqueryget_projection_tree---dict">MongoQuery.get_projection_tree() -> dict</a>
         * <a href="#mongoqueryget_full_projection_tree---dict">MongoQuery.get_full_projection_tree() -> dict</a>
@@ -1316,6 +1317,20 @@ Exceptions:
         It does not throw `InvalidColumnError` because that's likely your error, not an error of the API user :)
 
 * `InvalidQueryError`: cannot merge because the relationship has a filter on it
+
+
+
+
+
+### `MongoQuery.get_final_query_object() -> dict`
+Get the final Query Object dict (after all handlers have applied their defaults).
+
+This Query Object will contain the name of every single handler, including those that were not given any input.
+
+
+
+
+Returns `dict`
 
 
 

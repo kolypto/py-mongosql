@@ -1,3 +1,6 @@
+## 2.0.4 (2019-08-??)
+* `MongoQuery.get_final_query_object()` method for debugging
+
 ## 2.0.3 (2019-07-06)
 * CrudHelper is not able to save `@property` values: welcome `writable_properties`!
 * Fix: `bundled_project` now takes care of `force_include`d fields as well

@@ -387,7 +387,7 @@ class MongoAggregate(MongoQueryHandlerBase):
                                         .format(comp_field_label))
 
             # Okay, the dict { $max: expression } has just one value
-            agg_operator, expression = comp_expression.popitem()
+            agg_operator, expression = comp_expression.copy().popitem()
 
             # Now we process the following data:
             # operator: '$min', '$max', etc

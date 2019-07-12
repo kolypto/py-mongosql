@@ -709,6 +709,9 @@ class MongoProject(MongoQueryHandlerBase):
         """
         return self._generate_full_projection_for(self.mode, self._projection, self.quietly_included)
 
+    def get_final_input_value(self):
+        return self.projection
+
     def __contains__(self, name):
         """ Test whether a column name is included into projection (by name)
 

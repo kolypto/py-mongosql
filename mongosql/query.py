@@ -496,6 +496,22 @@ class MongoQuery:
         # Done
         return self
 
+    def get_final_query_object(self) -> dict:
+        """ Get the final Query Object dict (after all handlers have applied their defaults).
+
+        This Query Object will contain the name of every single handler, including those that were not given any input.
+        """
+        ret = {
+            name: handler.get_final_input_value()
+            for name, handler in self._handlers()
+        }
+
+        # Fix limit: keys 'skip' and 'limit'
+        ret.update(ret['limit'])
+
+        # Done
+        return ret
+
     def get_projection_tree(self) -> dict:
         """ Get a projection-like dict that maps every included column to 1,
             and every relationship to a nested projection dict.

@@ -206,3 +206,7 @@ class MongoQueryHandlerBase:
         :rtype: Query
         """
         raise NotImplementedError()
+
+    def get_final_input_value(self):
+        """ Get the final input of the handler """
+        return self.input_value

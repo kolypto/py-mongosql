@@ -900,6 +900,12 @@ class MongoJoin(MongoQueryHandlerBase):
         # Done
         return self
 
+    def get_final_input_value(self):
+        return {
+            mjp.relationship_name: mjp.nested_mongoquery.get_final_query_object()
+            for mjp in self.mjps
+        }
+
     def __contains__(self, name):
         """ Test whether a relationship name is going to be eagerly loaded (by name)
 
@@ -1048,6 +1054,7 @@ class LegacyMongoJoinParams:
         # Follow the protocol: fake some fields
         self.quietly_included = False
         self.nested_mongoquery = SimpleNamespace()  # empty object
+        self.nested_mongoquery.get_final_query_object = lambda: self.query_object
         self.nested_mongoquery.get_projection_tree = lambda: 1
         self.nested_mongoquery.get_full_projection_tree = lambda: 1
 

@@ -95,3 +95,7 @@ class MongoGroup(MongoSort):
             return query  # short-circuit
 
         return query.group_by(*self.compile_columns())
+
+    def get_final_input_value(self):
+        return [f'{name}{"-" if d == -1 else ""}'
+                for name, d in self.group_spec.items()]

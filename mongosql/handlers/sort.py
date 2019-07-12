@@ -138,6 +138,10 @@ class MongoSort(MongoQueryHandlerBase):
             return query  # short-circuit
         return query.order_by(*self.compile_columns())
 
+    def get_final_input_value(self):
+        return [f'{name}{"-" if d == -1 else ""}'
+                for name, d in self.sort_spec.items()]
+
     # Extra stuff
 
     def undefer_columns_involved_in_sorting(self, as_relation):

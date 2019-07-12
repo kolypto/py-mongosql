@@ -42,6 +42,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # Specific tests that expect selectinquery(), will declare it explicitly
         handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = False
 
+    def assertFinalQueryObject(self: unittest.TestCase, mq: MongoQuery, **expected_query_object):
+        """ Compare the given MongoQuery's final Query Object with your expectations """
+        return self.assertEqual(
+            mq.get_final_query_object(),
+            override_default_query_object(**expected_query_object)
+        )
+
     @classmethod
     def tearDownClass(cls):
         # Restore to the original value
@@ -173,6 +180,16 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # BUG: With raiseload=True, it was possible to exclude a PK from projection
         test_projection(['name'], ('id', 'name'), project_func=lambda p: MongoQuery(models.User, dict(raiseload=True)).query(project=p))
 
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            mq.query(project={'id': 0}),
+            project=dict(id=0, user_calculated=0)
+        )
+        self.assertFinalQueryObject(
+            mq.query(project=['id', 'age']),
+            project=dict(id=1, age=1)
+        )
+
     def test_get_project(self):
         # Previously, MongoQuery has a method, get_project(), which allowed to export projections from the query.
         # Now, this method is built into MongoProject.
@@ -217,6 +234,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # Fail
         self.assertRaises(InvalidQueryError, test_sort, OrderedDict([['id', -2], ['age', -1]]), '')
 
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            m.mongoquery().query(sort=['id-', 'age+']),
+            project=dict(user_calculated=0),
+            sort=['id-', 'age']
+        )
+
     def test_group(self):
         """ Test group() """
         m = models.User
@@ -240,6 +264,14 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # Fail
         self.assertRaises(InvalidQueryError, test_group, OrderedDict([['id', -2], ['age', -1]]), '')
+
+
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            m.mongoquery().query(group=['id-', 'age+']),
+            project=dict(user_calculated=0),
+            group=['id-', 'age']
+        )
 
     def test_filter(self):
         """ Test filter() """
@@ -349,6 +381,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # Filter: JSON
         test_filter({'data.rating': {'$gt': 0.5}}, "CAST((a.data #>> ['rating']) AS FLOAT) > 0.5")
 
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            m.mongoquery().query(filter={'$not': {'id': 1}}),
+            project=dict(calculated=0, hybrid=0),
+            filter={'$not': {'id': 1}},
+        )
+
     def test_filter_dotted(self):
         """ Test filter(): dotted syntax """
         u = models.User
@@ -407,6 +446,14 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         q = m.mongoquery(q).query(limit=15, skip=30).end()
         qs = q2sql(q)
         self.assertTrue(qs.endswith('LIMIT 15 OFFSET 30'), qs)
+
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            m.mongoquery().query(limit=100),
+            project=dict(user_calculated=0),
+            skip=None,
+            limit=100
+        )
 
     def test_aggregate(self):
         """ Test aggregate() """
@@ -488,6 +535,14 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         test_aggregate({'max_rating': {'$max': 'data.rating'}}, "SELECT max(CAST(a.data #>> ['rating'] AS FLOAT)) AS max_rating")
 
         # aggregate + filter
+        # TODO: unit-test
+
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            aggregate_mq({'avg_rating': {'$avg': 'data.rating'}}),
+            project=dict(id=1),
+            aggregate={'avg_rating': {'$avg': 'data.rating'}}
+        )
 
 
     def test_invalid__aggregate_with_projection(self):
@@ -580,6 +635,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          # Filter
                          'WHERE u.age > 18')
 
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            u.mongoquery().query(count=2),
+            project=dict(user_calculated=0),
+            count=2
+        )
+
     # ---------- DREADED JOIN LINE ----------
     # Everything below this line is about joins.
     # A lot of blood was spilled on these forgotten fields.
@@ -651,6 +713,19 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'u_1.id', 'u_1.name',  # PK, projected
                                     # nothing else
                                    )
+
+        # get_final_query_object() test
+        self.assertFinalQueryObject(
+            mq,
+            project={'title': 1},
+            filter={'data.rating': {'$gt': 0.5}},
+            join={
+                'user': override_default_query_object(
+                    project={'name': 1},
+                    filter={'age': {'$gt': 18}}
+                )
+            }
+        )
 
     def test_join__one_to_many(self):
         """ Test: join() one-to-many """
@@ -1877,3 +1952,17 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          )
 
     # endregion
+
+
+
+
+# The default empty query object
+# That's something get_final_query_object() would return when it has nothing else to do... :)
+DEFAULT_QUERY_OBJECT = {
+    **MongoQuery(models.User).query().get_final_query_object(),
+    **dict(project={})
+}
+
+def override_default_query_object(**query_object):
+    return {**DEFAULT_QUERY_OBJECT, **query_object}
+

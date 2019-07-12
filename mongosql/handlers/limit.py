@@ -209,5 +209,7 @@ class MongoLimit(MongoQueryHandlerBase):
         # Done
         return query
 
+    def get_final_input_value(self):
+        return dict(skip=self.skip, limit=self.limit)
 
 NoneType = type(None)
