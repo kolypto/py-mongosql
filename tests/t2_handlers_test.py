@@ -297,6 +297,16 @@ class HandlersTest(unittest.TestCase):
                                              hybrid=0))
         test_by_full_projection(pr, **inc_none_but('theme', 'data'))
 
+        # Originally include, merge mixed
+        pr = project_id_uid_title_to(1).merge(dict(id=0, uid=1, title=0, theme=1, data=0, calculated=1, hybrid=0))
+        self.assertEqual(pr.projection, inc_none_but('uid', 'theme', 'calculated'))
+        test_by_full_projection(pr, **inc_none_but('uid', 'theme', 'calculated'))
+
+        # Originally exclude, merge mixed
+        pr = project_id_uid_title_to(0).merge(dict(id=0, uid=1, title=0, theme=1, data=0, calculated=1, hybrid=0))
+        self.assertEqual(pr.projection, inc_none_but('uid', 'theme', 'calculated'))
+        test_by_full_projection(pr, **inc_none_but('uid', 'theme', 'calculated'))
+
         # === Test: merge, quiet mode
         # Originally include, merge include
         pr = project_id_uid_title_to(1).merge(dict(data=1), quietly=True)

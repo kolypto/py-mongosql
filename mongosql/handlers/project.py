@@ -388,9 +388,11 @@ class MongoProject(MongoQueryHandlerBase):
         return mode, projection, relations
 
     def _process_simple_merge(self, mode, projection, merge_projection, quietly_included=()):
-        """ Simply merge two projections """
+        """ Simply merge two projections: merge `merge_projection` into (mode, projection) and return it """
         # Prepare the input
         merge_mode, merge_projection, merge_relations = self._input_process(merge_projection)
+
+        # Merge (merge_mode, merge_projection) into (mode, projection)
 
         # Now, the logic goes as follows.
         # When the two modes are compatible (mode == merge_mode), we can just update() the dict.
@@ -404,6 +406,10 @@ class MongoProject(MongoQueryHandlerBase):
             # merge(whatever) into a MIXED mode: just merge
             # mixed mode contains every column's info, so whatever projection comes in, they are compatible.
             projection.update(merge_projection)
+        elif merge_mode == self.MODE_MIXED:
+            # merge(MIXED) into whatever: complete override
+            projection = merge_projection
+            mode = self.MODE_MIXED
         elif merge_mode == self.MODE_INCLUDE and mode == self.MODE_EXCLUDE:
             # merge(include) into an EXCLUDE mode
             # These modes are incompatible. Got to use full projection
