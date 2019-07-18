@@ -148,7 +148,9 @@ class MongoProject(MongoQueryHandlerBase):
 
         :param model: Sqlalchemy model to work with
         :param bags: Model bags
-        :param default_projection: The default projection to use in the absence of any value
+        :param default_projection: The default projection to use in the absence of any value.
+            Note: a `None` will default to "include all fields"; an empty value (empty list, set, dict) will default
+            to "exclude all fields".
         :param bundled_project: A dict of column names mapped to a list of column names.
             If the key is included, the values are included as well.
         :param default_exclude: A list of column names that are excluded even in exclusion mode.
@@ -176,8 +178,12 @@ class MongoProject(MongoQueryHandlerBase):
         super(MongoProject, self).__init__(model, bags)
 
         # Settings
-        self.default_projection = {k: Default(v)
-                                   for k, v in (default_projection or {}).items()}
+        if default_projection is None:
+            self.default_projection = None
+        else:
+            if not isinstance(default_projection, dict):
+                default_projection = dict.fromkeys(default_projection, 1)
+            self.default_projection = {k: Default(v) for k, v in default_projection.items()}
         self.bundled_project = bundled_project or {}
         self.default_exclude = set(default_exclude) if default_exclude else None
         self.force_include = set(force_include) if force_include else None
@@ -291,8 +297,31 @@ class MongoProject(MongoQueryHandlerBase):
     def _input_process(self, projection):
         """ input(): receive, validate, preprocess """
         # Empty projection
-        if not projection:
-            projection = (self.default_projection or {}).copy()
+        # This logic differentiates between `None` as input, meaning, no value was provided;
+        # and an empty list|dict, which means that the user explicitly stated that they do not want any fields.
+        if projection is None:
+            # No projection provided
+            # See how the default value applies
+            if self.default_projection is None:
+                # No default value given in the settings
+                # MongoSQL defaults to the inclusion of all fields
+                projection = {}
+                default_mode = self.MODE_EXCLUDE
+            elif not self.default_projection:
+                projection = {}
+                default_mode = self.MODE_INCLUDE
+            else:
+                projection = self.default_projection
+                default_mode = self.MODE_INCLUDE if set(self.default_projection.values()) == {1} else self.MODE_EXCLUDE
+        elif not projection:
+            # Empty projection: the user does not want any fields
+            # This means empty include list: include nothing
+            projection = {}
+            default_mode = self.MODE_INCLUDE
+        else:
+            # A projection provided to input().
+            # The default mode depends on the actual values.
+            default_mode = None
 
         # Array syntax
         if isinstance(projection, (list, tuple)):
@@ -314,6 +343,11 @@ class MongoProject(MongoQueryHandlerBase):
                     # Remove it
                     value = projection.pop(name)
 
+                    # Handle this ugly case when a projection only had a few relationships and no columns.
+                    # In this case, the `projection` dict became empty, and it did not remember the mode it was in.
+                    if default_mode is None:
+                        default_mode = 1 if value else 0
+
                     # When value=1, transform it into a proper MongoJoin value
                     if value:
                         relations[name] = {}
@@ -324,7 +358,10 @@ class MongoProject(MongoQueryHandlerBase):
 
         # Validate values
         unique_values = set(projection.values())
-        if unique_values == {0} or unique_values == set():  # an empty dict
+        if not projection:
+            # Empty projection
+            mode = default_mode
+        elif unique_values == {0}:
             # all values are 0
             mode = self.MODE_EXCLUDE
         elif unique_values == {1}:

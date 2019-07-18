@@ -18,17 +18,34 @@ class HandlersTest(unittest.TestCase):
     def test_projection(self):
         Article_project = lambda **kw: MongoProject(Article, ModelPropertyBags.for_model(Article), **kw)
 
+        # Helpers to build full projections
+        ALL_ARTICLE_FIELDS = {'id', 'uid', 'title', 'theme', 'data', 'calculated', 'hybrid'}
+        ALL_EXCLUDED = dict.fromkeys(ALL_ARTICLE_FIELDS, 0)
+        ALL_INCLUDED = dict.fromkeys(ALL_ARTICLE_FIELDS, 1)
+
+        inc_all_except = lambda *kw: {**ALL_INCLUDED, **dict.fromkeys(kw, 0)}
+        inc_none_but = lambda *kw: {**ALL_EXCLUDED, **dict.fromkeys(kw, 1)}
+
         def test_by_full_projection(p, **expected_full_projection):
             """ Test:
                 * get_full_projection()
                 * __contains__() of a projection using its full projection
                 * compile_columns()
             """
-            self.assertEqual(p.get_full_projection(), expected_full_projection)
+            try:
+                self.assertEqual(p.get_full_projection(), expected_full_projection)
+            except:
+                print('Projection: ', p.projection)
+                print('Full projection: Expected:', expected_full_projection)
+                print('Full projection: Actual: ', p.get_full_projection())
+                raise
 
             # Test properties: __contains__()
             for name, include in expected_full_projection.items():
-                self.assertEqual(name in p, True if include else False)
+                if include:
+                    self.assertIn(name, p)
+                else:
+                    self.assertNotIn(name, p)
 
             # Test: compile_columns() only returns column properties
             columns = p.compile_columns()
@@ -47,6 +64,13 @@ class HandlersTest(unittest.TestCase):
         p = Article_project().input(None)
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
         self.assertEqual(p.projection, dict(calculated=0, hybrid=0))
+        test_by_full_projection(p, **inc_all_except('calculated', 'hybrid'))
+
+        # === Test: empty input
+        p = Article_project().input([])
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict())
+        test_by_full_projection(p, **ALL_EXCLUDED)
 
         # === Test: Valid projection, array
         p = Article_project().input(['id', 'uid', 'title'])
@@ -177,51 +201,93 @@ class HandlersTest(unittest.TestCase):
         # === Test: default_projection
         pr = Reusable(Article_project(default_projection=dict(id=1, title=1)))
 
+        # `None` uses the default projection
         p = pr.input(None)
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, title=1))
+        test_by_full_projection(p, **inc_none_but('id', 'title'))
 
         p = pr.input(None)
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, title=1))
+        test_by_full_projection(p, **inc_none_but('id', 'title'))
+
+        # Empty values give no columns: override
+        p = pr.input([])
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict())
+        test_by_full_projection(p, **ALL_EXCLUDED)
+
+        p = pr.input({})
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict())
+        test_by_full_projection(p, **ALL_EXCLUDED)
+
+        # === Test: default_projection: empty
+        # The desired behavior is to have no fields included by default, when the default_projection is empty, not None.
+        pr = Reusable(Article_project(default_projection=()))
+
+        # `None` uses the default projection, which is nothing
+        p = pr.input(None)
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict())
+        test_by_full_projection(p, **ALL_EXCLUDED)
+
+        # Empty values give no columns (same result, actually)
+        p = pr.input([])
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict())
+        test_by_full_projection(p, **ALL_EXCLUDED)
+
+        p = pr.input({})
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict())
+        test_by_full_projection(p, **ALL_EXCLUDED)
 
         # === Test: merge
 
-        mk_pr = lambda mode: Article_project().input(dict.fromkeys(['id', 'uid', 'title'], mode))
+        # Test everything with : id, uid, title
+        # Mapped to `mode`
+        project_id_uid_title_to = lambda mode: Article_project().input(dict.fromkeys(['id', 'uid', 'title'], mode))
 
         # Originally include, merge include
-        pr = mk_pr(1).merge(dict(data=1))
+        pr = project_id_uid_title_to(1).merge(dict(data=1))
         self.assertEqual(pr.mode, pr.MODE_INCLUDE)
         self.assertEqual(pr.projection, dict(id=1, uid=1, title=1,
                                              # One new appended
                                              data=1))
+        test_by_full_projection(pr, **inc_none_but('id', 'uid', 'title', 'data'))
 
         # Originally exclude, merge exclude
-        pr = mk_pr(0).merge(dict(data=0))
+        pr = project_id_uid_title_to(0).merge(dict(data=0))
         self.assertEqual(pr.mode, pr.MODE_EXCLUDE)
         self.assertEqual(pr.projection, dict(id=0, uid=0, title=0, calculated=0, hybrid=0,
                                              # One new appended
                                              data=0))
+        test_by_full_projection(pr, **inc_none_but('theme'))
 
         # Originally include, merge exclude (conflict, just drop banned keys)
-        pr = mk_pr(1).merge(dict(uid=0))
+        pr = project_id_uid_title_to(1).merge(dict(uid=0))
         self.assertEqual(pr.mode, pr.MODE_INCLUDE)
         self.assertEqual(pr.projection, dict(id=1, title=1))
+        test_by_full_projection(pr, **inc_none_but('id', 'title'))
 
         # Originally exclude, merge include (conflict, results in full projection)
-        pr = mk_pr(0).merge(dict(data=1))
+        pr = project_id_uid_title_to(0).merge(dict(data=1))
         self.assertEqual(pr.mode, pr.MODE_MIXED)
         self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
                                              # Full projection in mixed mode
                                              theme=1, data=1, calculated=0, hybrid=0))
+        test_by_full_projection(pr, **inc_none_but('theme', 'data'))
 
         # Originally mixed, merge include
-        pr = mk_pr(0).merge(dict(data=1)).merge(dict(hybrid=1))
+        pr = project_id_uid_title_to(0).merge(dict(data=1)).merge(dict(hybrid=1))
         self.assertEqual(pr.mode, pr.MODE_MIXED)
         self.assertEqual(pr.projection, dict(id=0, uid=0, title=0,
                                              theme=1, data=1, calculated=0,
                                              # Now included
                                              hybrid=1))
+        test_by_full_projection(pr, **inc_none_but('theme', 'data', 'hybrid'))
 
         # Originally mixed, merge exclude
         pr.merge(dict(hybrid=0))
@@ -229,20 +295,25 @@ class HandlersTest(unittest.TestCase):
                                              theme=1, data=1, calculated=0,
                                              # Now excluded again
                                              hybrid=0))
+        test_by_full_projection(pr, **inc_none_but('theme', 'data'))
 
         # === Test: merge, quiet mode
         # Originally include, merge include
-        pr = mk_pr(1).merge(dict(data=1), quietly=True)
+        pr = project_id_uid_title_to(1).merge(dict(data=1), quietly=True)
+        self.assertEqual(pr.projection, dict(id=1, uid=1, title=1, data=0))  # TODO: Fix!
         self.assertEqual(pr.get_full_projection(),
                          dict(id=1, uid=1, title=1, theme=0, data=0, calculated=0, hybrid=0))  # not 'data'
+        self.assertIn('data', pr)  # included quietly, and the `in` test will tell!
 
         # Originally exclude, merge include (conflict, results in full projection)
-        pr = mk_pr(0).merge(dict(title=1), quietly=True)
+        pr = project_id_uid_title_to(0).merge(dict(title=1), quietly=True)
+        self.assertEqual(pr.projection, dict(id=0, uid=0, title=0, data=1, theme=1, calculated=0, hybrid=0))
         self.assertEqual(pr.get_full_projection(),
                          dict(id=0, uid=0, title=0, theme=1, data=1, calculated=0, hybrid=0))  # not 'title'
+        self.assertIn('title', pr)  # quietly
 
         # Originally mixed, merge include
-        pr = mk_pr(0).merge(dict(data=1)).merge(dict(hybrid=1), quietly=True)
+        pr = project_id_uid_title_to(0).merge(dict(data=1)).merge(dict(hybrid=1), quietly=True)
         self.assertEqual(pr.projection, dict(id=0, uid=0, title=0, theme=1, data=1, calculated=0, hybrid=0))  # not 'hybrid'
 
         # === Test: force_include
@@ -252,6 +323,7 @@ class HandlersTest(unittest.TestCase):
         p = pr.input(dict(title=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1, title=1))  # id force included
+        test_by_full_projection(p, **inc_none_but('id', 'title'))
         # Exclude mode
         p = pr.input(dict(data=0))
         self.assertEqual(p.mode, p.MODE_MIXED)
@@ -259,6 +331,7 @@ class HandlersTest(unittest.TestCase):
                                             uid=1, title=1, theme=1,
                                             data=0,  # excluded by request
                                             calculated=0, hybrid=0))
+        test_by_full_projection(p, **inc_all_except('data', 'calculated', 'hybrid'))
 
         # === Test: force_exclude
         pr = Reusable(Article_project(force_exclude=('data',)))
@@ -266,10 +339,12 @@ class HandlersTest(unittest.TestCase):
         p = pr.input(dict(id=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1))  # no `data`
+        test_by_full_projection(p, **inc_none_but('id'))
         # Include mode: same property
         p = pr.input(dict(id=1, data=1))
         self.assertEqual(p.mode, p.MODE_INCLUDE)
         self.assertEqual(p.projection, dict(id=1))  # No more data, even though requested
+        test_by_full_projection(p, **inc_none_but('id'))
         # Exclude mode
         p = pr.input(dict(theme=0))
         self.assertEqual(p.mode, p.MODE_EXCLUDE)
@@ -277,6 +352,7 @@ class HandlersTest(unittest.TestCase):
                                             data=0,  # force excluded
                                             calculated=0, hybrid=0
                                             ))
+        test_by_full_projection(p, **inc_all_except('theme', 'data', 'calculated', 'hybrid'))
 
         # === Test: merge() cannnot override force_include and force_exclude
         # force_include
@@ -284,18 +360,22 @@ class HandlersTest(unittest.TestCase):
 
         p = pr.input(dict(id=0))
         self.assertIn('id', p)  # can't undo
+        test_by_full_projection(p, **inc_all_except('calculated', 'hybrid'))
 
         p = p.merge(dict(id=0))
         self.assertIn('id', p)  # can't undo
+        test_by_full_projection(p, **inc_all_except('calculated', 'hybrid'))
 
         # force_exclude
         pr = Reusable(Article_project(force_exclude=('data',)))
 
         p = pr.input(dict(data=1))
         self.assertNotIn('data', p)  # can't undo
+        test_by_full_projection(p, **ALL_EXCLUDED)
 
         p = p.merge(dict(data=0))
         self.assertNotIn('data', p)  # can't undo
+        test_by_full_projection(p, **ALL_EXCLUDED)
 
         # === Test: bundled_project
         pr = Reusable(Article_project(bundled_project={'calculated': ['title', 'uid']}))
@@ -303,6 +383,7 @@ class HandlersTest(unittest.TestCase):
         self.assertIn('calculated', p)
         self.assertIn('title', p)
         self.assertIn('uid', p)
+        test_by_full_projection(p, **inc_none_but('calculated', 'title', 'uid'))
 
         # === Test: bundled_project, relationships
         mq = MongoQuery(Article, dict(bundled_project={'calculated': ['comments']}))
@@ -317,6 +398,7 @@ class HandlersTest(unittest.TestCase):
             id=1, title=1,  # dependencies loaded
             data=1,  # asked by the user
         ))
+        test_by_full_projection(mq.handler_project, **inc_none_but('calculated', 'id', 'title', 'data'))
 
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
         with self.assertRaises(InvalidColumnError):
@@ -358,6 +440,7 @@ class HandlersTest(unittest.TestCase):
         a = Article(id=100, uid=10, title='title', theme='theme', data=dict(a=1), user=User(age=21))
         pr = Article_project().input(dict(id=1, uid=1, calculated=1))
 
+        test_by_full_projection(pr, **inc_none_but('id', 'uid', 'calculated'))
         d = pr.pluck_instance(a)
         self.assertEqual(d, dict(id=100, uid=10, calculated=15))
 
@@ -894,7 +977,7 @@ class HandlersTest(unittest.TestCase):
 
         # === Test: can specify relationships in default projection
         mq = MongoQuery(u, dict(default_projection={'articles': 1})).query()
-        self.assertEqual(mq.get_projection_tree(), {'articles': {'calculated': 0, 'hybrid': 0}, 'user_calculated': 0})
+        self.assertEqual(mq.get_projection_tree(), {'articles': {'calculated': 0, 'hybrid': 0}})
 
     def test_mongoquery_pluck_instance(self):
         """ Test MongoQuery.pluck_instance() """
@@ -922,6 +1005,7 @@ class HandlersTest(unittest.TestCase):
         ]
 
         # Plain join. No restrictions.
+        print('#'*20)
         mq = User.mongoquery().query(project=['name'],
                                      join=('articles',))
         self.assertEqual(mq.pluck_instance(u),

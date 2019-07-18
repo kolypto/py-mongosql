@@ -100,12 +100,16 @@ class MongoQuerySettingsDict(dict):
             ```
         
         Args:
-            default_projection (dict[str, int] | list[str]): (for: project)
+            default_projection (dict[str, int] | list[str] | None): (for: project)
                 The default projection to use when no input was provided.
-                When an input value is given, `default_projection` is not used at all.
-                If you want to merge some default into every projection,
-                use some of the following settings:
+                When an input value is given, `default_projection` is not used at all: it overrides the default
+                completely. If you want to merge some default into every projection, use some of the following settings:
                 `default_exclude`, `force_include`, `force_exclude`
+
+                NOTE: If you want the API to return *all fields* by default, use `None`. If you want the API to
+                return *no fields* by default, use an empty list `[]`.
+                This is because `None` is seen as "no default", and MongoSQL uses its internal default of including
+                all fields; but `[]` is seen as an instruction "to include no fields by default".
             default_exclude (list[str]): (for: project)
                 A list of attributes that are excluded from every projection.
                 The only way to load these attributes would be to request them explicitly.

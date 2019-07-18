@@ -125,8 +125,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Test query
             try: test_query(query, expected_columns)
             except:
-                print('Projection:', mq.handler_projection.projection)
-                print('Full projection:', mq.handler_projection.get_full_projection())
+                print('Projection:', mq.handler_project.projection)
+                print('Full projection:', mq.handler_project.get_full_projection())
                 raise
 
         def test_query(query, expected_columns):
@@ -142,8 +142,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # Empty values
         test_projection(None, ('id', 'name', 'tags', 'age'))
-        test_projection([], ('id', 'name', 'tags', 'age'))
-        test_projection({}, ('id', 'name', 'tags', 'age'))
+        test_projection([], ('id',))  # can't exclude PK from SQL
+        test_projection({}, ('id',))
 
         # Array syntax
         test_projection(['id'], ('id',))
@@ -208,7 +208,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         _check_query(dict(project={'id': 0, 'name': 0}),
                      {'id': 0, 'tags': 1, 'age': 1, 'name': 0, 'user_calculated': 0})
         _check_query(dict(project={}),
-                     {'id': 1, 'tags': 1, 'age': 1, 'name': 1, 'user_calculated': 0})
+                     {'id': 0, 'tags': 0, 'age': 0, 'name': 0, 'user_calculated': 0})
 
     def test_sort(self):
         """ Test sort() """

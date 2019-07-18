@@ -1,5 +1,7 @@
 ## 2.0.4 (2019-08-??)
 * `MongoQuery.get_final_query_object()` method for debugging
+* Project Handler: the new `default_projection` behavior lets you build APIs that return no fields by default:
+    the API user will have to require every field explicitly.
 
 ## 2.0.3 (2019-07-06)
 * CrudHelper is not able to save `@property` values: welcome `writable_properties`!
