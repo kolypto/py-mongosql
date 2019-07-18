@@ -1,105 +1,181 @@
-from mongosql import CrudViewMixin, StrictCrudHelper
-import collections
+from functools import wraps
+
+from mongosql import CrudViewMixin, StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
 
 from . import models
 from flask import request, g
 from flask_jsontools import jsonapi, RestfulView
 
 
-def project(item, projection):
-    result = {}
-    if isinstance(item, collections.Iterable):
-        return [project(i, projection) for i in item]
-    for key, value in projection.items():
-        if isinstance(value, dict):
-            result[key] = project(getattr(item, key, None), value)
-        if value == 1:
-            result[key] = getattr(item, key, None)
-    return result
+def passthrough_decorator(f):
+    """ A no-op decorator.
+        It's only purpose is to see whether @saves_relations() works even when decorated with something else.
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    return wrapper
 
 
 class ArticlesView(RestfulView, CrudViewMixin):
     """ Full-featured CRUD view """
 
-    # We're strict, yeah
-    crudhelper = StrictCrudHelper(models.Article,
-        ro_fields=('id', 'uid',),
-        allow_relations=('user', 'user.comments', 'comments'),
-        query_defaults={
-            'sort': ['id-'],
-        },
-        maxitems=2,
+    # First, configure a CrudHelper
+    crudhelper = StrictCrudHelper(
+        # The model to work with
+        models.Article,
+        **StrictCrudHelperSettingsDict(
+            # Read-only fields, as a callable (just because)
+            ro_fields=lambda: ('id', 'uid',),
+            legacy_fields=('removed_column',),
+            # MongoQuery settings
+            aggregate_columns=('id', 'data',),  # have to explicitly enable aggregation for columns
+            query_defaults=dict(
+                sort=('id-',),
+            ),
+            writable_properties=True,
+            max_items=2,
+            # Related entities configuration
+            allowed_relations=('user', 'comments'),
+            related={
+                'user': dict(
+                    # Exclude @property by default
+                    default_exclude=('user_calculated',),
+                    allowed_relations=('comments',),
+                    related={
+                        'comments': dict(
+                            # Exclude @property by default
+                            default_exclude=('comment_calc',),
+                            # No further joins
+                            join_enabled=False,
+                        )
+                    }
+                ),
+                'comments': dict(
+                    # Exclude @property by default
+                    default_exclude=('comment_calc',),
+                    # No further joins
+                    join_enabled=False,
+                ),
+            },
+        )
     )
+
+    # ensure_loaded: always load these columns and relationships
+    # This is necessary in case some custom code relies on it
+    ensure_loaded = ('data', 'comments')  # that's a weird requirement, but since the user is supposed to use projections, it will be excluded
 
     # RestfulView needs that for routing
     primary_key = ('id',)
     decorators = (jsonapi,)
 
-    # DRY: store it once
+    # Every response will have either { article: ... } or { articles: [...] }
+    # Stick to the DRY principle: store the key name once
     entity_name = 'article'
+    entity_names = 'articles'
 
-    @property
-    def _qo(self):
+    # Implement the method that fetches the Query Object for this request
+    def _get_query_object(self):
         """ Get Query Object from request
 
         :rtype: dict | None
         """
         return (request.get_json() or {}).get('query', None)
 
-    def _db(self):
+    # CrudViewMixin demands: needs to be able to get a session so that it can run a query
+    def _get_db_session(self):
         """ Get database Session
 
         :rtype: sqlalchemy.orm.Session
         """
         return g.db
 
-    def _query(self):  # Implemented
-        return self._db().query(self.crudhelper.model)
+    # This is our method: it plucks an instance using the current projection
+    # This is just convenience: if the user has requested
+    def _return_instance(self, instance):
+        """ Modify a returned instance: for GET and LIST methods
 
-    #region Collection methods
+            Note: create(), update(), delete() instances are returned unadulterated.
+        """
+        return self._mongoquery.pluck_instance(instance)
+
+    # region CRUD methods
 
     def list(self):
-        data, projection = self._method_list(self._qo)
-        if projection:
-            data = project(data, projection)
-        return { self.entity_name+'s':  data}
+        """ List method: GET /article/ """
+        # List results
+        results = self._method_list()
 
-    def create(self):
-        instance = self._method_create(request.get_json()[self.entity_name])
-        instance.uid = 3  # Manually set ro field value
+        # Format response
+        # NOTE: can't return map(), because it's not JSON serializable
+        return {self.entity_name+'s': results}
 
-        ssn = self._db()
-        ssn.add(instance)
-        ssn.commit()
+    def _method_list_result__groups(self, dicts):
+        """ Format the result from GET /article/ when the result is a list of dicts (GROUP BY) """
+        return list(dicts)  # our JSON serializer does not like generators. Have to make it into a list
 
-        return {self.entity_name: instance}
-
-    #endregion
-
-    #region Single entity methods
+    def _method_list_result__entities(self, entities):
+        """ Format the result from GET /article/ when the result is a list of sqlalchemy entities """
+        # Pluck results: apply projection to the result set
+        # This is just our good manners: if the client has requested certain fields, we return only those they requested.
+        # Even if our code loads some more columns (and it does!), the client will always get what they requested.
+        return list(map(self._return_instance, entities))
 
     def get(self, id):
-        item, projection = self._method_get(self._qo, id=id)
-        if projection:
-            item = project(item, projection)
-        return { self.entity_name:  item }
+        item = self._method_get(id=id)
+        return {self.entity_name: self._return_instance(item)}
 
-    def update(self, id):
-        instance = self._method_update(request.get_json()[self.entity_name], id=id)
+    def create(self):
+        input_entity_dict = request.get_json()[self.entity_name]
+        instance = self._method_create(input_entity_dict)
+        instance.uid = 3  # Manually set ro field value, because the client can't
 
-        ssn = self._db()
+        ssn = self._get_db_session()
         ssn.add(instance)
         ssn.commit()
 
-        return {self.entity_name: instance}
+        return {self.entity_name: self._return_instance(instance)}
+
+    def update(self, id):
+        input_entity_dict = request.get_json()[self.entity_name]
+        instance = self._method_update(input_entity_dict, id=id)
+
+        ssn = self._get_db_session()
+        ssn.add(instance)
+        ssn.commit()
+
+        return {self.entity_name: self._return_instance(instance)}
 
     def delete(self, id):
         instance = self._method_delete(id=id)
 
-        ssn = self._db()
+        ssn = self._get_db_session()
         ssn.delete(instance)
         ssn.commit()
 
-        return {self.entity_name: instance}
+        return {self.entity_name: self._return_instance(instance)}
 
-    #endregion
+    # endregion
+
+    @passthrough_decorator  # no-op to demonstrate that it still works
+    @saves_relations('comments')
+    def save_comments(self, new, prev=None, comments=None):
+        # Just store it in the class for unit-test to find it
+        self.__class__._save_comments__args = dict(new=new, prev=prev, comments=comments)
+
+    @passthrough_decorator  # no-op to demonstrate that it still works
+    @saves_relations('user', 'comments')
+    def save_relations(self, new, prev=None, user=None, comments=None):
+        # Just store it in the class for unit-test to find it
+        self.__class__._save_relations__args = dict(new=new, prev=prev, user=user, comments=comments)
+
+    @saves_relations('removed_column')
+    def save_removed_column(self, new, prev=None, removed_column=None):
+        # Store
+        self.__class__._save_removed_column = dict(removed_column=removed_column)
+
+
+    _save_comments__args = None
+    _save_relations__args = None
+    _save_removed_column = None
+

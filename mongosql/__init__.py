@@ -1,13 +1,39 @@
+"""
+MongoSQL is a JSON query engine that lets you query [SqlAlchemy](http://www.sqlalchemy.org/)
+like a MongoDB database.
+
+The main use case is the interation with the UI:
+every time the UI needs some *sorting*, *filtering*, *pagination*, or to load some
+*related objects*, you won't have to write a single line of repetitive code!
+
+It will let the API user send a JSON Query Object along with the REST request,
+which will control the way the result set is generated:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    sort: ['first_name-'],  // sort by `first_name` DESC
+    filter: { age: { $gte: 18 } },  // filter: age >= 18
+    join: ['user_profile'],  // load related `user_profile`
+    limit: 10,  // limit to 10 rows
+}))
+```
+
+Tired of adding query parameters for pagination, filtering, sorting?
+Here is the ultimate solution.
+
+NOTE: currently, only tested with PostgreSQL.
+"""
+
 # Exceptions that are used here and there
 from .exc import *
 
 # MongoSQL needs a lot of information about the properties of your models.
 # All this is handled by the following class:
-from .bag import ModelPropertyBags
+from .bag import ModelPropertyBags, CombinedBag
 
-# The heart of MongoSql is in the statements.py file: that's where your JSON objects are
-# converted to actual SqlAlchemy queries!
-from . import statements
+# The heart of MongoSql are the handlers:
+# that's where your JSON objects are converted to actual SqlAlchemy queries!
+from . import handlers
 
 # MongoQuery is the man that parses your QueryObject and applies the methods from MongoModel that
 # implement individual fields.
@@ -24,6 +50,16 @@ from .sa import MongoSqlBase
 # CrudHelper is something that you'll need when building JSON API that implements CRUD:
 # Create/Read/Update/Delete
 from .crud import CrudHelper, StrictCrudHelper, CrudViewMixin
+from .crud import saves_relations
 
-# Finally, have a look at:
-# ./hist.py: an object that gives you access to model history (previous values of changed columns)
+# Helpers
+# Reusable query objects (so that you don't have to initialize them over and over again)
+from mongosql.util import Reusable
+# raiseload_col() that can be applied to columns, not only relationships
+from mongosql.util import raiseload_col
+# selectinquery() relationship loader that supports custom queries
+from mongosql.util import selectinquery
+# `Query` object wrapper that is able to query and count() at the same time
+from mongosql.util import CountingQuery
+# Settings objects for MongoQuery and StrictCrudHelper
+from mongosql.util import MongoQuerySettingsDict, StrictCrudHelperSettingsDict

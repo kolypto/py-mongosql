@@ -1,21 +1,116 @@
-from __future__ import absolute_import
+"""
+### Filter Operation
+Filtering corresponds to the `WHERE` part of an SQL query.
+
+MongoSQL-powered API endpoints would typically return the list of *all* items, and leave it up to
+the API user to filter them the way they like.
+
+Example of filtering:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    // only select grown-up females
+    filter: {
+        // all conditions are AND-ed together
+        age: { $gte: 18, $lte: 25 },  // age 18..25
+        sex: 'female',  // sex = "female"
+    }
+}))
+```
+
+#### Field Operators
+The following [MongoDB query operators](https://docs.mongodb.com/manual/reference/operator/query/)
+operators are supported:
+
+Supports the following MongoDB operators:
+
+* `{ a: 1 }` - equality check: `field = value`. This is a shortcut for the `$eq` operator.
+* `{ a: { $eq: 1 } }` - equality check: `field = value` (alias).
+* `{ a: { $lt: 1 } }`  - less than: `field < value`
+* `{ a: { $lte: 1 } }` - less or equal than: `field <= value`
+* `{ a: { $ne: 1 } }` - inequality check: `field != value`.
+* `{ a: { $gte: 1 } }` - greater or equal than: `field >= value`
+* `{ a: { $gt: 1 } }` - greater than: `field > value`
+* `{ a: { $in: [...] } }` - any of. Field is equal to any of the given array of values.
+* `{ a: { $nin: [...] } }` - none of. Field is not equal to any of the given array of values.
+* `{ a: { $exists: true } }` - value is not `null`.
+
+Supports the following operators on an `ARRAY` field, for a scalar value:
+
+* `{ arr: 1 }`  - containment check: field array contains the given value: `ANY(array) = value`.
+* `{ arr: { $ne: 1 } }` - non-containment check: field array does not contain value: `ALL(array_col) != value`.
+* `{ arr: { $size: 0 } }` - Has a length of N (zero, to check for an empty array)
+
+
+Supports the following operators on an `ARRAY` field, for an array value:
+
+* `{ arr: [...] }`  - equality check: two arrays are completely equal: `arr = value`.
+* `{ arr: { $ne: [...] } }` - inequality check: two arrays are not equal: `arr != value`.
+* `{ arr: { $in: [...] } }` - intersection check. Check that the two arrays have common elements.
+* `{ arr: { $nin: [...] } }` - no intersection check. Check that the two arrays have no common elements.
+* `{ arr: { $all: [...] } }` - Contains all values from the given array
+
+#### Boolean Operators
+
+In addition to comparing fields to a value, the following boolean operators are supported
+that enable you to make complex queries:
+
+* `{ $or: [ {..criteria..}, .. ] }`  - any is true
+* `{ $and: [ {..criteria..}, .. ] }` - all are true
+* `{ $nor: [ {..criteria..}, .. ] }` - none is true
+* `{ $not: { ..criteria.. } }` - negation
+
+Example usage:
+
+```javascript
+$.get('/api/books?query=' + JSON.stringify({
+    // either of the two options are fine
+    $or: [
+        // First option: sci-fi by Gardner Dozois
+        { genre: 'sci-fi', editor: 'Gardner Dozois' },
+        // Second option: any documentary
+        { genre: 'documentary' },
+    ]
+}))
+```
+
+#### Related columns
+You can also filter the data by the *columns on a related model*.
+This is achieved by using a dot after the relationship name:
+
+```javascript
+$.get('/api/user?query=' + JSON.stringify({
+    filter: {
+        // Fields of the 'user' model
+        first_name: 'John',
+        last_name: 'Doe',
+        // Field of a related 'address' model
+        'address.zip': '100098',
+    }
+}))
+```
+"""
 
 from sqlalchemy.sql.expression import and_, or_, not_, cast
 from sqlalchemy.sql import operators
 from sqlalchemy.sql.functions import func
 
 from sqlalchemy.dialects import postgresql as pg
-from .base import _MongoQueryStatementBase
-from ..bag import CombinedBag
+from .base import MongoQueryHandlerBase
+from ..bag import CombinedBag, FakeBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 
+
+# region Filter Expression Classes
 
 def _is_array(value):
     return isinstance(value, (list, tuple, set, frozenset))
 
 
-class FilterExpressionBase(object):
+class FilterExpressionBase:
     """ An expression from the MongoFilter object """
+
+    __slots__ = ('operator_str', 'value')
 
     def __init__(self, operator_str, value):
         self.operator_str = operator_str
@@ -42,6 +137,24 @@ class FilterExpressionBase(object):
         cc = and_(*conditions)
         # Put parentheses around it, if necessary
         return cc.self_group() if len(conditions) > 1 else cc
+
+
+class LiteralExpression(FilterExpressionBase):
+    """ An expression that is already compiled and ready to be used
+
+        This is used for expressions that were already compiled by the user; e.g. force_filter expressions.
+    """
+    __slots__ = ('expression',)
+
+    def __init__(self, expression):
+        # no super()
+        self.expression = expression  # type: BinaryExpression
+
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, str(self.expression))
+
+    def compile_expression(self):
+        return self.expression
 
 
 class FilterBooleanExpression(FilterExpressionBase):
@@ -108,6 +221,9 @@ class FilterColumnExpression(FilterExpressionBase):
 
         Consists of: an operator ($eq, etc), a column, and a value to compare the column to
     """
+
+    __slots__ = ('bag', 'column_name', 'column', 'real_column', 'operator_lambda', 'column_expression', 'value_expression')
+
     def __init__(self,
                  bag, column_name, column,
                  operator_str, operator_lambda,
@@ -190,6 +306,8 @@ class FilterColumnExpression(FilterExpressionBase):
 class FilterRelatedColumnExpression(FilterColumnExpression):
     """ An expression involving a related column (dot-notation: 'users.age') """
 
+    __slots__ = ('relation', 'relation_name')
+
     def __init__(self,
                  bag, relation_name, relation,
                  column_name, column,
@@ -205,9 +323,11 @@ class FilterRelatedColumnExpression(FilterColumnExpression):
         self.relation_name = relation_name
         self.relation = relation
 
+# endregion
 
-class MongoFilter(_MongoQueryStatementBase):
-    """ MongoDB filter.
+
+class MongoFilter(MongoQueryHandlerBase):
+    """ MongoSql filter expression.
 
         This is essentially used for filtering, but it is also used in aggregation logic.
         For instance, if you want to count all people older than 18 years old,
@@ -245,8 +365,27 @@ class MongoFilter(_MongoQueryStatementBase):
 
     query_object_section_name = 'filter'
 
-    def __init__(self, model, scalar_operators=None, array_operators=None):
-        super(MongoFilter, self).__init__(model)
+    def __init__(self, model, bags, force_filter=None, scalar_operators=None, array_operators=None, legacy_fields=None):
+        """ Init a filter expression
+
+        :param model: Sqlalchemy model to work with
+        :param bags: Model bags
+        :param force_filter: A filtering condition that will be forcefully applied to the query.
+            Can be:
+                * a dict, which will become ANDed to every request ;
+                * a `lambda model:`: a callable that may generate any expression Query.filter() can handle.
+                    `model` argument is the model class, which may be aliased.
+        :param scalar_operators: A dict of additional operators for scalar columns to recognize.
+            A mapping: {'$operator': lambda}. See class body for examples.
+        :type scalar_operators: dict[str, lambda]
+        :param array_operators: A dict of additional operators for array columns to recognize
+        :type array_operators: dict[str, lambda]
+        """
+        # Legacy fields
+        self.legacy_fields = frozenset(legacy_fields or ())
+
+        # Parent
+        super(MongoFilter, self).__init__(model, bags)
 
         # On input
         self.expressions = None
@@ -255,11 +394,26 @@ class MongoFilter(_MongoQueryStatementBase):
         self._extra_scalar_ops = scalar_operators or {}
         self._extra_array_ops = array_operators or {}
 
+        # Extra configuraion: force_filter
+        if force_filter is None:
+            self.force_filter = None
+        elif callable(force_filter):
+            # When a callable, just store it
+            self.force_filter = force_filter
+        elif isinstance(force_filter, dict):
+            # When a dict, store it, and validate it
+            self.force_filter = force_filter
+            # just for the sake of validation
+            self._parse_criteria(self.force_filter)  # validate force_filter
+        else:
+            raise ValueError(force_filter)
+
     def _get_supported_bags(self):
         return CombinedBag(
             col=self.bags.columns,
             rcol=self.bags.related_columns,
-            hybrid=self.bags.hybrid_properties
+            hybrid=self.bags.hybrid_properties,
+            legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 
     # Supported operation. Operation name, function that checks params,
@@ -271,7 +425,7 @@ class MongoFilter(_MongoQueryStatementBase):
         # operator => lambda column, value, original_value
         # `original_value` is to be used in conditions, because `val` can be an SQL-expression!
         '$eq':  lambda col, val, oval: col == val,
-        '$ne':  lambda col, val, oval: col != val,
+        '$ne':  lambda col, val, oval: col.is_distinct_from(val),  # (see comment below)
         '$lt':  lambda col, val, oval: col < val,
         '$lte': lambda col, val, oval: col <= val,
         '$gt':  lambda col, val, oval: col > val,
@@ -279,6 +433,11 @@ class MongoFilter(_MongoQueryStatementBase):
         '$in':  lambda col, val, oval: col.in_(val),  # field IN(values)
         '$nin': lambda col, val, oval: col.notin_(val),  # field NOT IN(values)
         '$exists': lambda col, val, oval: col != None if oval else col == None,
+
+        # Note on $ne:
+        # We can't actually use '!=' here, because with nullable columns, it will give unexpected results.
+        # {'name': {'$ne': 'brad'}} won't select a User(name=None),
+        # because in Postgres, a '!=' comparison with NULL is... NULL, which is a false value.
     }
 
     # Operators for array columns
@@ -334,8 +493,34 @@ class MongoFilter(_MongoQueryStatementBase):
         cls._operators_array[name] = callable
 
     def input(self, criteria):
+        # Process input
         super(MongoFilter, self).input(criteria)
         self.expressions = self._parse_criteria(criteria)
+
+        # Any additional filtering goes here
+        extra_filter = None
+
+        # Apply force_filter
+        if isinstance(self.force_filter, dict):
+            # Dict. Parse it, add it (because the results will be ANDed together anyway)
+            extra_filter = self._parse_criteria(self.force_filter)
+        if callable(self.force_filter):
+            # Invoke the callable
+            extra_filter = self.force_filter(self.model)
+            # Make sure it's a list
+            if not isinstance(extra_filter, (list, tuple)):
+                extra_filter = list(extra_filter)
+            # Convert every item of the list into LiteralExpression
+            extra_filter = map(LiteralExpression, extra_filter)
+
+        # Extra filters?
+        if extra_filter:
+            self.expressions.extend(extra_filter)
+
+        return self
+
+    def merge(self, criteria):
+        self.expressions.extend(self._parse_criteria(criteria))
         return self
 
     def _parse_criteria(self, criteria):
@@ -374,6 +559,8 @@ class MongoFilter(_MongoQueryStatementBase):
             column_name = key
             try:
                 bag_name, bag, column = self.supported_bags[column_name]
+                if bag_name == 'legacy':
+                    continue  # ignore legacy columns
             except KeyError:
                 raise InvalidColumnError(self.bags.model_name, column_name, self.query_object_section_name)
 
@@ -392,7 +579,7 @@ class MongoFilter(_MongoQueryStatementBase):
             for operator, value in criteria.items():
                 # Operator lookup
                 try:
-                    operator_lambda = self.lookup_operator_lambda(bag.is_column_array(column_name), operator)
+                    operator_lambda = self._lookup_operator(bag.is_column_array(column_name), operator)
                 except KeyError:
                     raise InvalidQueryError('Unsupported operator "{}" found in filter for column `{}`'
                                             .format(operator, column_name))
@@ -464,7 +651,7 @@ class MongoFilter(_MongoQueryStatementBase):
             else:
                 return self._BOOLEAN_EXPRESSION_CLS(op, criteria)
 
-    def lookup_operator_lambda(self, column_is_array, operator):
+    def _lookup_operator(self, column_is_array, operator):
         """ Lookup an operator in `self`, or extra operators
 
         :param column_is_array: Is the column an ARRAY column?
@@ -520,3 +707,18 @@ class MongoFilter(_MongoQueryStatementBase):
 
         # Convert the list of conditions to one final expression
         return self._BOOLEAN_EXPRESSION_CLS.sql_anded_together(conditions)
+
+    # Not Implemented for this Query Object handler
+    compile_columns = NotImplemented
+    compile_options = NotImplemented
+    compile_statements = NotImplemented
+
+    def alter_query(self, query, as_relation=None):
+        # Only use Query.filter() when there is a self.expression,
+        # because an empty expression will put an ugly 'WHERE true' condition on the query,
+        # and we want it looking nice :)
+        if self.expressions:
+            query = query.filter(self.compile_statement())
+
+        # Done
+        return query

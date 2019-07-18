@@ -1,11 +1,16 @@
 #!/usr/bin/env python
-""" SqlAlchemy queries with MongoDB-style """
+""" A JSON query engine with SqlAlchemy as a back-end """
 
+import sys
 from setuptools import setup, find_packages
+
+if not sys.version_info >= (3, 6, 0):
+    raise ImportError('MongoSQL 2.0 only supports Python 3.6+')
+
 
 setup(
     name='mongosql',
-    version='1.5.5',
+    version='2.0.3',
     author='Mark Vartanyan',
     author_email='kolypto@gmail.com',
 
@@ -21,8 +26,7 @@ setup(
     entry_points={},
 
     install_requires=[
-        'sqlalchemy >= 0.9.7, <= 1.2.18',  # currently, fails with 1.3.x
-        'future',
+        'sqlalchemy >= 1.2.0,!=1.2.9',
     ],
     extras_require={},
     include_package_data=True,
@@ -35,7 +39,6 @@ setup(
         'Intended Audience :: Developers',
         'Natural Language :: English',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 3',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
