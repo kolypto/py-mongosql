@@ -1,7 +1,6 @@
 import unittest
 from random import shuffle
-from sqlalchemy import __version__ as SA_VERSION
-from sqlalchemy.orm import Load, defaultload, selectinload, load_only
+from sqlalchemy.orm import defaultload, selectinload
 
 from . import models
 from .util import QueryLogger, TestQueryStringsMixin
@@ -12,8 +11,7 @@ from mongosql import selectinquery
 # We need to differentiate, because:
 # in 1.2.x, selectinload() builds a JOIN query from the left entity to the right entity
 # in 1.3.x, selectinload() queries just the right entity, and filters by the foreign key field directly
-SA_12 = SA_VERSION.startswith('1.2')
-SA_13 = SA_VERSION.startswith('1.3')
+from mongosql import SA_12, SA_13
 
 
 class SelectInQueryLoadTest(unittest.TestCase, TestQueryStringsMixin):

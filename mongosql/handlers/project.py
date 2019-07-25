@@ -89,7 +89,7 @@ Note that some relationships will be disabled for security reasons.
 from sqlalchemy.orm.base import InspectionAttr
 
 from .base import MongoQueryHandlerBase
-from ..bag import CombinedBag, FakeBag
+from ..bag import CombinedBag, FakeBag, AssociationProxiesBag
 from ..exc import InvalidQueryError, InvalidColumnError, InvalidRelationError
 from ..util import Marker
 
@@ -127,6 +127,7 @@ class MongoProject(MongoQueryHandlerBase):
         * Columns
         * Hybrid properties
         * Python Propeties (`@property`)
+        * Association Proxies
         * Relationships
     """
 
@@ -220,10 +221,10 @@ class MongoProject(MongoQueryHandlerBase):
                 # Reraise with a custom error message
                 raise InvalidColumnError(self.bags.model_name, e.column_name, 'project:default_projection')
         if self.bundled_project:
-            # NOTE: bundled_project does not support relationships yet
+            # NOTE: bundled_project does not support relationships as keys yet
             self.validate_properties_or_relations(self.bundled_project, where='project:bundled_project')
-            for name, names in self.bundled_project.items():
-                self.validate_properties_or_relations(names, where='project:bundled_project[{}]'.format(name))
+            for association_proxy_name, names in self.bundled_project.items():
+                self.validate_properties_or_relations(names, where='project:bundled_project[{}]'.format(association_proxy_name))
         if self.default_exclude:
             self.validate_properties_or_relations(self.default_exclude, where='project:default_exclude')
         if self.force_include:
@@ -252,6 +253,7 @@ class MongoProject(MongoQueryHandlerBase):
             col=self.bags.columns,
             hybrid=self.bags.hybrid_properties,
             prop=self.bags.properties,
+            assocproxy=self.bags.association_proxies,
             # NOTE: please do not add `self.bags.relations` here: relations are handled separately:
             # _input_process() plucks them out, and _pass_relations_to_mongojoin() forwards them to MongoJoin.
             legacy=FakeBag({n: None for n in self.legacy_fields}),
@@ -530,28 +532,42 @@ class MongoProject(MongoQueryHandlerBase):
                 c
                 for c in columns]
 
+    def _compile_list_of_included_columns_from_bag(self, bag):
+        """ Generate a list of columns, using a bag as a reference point.
+
+        Will generate a list of attributes included from that particular bag by the current projection.
+
+        When `self.bags.columns` is used, it will generate a list of included columns only.
+        When `self.bags.association_proxies` is used, lists only included Association Proxy proxies.
+        """
+        if self.mode == self.MODE_INCLUDE or self.mode == self.MODE_MIXED:
+            # Only {col: 1}
+            return [bag[col_name]
+                    for col_name, include in self._projection.items()
+                    if include == 1 and col_name in bag]
+        else:
+            # Exclude mode
+            # All, except {col: 0}
+            return [column
+                    for col_name, column in bag
+                    if col_name not in self._projection]
+
     def compile_columns(self):
         """ Get the list of columns to be included into the Query """
         # Note that here we do not iterate over self.supported_bags
         # Instead, we iterate over self.bags.columns, because properties and hybrid properties do
         # not need to be loaded at all!
-        if self.mode == self.MODE_INCLUDE or self.mode == self.MODE_MIXED:
-            # Only {col: 1}
-            return [self.bags.columns[col_name]
-                    for col_name, include in self._projection.items()
-                    if include == 1 and col_name in self.bags.columns]
-        else:
-            # Exclude mode
-            # All, except {col: 0}
-            return [column
-                    for col_name, column in self.bags.columns
-                    if col_name not in self._projection]
+        return self._compile_list_of_included_columns_from_bag(self.bags.columns)
 
     def compile_options(self, as_relation):
-        """ Get the list of load_only() options for a Query.
+        """ Get the list of options for a Query: load_only() for columns, and some eager loaders for relationships """
+        options = []
+        options.extend(self._compile_column_options(as_relation))
+        options.extend(self._compile_relationship_options(as_relation))
+        return options
 
-            Load options are chained from the `as_relation` load interface
-        """
+    def _compile_column_options(self, as_relation):
+        """ Column options: Get the list of load_only() options for a Query """
         # Short-circuit
         if self.mode == self.MODE_EXCLUDE:
             empty = ()
@@ -570,40 +586,45 @@ class MongoProject(MongoQueryHandlerBase):
 
         # load_only() all those columns
         load_only_columns = self.compile_columns()
-        ret = [as_relation.load_only(*load_only_columns)]
+        options = [as_relation.load_only(*load_only_columns)]
 
-        # raiseload_col() on all the rest (if requested)
+        # raiseload on all other columns
+        options.extend(self._compile_raiseload_options(as_relation))
+
+        # Done
+        return options
+
+    def _compile_raiseload_options(self, as_relation):
+        """ Column options: raiseload_col() on all other columns """
         if self.raiseload_col:
-            ret.append(as_relation.raiseload_col('*'))
-
-            # Undefer PKs (otherwise, raiseload_col() will get them)
-            ret.append(as_relation.undefer(*(column for name, column in self.bags.pk)))
+            return [
+                # raiseload_col() on all the rest
+                as_relation.raiseload_col('*'),
+                # Undefer PKs (otherwise, raiseload_col() will get them)
+                as_relation.undefer(*(column for name, column in self.bags.pk)),
+            ]
 
         # done
-        return ret
+        return ()
 
-    def compile_option_for_column(self, column_name, as_relation):
-        """ Compile the loader option for a single column.
+    def _compile_relationship_options(self, as_relation):
+        """ Relationship options: for relationships that are affected by this projection.
 
-        This method is used by MongoJoin handler to restore some of the columns to their original projection.
-
-        :param column_name: The column to render the option for
-        :param as_relation: Load interface
-        :return: option
+        Currently, only used by Association Proxies: when you include one of them, MongoProject has to load that
+        relationship in order to get the property values
         """
-        column = self.bags.columns[column_name]
+        # Get the list of included association proxies
+        assproxx = self._compile_list_of_included_columns_from_bag(self.bags.association_proxies)
 
-        # Included in projection: load it
-        if column_name in self:
-            return as_relation.undefer(column)
-
-        # Not included
-        if self.raiseload_col:
-            # raiseload_rel
-            return as_relation.raiseload_col(column)
-        else:
-            # deferred
-            return as_relation.defer(column)
+        # Convert that to the list of underlying relationships, and load it's most important property
+        return [
+            # selectinload() + load_only()
+            as_relation.selectinload(
+                # Get the underlying relationship, properly aliased
+                self.bags.association_proxies.get_relationship(association_proxy)
+            ).load_only(association_proxy.remote_attr.key)  # TODO: does not work with aliased relationships
+            for association_proxy in assproxx
+        ]
 
     # Not Implemented for this Query Object handler
     compile_statement = NotImplemented

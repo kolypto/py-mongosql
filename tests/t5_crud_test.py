@@ -7,11 +7,11 @@ from flask_jsontools import FlaskJsonClient, DynamicJSONEncoder
 from sqlalchemy.orm.exc import NoResultFound
 
 from . import models
-from .crud_view import ArticlesView
+from .crud_view import ArticleView, GirlWatcherView
 from mongosql import StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
 
 
-class CrudTest(unittest.TestCase):
+class CrudTestBase(unittest.TestCase):
     def setUp(self):
         # Init db
         self.engine, self.Session = models.get_working_db_for_tests()
@@ -24,7 +24,8 @@ class CrudTest(unittest.TestCase):
         app.json_encoder = DynamicJSONEncoder
         app.test_client_class = FlaskJsonClient
 
-        ArticlesView.route_as_view(app, 'articles', ('/article/', '/article/<int:id>'))
+        ArticleView.route_as_view(app, 'articles', ('/article/', '/article/<int:id>'))
+        GirlWatcherView.route_as_view(app, 'girlwatchers', ('/girlwatcher/', '/girlwatcher/<int:id>'))
 
         @app.before_request
         def db():
@@ -33,6 +34,9 @@ class CrudTest(unittest.TestCase):
     def tearDown(self):
         self.db.close()  # Reset session
 
+
+class ArticleViewTest(CrudTestBase):
+    """ Test ArticleView """
     def test_crudhelper(self):
         """ Test crudhelper configuration """
         make_crudhelper = lambda **kw: StrictCrudHelper(
@@ -148,7 +152,6 @@ class CrudTest(unittest.TestCase):
             # no more 'user'
         })
 
-
     def test_list(self):
         """ Test list() """
 
@@ -255,7 +258,7 @@ class CrudTest(unittest.TestCase):
             self.assertEqual(rv['article'], expected_response_object)  # same response; went ok
 
             # @saves_relations() called even though it's a legacy field
-            self.assertEqual(ArticlesView._save_removed_column, dict(removed_column='something'))
+            self.assertEqual(ArticleView._save_removed_column, dict(removed_column='something'))
 
     def test_get(self):
         """ Test get() """
@@ -369,8 +372,6 @@ class CrudTest(unittest.TestCase):
                 'article': {'calculated': '!!! :)'}
             }).get_json()
             self.assertEqual(rv['article']['title'], '10'+'!!! :)')
-
-
 
     def test_delete(self):
         """ Test delete() """
@@ -548,14 +549,14 @@ class CrudTest(unittest.TestCase):
             self.assertIn('article', rv.get_json())
 
             # See what happened
-            self.assertEqual(ArticlesView._save_comments__args['new'].title, '999')
-            self.assertIsNone(ArticlesView._save_comments__args['prev'])
-            self.assertIsNone(ArticlesView._save_comments__args['comments'])
+            self.assertEqual(ArticleView._save_comments__args['new'].title, '999')
+            self.assertIsNone(ArticleView._save_comments__args['prev'])
+            self.assertIsNone(ArticleView._save_comments__args['comments'])
 
-            self.assertEqual(ArticlesView._save_relations__args['new'].title, '999')
-            self.assertIsNone(ArticlesView._save_relations__args['prev'])
-            self.assertIsNone(ArticlesView._save_relations__args['comments'])
-            self.assertEqual(ArticlesView._save_relations__args['user'], dict(example=1))
+            self.assertEqual(ArticleView._save_relations__args['new'].title, '999')
+            self.assertIsNone(ArticleView._save_relations__args['prev'])
+            self.assertIsNone(ArticleView._save_relations__args['comments'])
+            self.assertEqual(ArticleView._save_relations__args['user'], dict(example=1))
 
         # === Test: on a class with __slots__
         class ViewSlots:
@@ -573,3 +574,17 @@ class CrudTest(unittest.TestCase):
             {'save_a'},
             {d.method_name for d in decorators}
         )
+
+
+class GirlWatcherViewTest(CrudTestBase):
+    """ Test GirlWatcherView """
+
+    def test_superficial_get(self):
+        """ Quickly test the view just to make sure it does not err """
+        with self.app.test_client() as c:
+            rv = c.get('/girlwatcher/', json=None).get_json()
+            self.assertIn('girlwatchers', rv)
+
+            rv = c.get('/girlwatcher/1', json=None).get_json()
+            self.assertIn('girlwatcher', rv)
+

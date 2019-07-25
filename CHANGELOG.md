@@ -1,4 +1,6 @@
-## 2.0.4 (2019-08-??)
+## 2.0.4 (2019-08-26)
+* `filter`: new `$prefix` operator
+* `AssociationProxy` support for `project` and `filter`
 * `MongoQuery.get_final_query_object()` method for debugging
 * Project Handler: the new `default_projection` behavior lets you build APIs that return no fields by default:
     the API user will have to require every field explicitly.

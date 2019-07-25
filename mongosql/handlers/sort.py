@@ -69,6 +69,7 @@ class MongoSort(MongoQueryHandlerBase):
         return CombinedBag(
             col=self.bags.columns,
             hybrid=self.bags.hybrid_properties,
+            assocproxy=self.bags.association_proxies,
             legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 

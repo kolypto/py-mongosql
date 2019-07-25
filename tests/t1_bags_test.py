@@ -5,7 +5,7 @@ from sqlalchemy.orm import aliased
 from . import models
 
 from mongosql.bag import *
-
+from mongosql import SA_12, SA_13
 
 class BagsTest(unittest.TestCase):
     """ Test bags """
@@ -46,6 +46,16 @@ class BagsTest(unittest.TestCase):
         #=== columns. dot-notation
         pass
 
+        #=== properties.
+        pass
+
+        #=== hybrid_properties
+        pass
+
+        # === association_proxies
+        bag = bags.association_proxies
+        self.assertEqual(bag.names, set())
+
         #=== relations
         bag = bags.relations
 
@@ -69,7 +79,7 @@ class BagsTest(unittest.TestCase):
         self.assertEqual(bags.properties.names, {'user_calculated'})
         self.assertEqual(bags.hybrid_properties.names, set())
 
-        #=== rel_columns. Dot-notation
+        #=== related_columns. Dot-notation
         bag = bags.related_columns
 
         self.assertGreaterEqual(bag.names, {'roles.id', 'comments.id', 'articles.title'})  # just a few
@@ -154,6 +164,10 @@ class BagsTest(unittest.TestCase):
         # All fields validated ok
         self.assertEqual(bag.get_invalid_names(['id', 'data', 'data.rating']), set())  # JSON prop
         self.assertEqual(bag.get_invalid_names(['id.rating']), {'id.rating'})  # not JSON
+
+        # === association_proxies
+        bag = bags.association_proxies
+        self.assertEqual(bag.names, set())
 
         # === relations
         bag = bags.relations
@@ -329,6 +343,36 @@ class BagsTest(unittest.TestCase):
         test_column(c, 'a_1.id')
 
         return
+
+    def test_girl_watcher_bags(self):
+        bags = ModelPropertyBags.for_model(models.GirlWatcher)
+        ins = inspect(models.GirlWatcher)
+
+        # === columns
+        bag = bags.columns
+        self.assertEqual(bag.names, {'id', 'name', 'age', 'favorite_id'})
+
+        # === association_proxies
+        bag = bags.association_proxies
+        if SA_12:
+            self.assertEqual(bag.names, set())  # ignored in SqlAlchemy 1.2.x
+        else:
+            self.assertEqual(bag.names, {'good_names', 'best_names'})
+
+        # === relations
+        bag = bags.relations
+        self.assertEqual(bag.names, {'favorite', 'good', 'best', 'manager'})
+
+        # === pk, nullable, properties, hybrid properties
+        self.assertEqual(bags.pk.names, {'id'})
+        self.assertEqual(bags.nullable.names, {'name', 'age', 'favorite_id'})
+        self.assertEqual(bags.properties.names, set())
+        self.assertEqual(bags.hybrid_properties.names, set())
+
+        # === related_columns. Dot-notation
+        bag = bags.related_columns
+
+        self.assertGreaterEqual(bag.names, {'good.id', 'best.id'})  # just a few
 
     def test_writable_properties(self):
         """ Test how mongosql detects writable properties """

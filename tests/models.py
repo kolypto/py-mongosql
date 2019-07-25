@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine
+from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import sessionmaker, scoped_session, column_property
 
 from sqlalchemy.sql.expression import and_
@@ -145,6 +146,9 @@ class Edit(Base):
     creator = relationship(User, foreign_keys=cuid)
 
 
+# Models with many columns, many properties, many foreign keys
+# Nothing special; just easier to test 100 things in one test when you have superabundance of fields
+
 class ManyFieldsModel(Base):
     """ A table with many, many columns
 
@@ -246,6 +250,10 @@ class ManyForeignKeysModel(Base):
     user_2 = relationship(User, foreign_keys=user_2_id)
     user_3 = relationship(User, foreign_keys=user_3_id)
 
+
+# Test many-to-many relationships
+# MongoSQL should be able to work with intermediate M2M tables when loading relationships
+
 class GirlWatcherFavorites(Base):
     """ The M2M intermediate table """
     __tablename__ = 'gwf'
@@ -282,6 +290,23 @@ class GirlWatcher(Base):
                         secondaryjoin= GirlWatcherFavorites.user_id == User.id,
                         )
 
+    best_names = association_proxy('best', 'name')
+    good_names = association_proxy('good', 'name')
+
+
+class GirlWatcherManager(Base):
+    """ Someone to relate GirlWatcher to """
+    __tablename__ = 'gwm'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+
+    girlwatcher_id = Column(Integer, ForeignKey(GirlWatcher.id))
+    girlwatcher = relationship(GirlWatcher, foreign_keys=girlwatcher_id, backref=backref('manager'))
+
+
+# Test how MongoSQL sees mixins
+# All these columns are supposed to be visible and manageable
 
 class CreationTimeMixin:
     """ Inheritance tests: a mixin """
@@ -311,6 +336,9 @@ class SpecialMixin:
     def hyb_big_id(cls):
         return and_(cls.id > 1000)
 
+
+# Test how MongoSQL deals with inheritance and polymorphic identity
+# MongoSQL shall have no trouble working with inherited fields
 
 class CarArticle(Article, CreationTimeMixin, SpecialMixin):
     """ Inheritance tests: inherit attrs """
@@ -430,9 +458,13 @@ def content_samples():
 
         GirlWatcher(id=1, name='Fred', age=65, favorite_id=3),
         GirlWatcher(id=2, name='Ban', age=55, favorite_id=2),
+        GirlWatcherManager(id=1, name='Mr. One', girlwatcher_id=1),
+        GirlWatcherManager(id=2, name='Mr. Two', girlwatcher_id=2),
     ], [
+        # GirlWatcher #1: good ['b'], best ['c']
         GirlWatcherFavorites(gw_id=1, user_id=2, best=False),
         GirlWatcherFavorites(gw_id=1, user_id=3, best=True),
+        # GirlWatcher #2: good ['a', 'c'], best ['b']
         GirlWatcherFavorites(gw_id=2, user_id=1, best=False),
         GirlWatcherFavorites(gw_id=2, user_id=2, best=True),
         GirlWatcherFavorites(gw_id=2, user_id=3, best=False),
@@ -508,12 +540,12 @@ if __name__ == '__main__':
     # Useful imports and variables
     ssn = Session()
 
-    from util import q2sql
+    from util import stmt2sql, q2sql
     from mongosql import MongoQuery
     from sqlalchemy import inspect, func
     from sqlalchemy.orm import Query
     from sqlalchemy.orm.base import instance_state
-    from sqlalchemy.orm import Load, defaultload, lazyload, immediateload, selectinload
+    from sqlalchemy.orm import Load, defaultload, joinedload, lazyload, immediateload, selectinload
     from sqlalchemy.orm import raiseload, noload, load_only, defer, undefer
     from sqlalchemy.orm import aliased, contains_eager, contains_alias
 

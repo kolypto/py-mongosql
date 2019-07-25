@@ -31,6 +31,7 @@ Supports the following MongoDB operators:
 * `{ a: { $ne: 1 } }` - inequality check: `field != value`.
 * `{ a: { $gte: 1 } }` - greater or equal than: `field >= value`
 * `{ a: { $gt: 1 } }` - greater than: `field > value`
+* `{ a: { $prefix: 1 } }` - prefix: `field LIKE "value%"`
 * `{ a: { $in: [...] } }` - any of. Field is equal to any of the given array of values.
 * `{ a: { $nin: [...] } }` - none of. Field is not equal to any of the given array of values.
 * `{ a: { $exists: true } }` - value is not `null`.
@@ -336,31 +337,7 @@ class MongoFilter(MongoQueryHandlerBase):
                 old_enough_count: { $sum: { age: { $gt: 18 } } }
             }}
 
-        Supports the following MongoDB operators:
-
-        * None: no op
-        * { a: 1 }  - equality. For arrays: contains value.
-        * { a: { $lt: 1 } }  - <
-        * { a: { $lte: 1 } } - <=
-        * { a: { $ne: 1 } } - <>. For arrays: does not contain value
-        * { a: { $gte: 1 } } - >=
-        * { a: { $gt: 1 } } - >
-        * { a: { $in: [...] } } - any of. For arrays: has any from
-        * { a: { $nin: [...] } } - none of. For arrays: has none from
-
-        * { a: { $exists: true } } - is [not] NULL
-
-        * { arr: { $all: [...] } } For arrays: contains all values
-        * { arr: { $size: 0 } } For arrays: has a length of 0
-
-        Supports the following boolean operators:
-
-        * { $or: [ {..criteria..}, .. ] }  - any is true
-        * { $and: [ {..criteria..}, .. ] } - all are true
-        * { $nor: [ {..criteria..}, .. ] } - none is true
-        * { $not: { ..criteria.. } } - negation
-
-        Supported: Columns, Related Columns, Hybrid Properties
+        Supported: Columns, Related Columns, Hybrid Properties, Association Proxies
     """
 
     query_object_section_name = 'filter'
@@ -413,6 +390,7 @@ class MongoFilter(MongoQueryHandlerBase):
             col=self.bags.columns,
             rcol=self.bags.related_columns,
             hybrid=self.bags.hybrid_properties,
+            assocproxy=self.bags.association_proxies,
             legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 
@@ -430,6 +408,7 @@ class MongoFilter(MongoQueryHandlerBase):
         '$lte': lambda col, val, oval: col <= val,
         '$gt':  lambda col, val, oval: col > val,
         '$gte': lambda col, val, oval: col >= val,
+        '$prefix': lambda col, val, oval: col.startswith(val),
         '$in':  lambda col, val, oval: col.in_(val),  # field IN(values)
         '$nin': lambda col, val, oval: col.notin_(val),  # field NOT IN(values)
         '$exists': lambda col, val, oval: col != None if oval else col == None,
@@ -577,9 +556,15 @@ class MongoFilter(MongoQueryHandlerBase):
             # { age: { $gt: 18, $lt: 25 } }
             # Now we got to go through this criteria object, and apply every operator to the column.
             for operator, value in criteria.items():
+                # Determine what sort of operator to use
+                # Use array operators for array columns, unless it's an association proxy, which is an array,
+                # but uses scalar operators
+                use_array_operator = bag_name != 'assocproxy' and bag.is_column_array(column_name)
+
                 # Operator lookup
                 try:
-                    operator_lambda = self._lookup_operator(bag.is_column_array(column_name), operator)
+                    # Lookup
+                    operator_lambda = self._lookup_operator(use_array_operator, operator)
                 except KeyError:
                     raise InvalidQueryError('Unsupported operator "{}" found in filter for column `{}`'
                                             .format(operator, column_name))
@@ -591,7 +576,7 @@ class MongoFilter(MongoQueryHandlerBase):
 
                 # Handle the result differently depending on the type of column
                 # We have to handle relations separately: see compile_statement()
-                if bag_name in ('col', 'hybrid'):
+                if bag_name in ('col', 'hybrid', 'assocproxy'):
                     expressions.append(self._COLUMN_EXPRESSION_CLS(
                         bag, column_name, column,
                         operator, operator_lambda,

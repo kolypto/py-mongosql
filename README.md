@@ -293,6 +293,7 @@ Supports the following MongoDB operators:
 * `{ a: { $ne: 1 } }` - inequality check: `field != value`.
 * `{ a: { $gte: 1 } }` - greater or equal than: `field >= value`
 * `{ a: { $gt: 1 } }` - greater than: `field > value`
+* `{ a: { $prefix: 1 } }` - prefix: `field LIKE "value%"`
 * `{ a: { $in: [...] } }` - any of. Field is equal to any of the given array of values.
 * `{ a: { $nin: [...] } }` - none of. Field is not equal to any of the given array of values.
 * `{ a: { $exists: true } }` - value is not `null`.

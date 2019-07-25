@@ -89,7 +89,7 @@ class MongoQueryHandlerBase:
     def _get_supported_bags(self):
         """ Get the _PropertiesBag interface supported by this handler
 
-        :rtype: mongosql.bag.PropertiesBagBase
+        :rtype: mongosql.bag._PropertiesBagBase
         """
         raise NotImplementedError()
 

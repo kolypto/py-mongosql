@@ -4,10 +4,10 @@ import unittest
 from copy import copy
 from collections import OrderedDict
 
-from sqlalchemy import __version__ as SA_VERSION
 from sqlalchemy import inspect
 from sqlalchemy.orm import aliased
 
+from mongosql import SA_12, SA_13
 from mongosql import handlers, MongoQuery, Reusable, MongoQuerySettingsDict
 from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
 
@@ -17,8 +17,7 @@ from .util import q2sql, QueryLogger, TestQueryStringsMixin
 
 
 # SqlAlchemy version (see t_selectinquery_test.py)
-SA_12 = SA_VERSION.startswith('1.2')
-SA_13 = SA_VERSION.startswith('1.3')
+TEST_QUERY_STRING_ONLY_MATCHES_SA13 = 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently'
 
 
 # Add a custom operator
@@ -317,6 +316,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         test_filter({'id': {'$gte': 1}}, 'u.id >= 1')
         test_filter({'id': {'$gt': 1}},  'u.id > 1')
 
+        # $prefix
+        test_filter({'name': {'$prefix': 'ma'}}, "(u.name LIKE ma || '%')")
+
         # $in
         self.assertRaises(InvalidQueryError, filter, {'tags': {'$in': 1}})
         test_filter({'name': {'$in': ['a', 'b', 'c']}}, 'u.name IN (a, b, c)')
@@ -543,7 +545,6 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             project=dict(id=1),
             aggregate={'avg_rating': {'$avg': 'data.rating'}}
         )
-
 
     def test_invalid__aggregate_with_projection(self):
         """ Invalid combination: aggregate + project """
@@ -1267,7 +1268,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         test_settings_for(mq, 'comments', models.Comment,
                           expected_settings=comment_settings)
 
-    @unittest.skipIf(SA_12, 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently')
+    @unittest.skipIf(SA_12, TEST_QUERY_STRING_ONLY_MATCHES_SA13)
     def test_selectinquery(self):
         """ Test join using the custom-made selectinquery() """
         u = models.User
@@ -1538,7 +1539,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         sys.setrecursionlimit(old_recursion_limit)
 
-    @unittest.skipIf(SA_12, 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently')
+    @unittest.skipIf(SA_12, TEST_QUERY_STRING_ONLY_MATCHES_SA13)
     def test_selectinquery_join_skip_limit(self):
         """ Test join + skip/limit
 
@@ -1650,7 +1651,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                 {'id': 2, 'articles': [{'id': 21, 'uid': 2, 'user': {'id': 2}, 'comments': [{'aid': 21, 'id': 108}]}]},
             ])
 
-    @unittest.skipIf(SA_12, 'This test is skipped in SA 1.2.x entirely, because it works, but builds queries differently')
+    @unittest.skipIf(SA_12, TEST_QUERY_STRING_ONLY_MATCHES_SA13)
     def test_selectinquery_caching(self):
         """ Test how query caching works with selectinquery """
         # selectinquery() uses some smart query caching
@@ -1699,7 +1700,6 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                              # condition on the outer query
                              'u.age >= 0',
                              )
-
 
     def test_join_when_fk_is_deferred(self):
         c = models.ManyForeignKeysModel
@@ -1820,6 +1820,168 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                               'comment_calc': 1,
                           },
                           })
+
+    @unittest.skipIf(SA_12, 'AssociationProxy is only supported for SA 1.3.x')
+    def test_association_proxy(self):
+        """ Test how MongoSQL deals with association proxy """
+        g = models.GirlWatcher
+        m = models.GirlWatcherManager
+
+        engine = self.engine
+        ssn = self.Session()
+
+        # Enable it, because setUp() has disabled it.
+        handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = True
+
+        # === Test: Filter
+        mq = g.mongoquery().query(filter={'good_names': 'a'})
+        self.assertQuery(mq.end(),
+                         # Subquery filter
+                         'WHERE EXISTS (SELECT 1',
+                         # JOIN users
+                         'FROM gwf, u',
+                         # Join condition
+                         'WHERE gw.id = gwf.gw_id AND gwf.best = false AND gwf.user_id = u.id',
+                         # Filter: at least one
+                         'AND u.name = a)')
+
+        # === Test: Filter: $in
+        mq = g.mongoquery().query(filter={'good_names': {'$in': ['a', 'b']}})
+        self.assertQuery(mq.end(),
+                         # Filter: IN
+                         'AND u.name IN (a, b))')
+
+        # === Test: Project
+        with QueryLogger(engine) as ql:
+            mq = g.mongoquery(ssn).query(project=['good_names'])
+            res = mq.end().all()
+
+            # First. Check projection
+            projection = mq.get_full_projection_tree()
+            self.assertEqual(projection['good_names'], 1)  # AssociationProxy included
+            self.assertNotIn('good', projection)  # the relationship is not explicitly included
+
+            # Query 1: simply id
+            self.assertQuery(ql[0],
+                             'SELECT gw.id',
+                             'FROM gw')
+            self.assertSelectedColumns(ql[0],
+                                       'gw.id'  # PK only
+                                       )
+
+            # Query 2: loaded relationship
+            self.assertQuery(ql[1],
+                             # Loads the relationship
+                             'FROM gw', 'JOIN gwf', 'JOIN u'
+                             )
+            self.assertSelectedColumns(ql[1],
+                                       # Only includes the most important fields
+                                       'gw_1.id', 'u.id', 'u.name',
+                                       # And does not include: 'u.tags', 'u.age'
+                                       )
+
+        # === Test: project + join
+        with QueryLogger(engine) as ql:
+            mq = g.mongoquery(ssn).query(
+                # project will require an association proxy, which in turn will load the relationship
+                project=['good_names'],
+                # But we also load the relationship explicitly, ourselves
+                join=dict(
+                    good=dict(
+                        project=['name', 'age']
+                    )
+                )
+            )
+            res = mq.end().all()
+
+            # Query 2: loaded relationship
+            self.assertSelectedColumns(ql[1],
+                                       'gw_1.id', 'u.id', 'u.name',
+                                       # It has also loaded the extra field requested by `join`
+                                       'u.age'
+                                       )
+
+        # === Test: project + join-filter
+        with QueryLogger(engine) as ql:
+            mq = g.mongoquery(ssn).query(
+                project=['good_names'],
+                join=dict(
+                    good=dict(
+                        project=['name', 'age'],
+                        # Filter the relationship that is used by the association proxy
+                        filter={'age': {'$gte': 18}}
+                    )
+                )
+            )
+            res = mq.end().all()
+
+            # Query 2: loaded relationship
+            self.assertQuery(ql[1],
+                             # The condition is there
+                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18'
+                             )
+
+        # === Test: in join(): filter + project
+        mq = m.mongoquery(ssn).query(
+            project=['name'],
+            join={
+                'girlwatcher': dict(
+                    project=['good_names'],
+                    filter={'good_names': 'a'}
+                )
+            }
+        )
+        q = mq.end()
+
+        # Query 1
+        self.assertQuery(q,
+                         # joining internally
+                         'FROM gwm LEFT OUTER JOIN gw',
+                         # filtering in the same query
+                         '(EXISTS (SELECT 1'
+                         )
+        self.assertSelectedColumns(q,
+                                   'gw_1.id', 'gwm.id', 'gwm.name')
+
+        # === Test: in join(): filter + project & filter
+        with QueryLogger(engine) as ql:
+            mq = m.mongoquery(ssn).query(
+                project=['name'],
+                join={
+                    'girlwatcher': dict(
+                        project=['good_names'],
+                        join=dict(
+                            good=dict(
+                                project=['name', 'age'],
+                                filter={'age': {'$gte': 18}}
+                            )
+                        )
+                    )
+                }
+            )
+            res = mq.end().all()
+
+            # Query 1
+            self.assertQuery(ql[0],
+                             # joining internally
+                             'FROM gwm LEFT OUTER JOIN gw'
+                             )
+            self.assertNotIn(ql[0], 'u')  # users not loaded in this query; a second query is expected
+            self.assertSelectedColumns(ql[0],
+                                       'gw_1.id', 'gwm.id', 'gwm.name')
+
+            # Query 2
+            self.assertQuery(ql[1],
+                             # Filtering condition is here
+                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18 ORDER BY gw_1.id',
+                             )
+            self.assertSelectedColumns(ql[1],
+                                      'gw_1.id', 'u.id', 'u.name', 'u.age',
+                                       # TODO: FIX: `u.tags` shoud NOT be included; but somehow, it does not
+                                       #  currently work with aliased models. See mongosql.handlers.project.MongoProject._compile_relationship_options
+                                       'u.tags' # not included
+                                       )
+
 
     # region: Older tests
 

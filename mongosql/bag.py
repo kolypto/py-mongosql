@@ -1,17 +1,24 @@
+import warnings
 from itertools import chain, repeat
 from copy import copy
 
 from sqlalchemy import inspect
 from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql as pg
+from sqlalchemy.ext.associationproxy import AssociationProxy
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from typing import Union, Set, Mapping, Iterable, Tuple, FrozenSet, List
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import ColumnProperty, RelationshipProperty
+from sqlalchemy.orm.base import InspectionAttr
 from sqlalchemy.orm.interfaces import MapperProperty
 from sqlalchemy.orm.util import AliasedClass
 from sqlalchemy.sql.elements import BinaryExpression
+
+from mongosql import SA_12, SA_13
+try: from sqlalchemy.ext.associationproxy import ColumnAssociationProxyInstance  # SA 1.3.x
+except ImportError: ColumnAssociationProxyInstance = None
 
 
 class ModelPropertyBags:
@@ -85,12 +92,15 @@ class ModelPropertyBags:
         self.model = model
         self.model_name = model.__name__
 
-        # Init bags
+        # Init bags: after every column type
         self.columns = self._init_columns(model, insp)
         self.properties = self._init_properties(model, insp)
         self.hybrid_properties = self._init_hybrid_properties(model, insp)
+        self.association_proxies = self._init_association_proxies(model, insp)
         self.relations = self._init_relations(model, insp)
         self.related_columns = self._init_related_columns(model, insp)
+
+        # Additional informational bags
         self.pk = self._init_primary_key(model, insp)
         self.nullable = self._init_nullable_columns(model, insp)
 
@@ -121,6 +131,10 @@ class ModelPropertyBags:
     def _init_hybrid_properties(self, model, insp):
         """ Initialize: Hybrid properties """
         return HybridPropertiesBag(_get_model_hybrid_properties(model, insp))
+
+    def _init_association_proxies(self, model, insp):
+        """ Initialize: association proxies """
+        return AssociationProxiesBag(_get_model_association_proxies(model, insp))
 
     def _init_relations(self, model, insp):
         """ Initialize: Relationships and related columns """
@@ -173,10 +187,11 @@ class ModelPropertyBags:
         return self.columns.names | \
                self.properties.names | \
                self.hybrid_properties.names | \
+               self.association_proxies.names | \
                self.relations.names
 
 
-class PropertiesBagBase:
+class _PropertiesBagBase:
     """ Base class for Property bags:
 
     A container that keeps meta-information on SqlAlchemy stuff, like:
@@ -193,6 +208,10 @@ class PropertiesBagBase:
     handle them all, depending on the context.
     """
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._aliased_insp = None
+
     def __contains__(self, name: str) -> bool:
         """ Test if the property is in the bag
         :param name: Property name
@@ -205,16 +224,18 @@ class PropertiesBagBase:
         """
         raise NotImplementedError
 
-    def __copy__(self) -> 'PropertiesBagBase':
+    def __copy__(self) -> '_PropertiesBagBase':
         """ Copy behavior is used to make an AliasedBag """
         cls = self.__class__
         result = cls.__new__(cls)
         result.__dict__.update(self.__dict__)
         return result
 
-    def aliased(self, aliased_class) -> 'PropertiesBagBase':
+    def aliased(self, aliased_class) -> '_PropertiesBagBase':
         """ Get a version of this bag for using with an aliased class """
-        return copy(self)
+        new = copy(self)
+        new._aliased_insp = inspect(aliased_class)
+        return new
 
     @property
     def names(self) -> FrozenSet[str]:
@@ -233,10 +254,11 @@ class PropertiesBagBase:
         return set(names) - self.names
 
 
-class PropertiesBag(PropertiesBagBase):
+class PropertiesBag(_PropertiesBagBase):
     """ Contains simple model properties (@property) """
 
     def __init__(self, properties: Mapping[str, None]):
+        super(PropertiesBag, self).__init__()
         self._property_names = frozenset(properties.keys())
 
     @property
@@ -256,7 +278,38 @@ class PropertiesBag(PropertiesBagBase):
         return iter(zip(self._property_names, repeat(None)))
 
 
-class ColumnsBag(PropertiesBagBase):
+class _ColumnLikeAttrsBagBase(_PropertiesBagBase):
+    """ Bag for column-like attributes (like association proxies) """
+
+    def __init__(self, column_like_attrs: Mapping[str, InspectionAttr]):
+        """ Init Association Proxies """
+        super(_ColumnLikeAttrsBagBase, self).__init__()
+        self._columns = column_like_attrs
+        self._column_names = frozenset(self._columns.keys())
+
+    @property
+    def names(self) -> FrozenSet[str]:
+        return self._column_names
+
+    def __iter__(self) -> Iterable[Tuple[str, InspectionAttr]]:
+        return iter(self._columns.items())
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._column_names
+
+    def __getitem__(self, column_name: str) -> InspectionAttr:
+        return self._columns[column_name]
+
+    def is_column_array(self, name: str) -> bool:
+        """ Is the column an ARRAY column """
+        raise NotImplementedError
+
+    def is_column_json(self, name: str) -> bool:
+        """ Is the column a JSON column """
+        raise NotImplementedError
+
+
+class ColumnsBag(_ColumnLikeAttrsBagBase):
     """ Columns bag
 
     Contains meta-information about columns:
@@ -271,8 +324,9 @@ class ColumnsBag(PropertiesBagBase):
 
         :param columns: Model columns
         """
-        self._columns = columns
-        self._column_names = frozenset(self._columns.keys())
+        super(ColumnsBag, self).__init__(columns)
+
+        # More info about columns based on their type
         self._array_column_names = frozenset(name
                                              for name, col in self._columns.items()
                                              if _is_column_array(col))
@@ -283,37 +337,17 @@ class ColumnsBag(PropertiesBagBase):
     def aliased(self, aliased_class: AliasedClass):
         return DictOfAliasedColumns.aliased_attrs(
             aliased_class,
-            copy(self), '_columns'
+            super(ColumnsBag, self).aliased(aliased_class),
+            '_columns'
         )
 
     def is_column_array(self, name: str) -> bool:
-        """ Is the column an ARRAY column """
         column_name = get_plain_column_name(name)
         return column_name in self._array_column_names
 
     def is_column_json(self, name: str) -> bool:
-        """ Is the column a JSON column """
         column_name = get_plain_column_name(name)
         return column_name in self._json_column_names
-
-    @property
-    def names(self) -> FrozenSet[str]:
-        """ Get the set of column names
-        :rtype: set[str]
-        """
-        return self._column_names
-
-    def __iter__(self) -> Iterable[Tuple[str, ColumnProperty]]:
-        """ Get columns
-        :rtype: dict[sqlalchemy.orm.properties.ColumnProperty]
-        """
-        return iter(self._columns.items())
-
-    def __contains__(self, column_name: str) -> bool:
-        return column_name in self._columns
-
-    def __getitem__(self, column_name: str) -> ColumnProperty:
-        return self._columns[column_name]
 
 
 class HybridPropertiesBag(ColumnsBag):
@@ -335,7 +369,7 @@ class HybridPropertiesBag(ColumnsBag):
                     for k in self._ks)
 
     def aliased(self, aliased_class: AliasedClass) -> 'HybridPropertiesBag':
-        new = copy(self)
+        new = super(HybridPropertiesBag, self).aliased(aliased_class)
         # For some reason, hybrid properties do not get a proper alias with adapt_to_entity()
         # We have to get them the usual way: from the entity
         # TODO: This method is a hack and is not supposed to be here at all. I've got to find out
@@ -402,7 +436,34 @@ class DotColumnsBag(ColumnsBag):
         return invalid
 
 
-class RelationshipsBag(PropertiesBagBase):
+class AssociationProxiesBag(_ColumnLikeAttrsBagBase):
+    """ Bag for Association Proxies """
+
+    # Implement those two methods so that it looks like a column
+
+    def is_column_array(self, name: str) -> bool:
+        # Well, even though this column is clearly an array, it does not behave like one when thought of in terms of
+        # Postgres operators, because the underlying comparison is done to a scalar column.
+        # Example: AssociationProxy to User.name will use the `name` column for comparisons, which is scalar!
+        return False
+
+    def is_column_json(self, name: str) -> bool:
+        return False
+
+    def get_relationship(self, assoc_proxy: ColumnAssociationProxyInstance):
+        """ Get the underlying relationship """
+        # Get the relationship
+        relationship = assoc_proxy.local_attr
+
+        # When aliased, the relationship has to be adapted
+        if self._aliased_insp:
+            relationship = relationship.adapt_to_entity(self._aliased_insp)
+
+        # Done
+        return relationship
+
+
+class RelationshipsBag(_PropertiesBagBase):
     """ Relationships bag
 
     Keeps track of relationships of a model.
@@ -412,6 +473,7 @@ class RelationshipsBag(PropertiesBagBase):
         """ Init relationships
         :param relationships: Model relationships
         """
+        super(RelationshipsBag, self).__init__()
         self._relations = relationships
         self._rel_names = frozenset(self._relations.keys())
         self._array_rel_names = frozenset(name
@@ -421,7 +483,8 @@ class RelationshipsBag(PropertiesBagBase):
     def aliased(self, aliased_class: AliasedClass) -> 'RelationshipsBag':
         return DictOfAliasedColumns.aliased_attrs(
             aliased_class,
-            copy(self), '_relations'
+            super(RelationshipsBag, self).aliased(aliased_class),
+            '_relations'
         )
 
     def is_relationship_array(self, name: str) -> bool:
@@ -467,7 +530,7 @@ class DotRelatedColumnsBag(ColumnsBag):
 
             # Get the columns
             ins = inspect(model)
-            cols = _get_model_columns(model, ins)
+            cols = _get_model_columns(model, ins)  # TODO: support more attr types? hybrid? association proxy?
 
             # Remember all of them, using dot-notation
             for col_name, col in cols.items():
@@ -490,7 +553,8 @@ class DotRelatedColumnsBag(ColumnsBag):
     def aliased(self, aliased_class: AliasedClass) -> 'DotRelatedColumnsBag':
         new = DictOfAliasedColumns.aliased_attrs(
             aliased_class,
-            copy(self), '_columns', #'_column_name_to_related_model',
+            super(DotRelatedColumnsBag, self).aliased(aliased_class),
+            '_columns', #'_column_name_to_related_model',
         )
         new._rel_bag = new._rel_bag.aliased(aliased_class)
         return new
@@ -522,13 +586,14 @@ class DotRelatedColumnsBag(ColumnsBag):
         return self._rel_bag.is_relationship_array(rel_name)
 
 
-class FakeBag(PropertiesBagBase):
+class FakeBag(_PropertiesBagBase):
     """ A bag that supports dot-notation and contains fake column names that do not actually exist.
 
         This is used to support legacy columns. They are assumed to support dot-notation.
     """
 
     def __init__(self, fake_columns: Mapping[str, None]):
+        super(FakeBag, self).__init__()
         self._fake_columns = fake_columns
         self._fake_column_names = frozenset(self._fake_columns.keys())
 
@@ -555,7 +620,7 @@ class FakeBag(PropertiesBagBase):
                 }
 
 
-class CombinedBag(PropertiesBagBase):
+class CombinedBag(_PropertiesBagBase):
     """ A bag that combines elements from multiple bags.
 
     This one is used when something can handle both columns and relationships, or properties and
@@ -579,6 +644,7 @@ class CombinedBag(PropertiesBagBase):
     """
 
     def __init__(self, **bags):
+        super(CombinedBag, self).__init__()
         self._bags = bags
 
         # Combined names from all bags
@@ -604,13 +670,13 @@ class CombinedBag(PropertiesBagBase):
         self._json_column_names = frozenset(json_column_names)
 
     def aliased(self, aliased_class: AliasedClass) -> 'CombinedBag':
-        new = copy(self)
+        new = super(CombinedBag, self).aliased(aliased_class)
         # aliased() on every bag
         new._bags = {name: bag.aliased(aliased_class)
                      for name, bag in self._bags.items()}
         return new
 
-    def bag(self, name) -> PropertiesBagBase:
+    def bag(self, name) -> _PropertiesBagBase:
         """ Get a specific bag by name """
         return self._bags[name]
 
@@ -624,7 +690,7 @@ class CombinedBag(PropertiesBagBase):
         # Nope. Nothing worked
         return False
 
-    def __getitem__(self, name: str) -> Tuple[str, PropertiesBagBase, MapperProperty]:
+    def __getitem__(self, name: str) -> Tuple[str, _PropertiesBagBase, MapperProperty]:
         # Get the column name: remove the '.'-notation only if the column is a json column
         plain_name = get_plain_column_name(name)
         plain_name = plain_name if plain_name in self._json_column_names else name
@@ -655,7 +721,7 @@ class CombinedBag(PropertiesBagBase):
     def names(self) -> FrozenSet[str]:
         return self._names
 
-    def __iter__(self) -> Iterable[Tuple[str, PropertiesBagBase, str, MapperProperty]]:
+    def __iter__(self) -> Iterable[Tuple[str, _PropertiesBagBase, str, MapperProperty]]:
         return (
             (bag_name, bag, column_name, column)
             for bag_name, bag in self._bags.items()
@@ -670,6 +736,19 @@ def _get_model_columns(model, ins):
             # ignore Labels and other stuff that .items() will always yield
             if isinstance(c.expression, Column)
             }
+
+
+def _get_model_association_proxies(model, ins):
+    """ Get a dict of model association_proxy attributes """
+    # Ignore AssociationProxy attrs for SA 1.2.x
+    if SA_12:
+        warnings.warn('MongoSQL only supports AssociationProxy columns with SqlAlchemy 1.3.x')
+        return {}
+
+    return {name: getattr(model, name)
+            for name, c in ins.all_orm_descriptors.items()
+            if not name.startswith('_')
+            and isinstance(c, AssociationProxy)}
 
 
 def _get_model_hybrid_properties(model, ins):
@@ -744,7 +823,7 @@ class DictOfAliasedColumns:
     __slots__ = ('_d', '_a',)
 
     @classmethod
-    def aliased_attrs(cls, aliased_class: AliasedClass, obj: object, *attr_names: Tuple[str]):
+    def aliased_attrs(cls, aliased_class: AliasedClass, obj: object, *attr_names: str):
         """ Wrap a whole list of dictionaries into aliased wrappers """
         # Prepare AliasedInsp: this is what adapt_to_entity() wants
         aliased_inspector = inspect(aliased_class)
@@ -799,7 +878,7 @@ class _MPB_LazyAliasedWrapper:
         # set the bags aside for later aliased()ing,
         # but put all other attributes onto ourselves
         for k, v in mpb_dict.items():
-            if isinstance(v, PropertiesBagBase):
+            if isinstance(v, _PropertiesBagBase):
                 self.__unaliased[k] = mpb_dict[k]
             else:
                 setattr(self, k, v)  # onto ourselves

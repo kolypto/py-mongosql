@@ -3,7 +3,7 @@ from functools import wraps
 from mongosql import CrudViewMixin, StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
 
 from . import models
-from flask import request, g
+from flask import request, g, jsonify
 from flask_jsontools import jsonapi, RestfulView
 
 
@@ -17,62 +17,18 @@ def passthrough_decorator(f):
     return wrapper
 
 
-class ArticlesView(RestfulView, CrudViewMixin):
-    """ Full-featured CRUD view """
-
-    # First, configure a CrudHelper
-    crudhelper = StrictCrudHelper(
-        # The model to work with
-        models.Article,
-        **StrictCrudHelperSettingsDict(
-            # Read-only fields, as a callable (just because)
-            ro_fields=lambda: ('id', 'uid',),
-            legacy_fields=('removed_column',),
-            # MongoQuery settings
-            aggregate_columns=('id', 'data',),  # have to explicitly enable aggregation for columns
-            query_defaults=dict(
-                sort=('id-',),
-            ),
-            writable_properties=True,
-            max_items=2,
-            # Related entities configuration
-            allowed_relations=('user', 'comments'),
-            related={
-                'user': dict(
-                    # Exclude @property by default
-                    default_exclude=('user_calculated',),
-                    allowed_relations=('comments',),
-                    related={
-                        'comments': dict(
-                            # Exclude @property by default
-                            default_exclude=('comment_calc',),
-                            # No further joins
-                            join_enabled=False,
-                        )
-                    }
-                ),
-                'comments': dict(
-                    # Exclude @property by default
-                    default_exclude=('comment_calc',),
-                    # No further joins
-                    join_enabled=False,
-                ),
-            },
-        )
-    )
-
-    # ensure_loaded: always load these columns and relationships
-    # This is necessary in case some custom code relies on it
-    ensure_loaded = ('data', 'comments')  # that's a weird requirement, but since the user is supposed to use projections, it will be excluded
+class RestfulModelView(RestfulView, CrudViewMixin):
+    """ Base view class for all other views """
+    crudhelper = None
 
     # RestfulView needs that for routing
-    primary_key = ('id',)
+    primary_key = None
     decorators = (jsonapi,)
 
     # Every response will have either { article: ... } or { articles: [...] }
     # Stick to the DRY principle: store the key name once
-    entity_name = 'article'
-    entity_names = 'articles'
+    entity_name = None
+    entity_names = None
 
     # Implement the method that fetches the Query Object for this request
     def _get_query_object(self):
@@ -128,7 +84,6 @@ class ArticlesView(RestfulView, CrudViewMixin):
     def create(self):
         input_entity_dict = request.get_json()[self.entity_name]
         instance = self._method_create(input_entity_dict)
-        instance.uid = 3  # Manually set ro field value, because the client can't
 
         ssn = self._get_db_session()
         ssn.add(instance)
@@ -157,6 +112,68 @@ class ArticlesView(RestfulView, CrudViewMixin):
 
     # endregion
 
+
+class ArticleView(RestfulModelView):
+    """ Full-featured CRUD view """
+
+    # First, configure a CrudHelper
+    crudhelper = StrictCrudHelper(
+        # The model to work with
+        models.Article,
+        **StrictCrudHelperSettingsDict(
+            # Read-only fields, as a callable (just because)
+            ro_fields=lambda: ('id', 'uid',),
+            legacy_fields=('removed_column',),
+            # MongoQuery settings
+            aggregate_columns=('id', 'data',),  # have to explicitly enable aggregation for columns
+            query_defaults=dict(
+                sort=('id-',),
+            ),
+            writable_properties=True,
+            max_items=2,
+            # Related entities configuration
+            allowed_relations=('user', 'comments'),
+            related={
+                'user': dict(
+                    # Exclude @property by default
+                    default_exclude=('user_calculated',),
+                    allowed_relations=('comments',),
+                    related={
+                        'comments': dict(
+                            # Exclude @property by default
+                            default_exclude=('comment_calc',),
+                            # No further joins
+                            join_enabled=False,
+                        )
+                    }
+                ),
+                'comments': dict(
+                    # Exclude @property by default
+                    default_exclude=('comment_calc',),
+                    # No further joins
+                    join_enabled=False,
+                ),
+            },
+        )
+    )
+
+    # ensure_loaded: always load these columns and relationships
+    # This is necessary in case some custom code relies on it
+    ensure_loaded = ('data', 'comments')  # that's a weird requirement, but since the user is supposed to use projections, it will be excluded
+
+    primary_key = ('id',)
+    decorators = (jsonapi,)
+
+    entity_name = 'article'
+    entity_names = 'articles'
+
+    def _method_create(self, entity_dict: dict) -> object:
+        instance = super()._method_create(entity_dict)
+        instance.uid = 3  # Manually set ro field value, because the client can't
+        return instance
+
+    # Our completely custom stuff
+
     @passthrough_decorator  # no-op to demonstrate that it still works
     @saves_relations('comments')
     def save_comments(self, new, prev=None, comments=None):
@@ -174,8 +191,35 @@ class ArticlesView(RestfulView, CrudViewMixin):
         # Store
         self.__class__._save_removed_column = dict(removed_column=removed_column)
 
-
     _save_comments__args = None
     _save_relations__args = None
     _save_removed_column = None
+
+
+class GirlWatcherView(RestfulModelView):
+    crudhelper = StrictCrudHelper(
+        models.GirlWatcher,
+        **StrictCrudHelperSettingsDict(
+            # Read-only fields, as a callable (just because)
+            ro_fields=('id', 'favorite_id',),
+            allowed_relations=('good', 'best')
+        )
+    )
+
+    primary_key = ('id',)
+    decorators = (jsonapi,)
+
+    entity_name = 'girlwatcher'
+    entity_names = 'girlwatchers'
+
+    def _return_instance(self, instance):
+        instance = super()._return_instance(instance)
+
+        # TypeError: Object of type _AssociationList is not JSON serializable
+        for k in ('good_names', 'best_names'):
+            if k in instance:
+                # Convert this _AssociationList() object into a real list
+                instance[k] = list(instance[k])
+
+        return instance
 
