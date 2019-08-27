@@ -470,6 +470,12 @@ class MongoJoin(MongoQueryHandlerBase):
         if 'skip' in mjp.query_object or 'limit' in mjp.query_object:
             raise InvalidQueryError('MongoSQL does not support `skip` or `limit` for this kind of `join` (relationship={}, strategy={})'
                                     .format(mjp.relationship_name, mjp.loading_strategy))
+        if mjp.nested_mongoquery:
+            if mjp.nested_mongoquery.handler_limit.max_items:
+                raise ValueError('MongoSQL does not support `max_items` for this kind of relationship (relationship={}, strategy={})'
+                                 .format(mjp.relationship_name, mjp.loading_strategy))
+
+
         # Handle the case when the query has a LIMIT, and sqlalchemy won't do a JOIN to it
         query = self._join__wrap_query_with_subquery_to_overcome_LIMIT_issues(query, mjp, as_relation)
 

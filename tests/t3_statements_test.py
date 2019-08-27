@@ -1185,10 +1185,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'a.uid',  # TODO: FIXME: this column was included by SqlAlchemy? It's not supposed to be here
                                    )
 
-
-
-        # ====
-        # Test typos, and [*], and lambda functions in handler_settings
+        # ###
+        # ### Test related settings
+        # ###
 
         # === Test: typo in settings
         with self.assertRaises(KeyError):
@@ -1280,6 +1279,155 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           expected_settings=article_settings)
         test_settings_for(mq, 'comments', models.Comment,
                           expected_settings=comment_settings)
+
+    def test_mongoquery_settings_with_limit(self):
+        """ Test how nested MongoQueries work when they have limit.
+
+        The purpose of this test is to try different ways of loading nested relationships and find errors in how LIMIT works.
+
+        It turned out that one could throw a `limit` into MongoJoin and make it do queries it didn't really support.
+        This complicated scenario happened because MongoJoin used to check to `limit` inside the Query Object, but didn't check mongosettings,
+        which contained `max_items` that would impose a LIMIT in the end.
+        """
+        handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = True
+
+        engine = self.engine
+        ssn = self.Session()
+
+        # === Test: using `limit` in related settings
+
+        # Article
+        # Build a tree of relationships so that we can test:
+        #   1) joinedload -> selectinquery
+        #   2) joinedload -> joinedload
+        #   3) selectinquery -> joinedload
+        #   4) selectinquery -> selectinquery
+        limited_user_settings = MongoQuerySettingsDict(
+            max_items=20,
+            allowed_relations=['articles'],
+            related={
+                # User -> Articles: one user has many articles
+                # Join strategy: selectinload()
+                'articles': lambda: MongoQuerySettingsDict(
+                    max_items=10,
+                    allowed_relations=['user', 'comments'],
+                    related={
+                        # Article -> User: one article has one user
+                        # Join strategy: joinedload()
+                        'user': lambda: MongoQuerySettingsDict(
+                            max_items=5,
+                        ),
+                        # Article -> Comment: one article has many comments
+                        # Join strategy: selectinload()
+                        'comments': lambda: MongoQuerySettingsDict(
+                            max_items=5,
+                        ),
+                    }
+                ),
+            }
+        )
+
+        limited_comment_settings = MongoQuerySettingsDict(
+            max_items=20,
+            allowed_relations=['article'],
+            related={
+                # Comment -> Article: one comment has one article.
+                # Join strategy: joinedload()
+                'article': lambda: MongoQuerySettingsDict(
+                    max_items=10,
+                    allowed_relations=['user', 'comments'],
+                    related={
+                        # Article -> User: one article has one user
+                        # Join strategy: joinedload()
+                        'user': lambda: MongoQuerySettingsDict(
+                            max_items=5,
+                        ),
+                        # Article -> Comments: one article has many comments
+                        # Join strategy: selectinload()
+                        'comments': lambda: MongoQuerySettingsDict(
+                            max_items=5,
+                        ),
+                    }
+                ),
+            }
+        )
+
+        limited_u_mq = Reusable(MongoQuery(models.User, limited_user_settings))
+        limited_c_mq = Reusable(MongoQuery(models.Comment, limited_comment_settings))
+
+        # # User -> Article: selectinload()
+        # with QueryLogger(engine) as ql:
+        #     mq = limited_u_mq.query(join={'articles': dict(project=['id'])})
+        #     mq.with_session(ssn).end().all()
+        #
+        #     self.assertQuery(ql[0], 'LIMIT 20')
+        #     self.assertQuery(ql[1], 'WHERE group_row_n <= 10')
+        #     self.assertEqual(len(ql), 2)
+
+        # User -> Article -> User: selectinload() -> joinedload()
+        # Will fail: joinedload() does not support LIMIT
+        with self.assertRaises(ValueError):
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'],
+                                                           join={'user': dict(project=['id'])})})
+            mq.with_session(ssn).end().all()
+
+        # User -> Article -> Comment: selectinload() -> selectinload()
+        # This one WORKS!
+        with QueryLogger(engine) as ql:
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'],
+                                                           join={'comments': dict(project=['id'])})})
+            mq.with_session(ssn).end().all()
+
+            self.assertEqual(len(ql), 3)  # no error!
+
+        # Comment -> Article: joinedload()
+        # Will fail: joinedload() does not support LIMIT
+        with self.assertRaises(ValueError):
+            mq = limited_c_mq.query(join={'article': dict(project=['id'])})
+            mq.with_session(ssn).end().all()
+
+        # Comment -> Article -> User: joinedload() -> joinedload()
+        # Will fail: joinedload() does not support LIMIT
+        with self.assertRaises(ValueError):
+            mq = limited_c_mq.query(join={'article': dict(project=['id'],
+                                                          join={'user': dict(project=['id'])})})
+            mq.with_session(ssn).end().all()
+
+        # Comment -> Article -> Comment: joinedload() -> selectinload()
+        # Will fail: joinedload() does not support LIMIT
+        with self.assertRaises(ValueError):
+            mq = limited_c_mq.query(join={'article': dict(project=['id'],
+                                                          join={'comments': dict(project=['id'])})})
+            mq.with_session(ssn).end().all()
+
+
+        # === Test: intermediate limit
+        # Now let's try another case: there's a legitimate limit in the middle, and then another relationship
+        # The first join uses selectinload() and therefore supports LIMITs
+        # The second join, however, is a joinedload() to a LIMITed query
+        limited_user_settings = MongoQuerySettingsDict(
+            max_items=20,  # LEGITIMATE LIMIT
+            allowed_relations=['articles'],
+            related={
+                # User -> Articles: one user has many articles
+                # Join strategy: selectinload()
+                'articles': lambda: MongoQuerySettingsDict(
+                    max_items=10,  # LEGITIMATE LIMIT
+                    allowed_relations=['user'],  # joinedload() relationship that won't support it
+                ),
+            }
+        )
+
+        limited_u_mq = Reusable(MongoQuery(models.User, limited_user_settings))
+        
+        # User -> Article -> User: selectinload() -> selectinload() -> joinedload()
+        # This one WORKS!
+        with QueryLogger(engine) as ql:
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'],
+                                                           join={'user': dict(project=['id'])})})
+            mq.with_session(ssn).end().all()
+
+            self.assertEqual(len(ql), 2)  # no error!
 
     @unittest.skipIf(SA_12, TEST_QUERY_STRING_ONLY_MATCHES_SA13)
     def test_selectinquery(self):
@@ -1567,6 +1715,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         handlers.MongoJoin.ENABLED_EXPERIMENTAL_SELECTINQUERY = True
 
         # === Test: joined one-to-many, LIMIT
+        # Plan: User -> Articles: selectinload()
         with QueryLogger(engine) as ql:
             mq = u.mongoquery(ssn).query(project=('id',),
                                          join={'articles': dict(project=('id', 'uid'),
@@ -1595,6 +1744,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                               {'id': 2, 'articles': [{'id': 21, 'uid': 2}]}])
 
         # === Test: joined one-to-many, SKIP + LIMIT
+        # Plan: User -> Articles: selectinload()
         with QueryLogger(engine) as ql:
             mq = u.mongoquery(ssn).query(project=('id',),
                                          join={'articles': dict(project=('id', 'uid'),
@@ -1623,9 +1773,10 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # === Test: join + join, limits everywhere
         # This test will join 2 relationships to a limited query:
-        # 1. 'comments', which will be laoded with selectinload()
+        # 1. 'comments', which will be loaded with selectinload()
         # 2. 'user', which will be loaded with a left join
         # Both are supposed to work fine, despite MongoLimit wrapping everything into a from_self() subquery
+        # Plan: User -> Article -> Comment: selectinload() + selectinload()
         with QueryLogger(engine) as ql:
             mq = u.mongoquery(ssn).query(project=('id',),
                                          join={'articles': dict(project=('id', 'uid'),
