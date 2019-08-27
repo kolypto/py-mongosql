@@ -41,6 +41,7 @@ class MongoQuerySettingsDict(dict):
                  bundled_project = None,
                  force_include = None,
                  force_exclude = None,
+                 ensure_loaded = None,
                  # --- project & join & joinf
                  raiseload_col = False,
                  raiseload_rel = False,
@@ -132,6 +133,11 @@ class MongoQuerySettingsDict(dict):
             force_exclude (list[str]): (for: project)
                 A list of attributes that will always be unloaded and excluded from the output.
                 No matter what you do, you can't access them.
+            ensure_loaded (list[str]): (for: project)
+                A list of columns that will be loaded even when the user didn't request them.
+                These columns will be loaded quietly, however, without being included into the projection.
+                Use case: columns which your code requires. It would break without them, in case the user excludes them.
+                You wouldn't want to force include them, but you'd like to include them 'quietly'.
             raiseload (bool): (for: project, join)
                 Raise an exception when a column or a relationship that was not loaded
                 is accessed by the application.

@@ -992,6 +992,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # It will have plenty of configuration
         article_settings = MongoQuerySettingsDict(
             force_exclude=('data',),  # projection won't be able to get it
+            ensure_loaded=('uid',),  # fields will always be loaded
             aggregate_enabled=False,  # aggregation disabled
             # Configure queries on related models
             related={
@@ -1047,10 +1048,21 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         c_mq = Reusable(MongoQuery(c, comment_settings))
         e_mq = Reusable(MongoQuery(e, edit_settings))
 
+        # === Test: Article: ensure_loaded
+        mq = a_mq.query(project=('id',))
+        self.assertSelectedColumns(mq.end(), 'a.id', 'a.uid')  # `uid` loaded
+        self.assertEqual(mq.get_projection_tree(), dict(id=1, uid=0))  # `uid` missing from projection
+
+        mq = a_mq.query(project=('id', 'uid'))
+        self.assertSelectedColumns(mq.end(), 'a.id', 'a.uid')  # `uid` loaded
+        self.assertEqual(mq.get_projection_tree(), dict(id=1, uid=1))  # `uid` now in projection because requested explicitly
+
         # === Test: Article: force_exclude
         # `force_exclude` on Article won't let us select Article.data
         mq = a_mq.query(project=('title', 'data'))
-        self.assertSelectedColumns(mq.end(), 'a.id', 'a.title')  # no `a.data`
+        # will include `a.uid` because it's ensure_loaded()
+        self.assertSelectedColumns(mq.end(), 'a.id', 'a.uid', 'a.title')  # no `a.data`
+        self.assertEqual(mq.get_projection_tree(), dict(title=1, uid=0))  # `uid` missing from projection because it's `ensure_loaded`
 
         # === Test: Article: aggregate=False
         # aggregation is disabled for Article, and must raise an exception
@@ -1070,7 +1082,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         mq = a_mq.query(project=('data',),
                         join={'user': dict(project=('age',))})
         self.assertSelectedColumns(mq.end(),
-                                   'a.id',  # `data` excluded (force_exclude)
+                                   'a.id', 'a.uid',  # PK + ensure_loaded
+                                   # `a.data` excluded (force_exclude)
                                    'u_1.id', 'u_1.age',  # PK, projected
                                    'u_1.name'  # force_include
                                    )
@@ -1103,9 +1116,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                                                 dict(project=['id'])
                                                             })})})
         self.assertSelectedColumns(mq.end(),
-                                   'a.id', 'a.title',  # force_exclude data
+                                   'a.id', 'a.uid', 'a.title',  # force_exclude data ; ensure_loaded uid
                                    'u_1.id', 'u_1.name',  # force_include name
-                                   'a_1.id', 'a_1.title',  # force_exclude data
+                                   'a_1.id', 'a_1.uid', 'a_1.title',  # force_exclude data ; ensure_loaded uid
                                    'u_2.id', 'u_2.name',  # force_include name
                                    )
 
@@ -1765,7 +1778,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             filter={'age': {'$gt': 0}},
             join={'articles': dict(project=['title'])}
         )
-        mq.ensure_loaded('age', 'comments', 'articles.data')
+        mq.ensure_loaded('age', 'comments',
+                         # Related column!
+                         'articles.data')
 
         self.assertEqual(mq.get_projection_tree(),
                          {'name': 1,

@@ -1,4 +1,7 @@
-## 2.0.4 (2019-08-26)
+## 2.0.5 (2019-08-27)
+* `ensure_loaded` setting for projections
+
+## 2.0.4 (2019-07-26)
 * `filter`: new `$prefix` operator
 * `AssociationProxy` support for `project` and `filter`
 * `MongoQuery.get_final_query_object()` method for debugging

@@ -916,6 +916,12 @@ The available settings are:
     A list of attributes that will always be unloaded and excluded from the output.
     No matter what you do, you can't access them.
 
+* `ensure_loaded`: (for: project)
+    A list of columns that will be loaded even when the user didn't request them.
+    These columns will be loaded quietly, however, without being included into the projection.
+    Use case: columns which your code requires. It would break without them, in case the user excludes them.
+    You wouldn't want to force include them, but you'd like to include them 'quietly'.
+
 * `raiseload_col`: (for: project)
     Granular `raiseload`: only raise when columns are lazy loaded
 
@@ -1300,7 +1306,7 @@ Limitations:
 
 If all you need is just to know whether something is loaded or not, use MongoQuery.__contains__() instead.
 
-Remember that every time you use ensure_loaded() on a relationship, you disable filtering for it!
+Remember that every time you use ensure_loaded() on a relationship, you disable the possibility of filtering for it!
 
 
 Arguments:

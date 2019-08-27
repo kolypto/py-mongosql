@@ -143,6 +143,7 @@ class MongoProject(MongoQueryHandlerBase):
                  default_exclude_properties=True,
                  default_unexclude_properties=None,
                  force_include=None, force_exclude=None,
+                 ensure_loaded=None,
                  raiseload_col=False,
                  legacy_fields=None):
         """ Init projection
@@ -165,6 +166,7 @@ class MongoProject(MongoQueryHandlerBase):
         :param default_unexclude_properties: Exclude all but the given @property and @hybrid_property.
         :param force_include: A list of column names to include into the output always
         :param force_exclude: A list of column names to exclude from the output always
+        :param ensure_loaded: The list of columns to load at all times, but quietly (without adding them into the projection)
         :param raiseload_col: Install a raiseload_col() option on all fields excluded by projection.
             This is a performance safeguard: when your custom code uses certain fields, but a
             projection has excluded them, the situation will result in a LOT of extra queries!
@@ -190,6 +192,7 @@ class MongoProject(MongoQueryHandlerBase):
         self.force_include = set(force_include) if force_include else None
         self.force_exclude = set(force_exclude) if force_exclude else None
         self.default_exclude_properties = None
+        self.ensure_loaded = set(ensure_loaded) if ensure_loaded else None
         self.raiseload_col = raiseload_col
 
         if default_exclude_properties or default_unexclude_properties:  # when either is specified, the effect is the same
@@ -231,6 +234,8 @@ class MongoProject(MongoQueryHandlerBase):
             self.validate_properties_or_relations(self.force_include, where='project:force_include')
         if self.force_exclude:
             self.validate_properties_or_relations(self.force_exclude, where='project:force_exclude')
+        if self.ensure_loaded:
+            self.validate_properties_or_relations(self.ensure_loaded, where='project:ensure_loaded')
 
     def __copy__(self):
         obj = super(MongoProject, self).__copy__()
@@ -279,7 +284,7 @@ class MongoProject(MongoQueryHandlerBase):
         # Process
         self.mode, self._projection, relations = self._input_process(projection)
 
-        # Settings: default_exclude, force_include, force_exclude, bundled_project
+        # Settings: default_exclude
         if self.mode == self.MODE_EXCLUDE and self.default_exclude:
             # Add even more fields that are excluded by default
             # The only way to load them is to explicitly require them.
@@ -291,7 +296,11 @@ class MongoProject(MongoQueryHandlerBase):
         relations.update(more_relations)
 
         # Relations
-        self._pass_relations_to_mongojoin(relations, False)
+        self._pass_relations_to_mongojoin(relations, strict=False)
+
+        # ensure_loaded
+        if self.ensure_loaded:
+            self.merge(list(self.ensure_loaded), quietly=True, strict=False)
 
         # Done
         return self

@@ -456,7 +456,7 @@ class MongoQuery:
 
             If all you need is just to know whether something is loaded or not, use MongoQuery.__contains__() instead.
 
-            Remember that every time you use ensure_loaded() on a relationship, you disable filtering for it!
+            Remember that every time you use ensure_loaded() on a relationship, you disable the possibility of filtering for it!
 
             :param cols: Column names ('age'), Relation names ('articles'), or Related column names ('articles.name')
             :raises InvalidQueryError: cannot merge because the relationship has a filter on it

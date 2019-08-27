@@ -198,6 +198,17 @@ class HandlersTest(unittest.TestCase):
                                 calculated=0, hybrid=0,  # behaves like a column
                                 )
 
+        # === Test: ensure_loaded
+        pr = Reusable(Article_project(ensure_loaded=('uid',)))
+
+        p = pr.input(['id'])
+        self.assertEqual(p.projection['uid'], 0)  # not included into the projecttion
+        self.assertIn('uid', p)  # but loaded nevertheless
+
+        p = pr.input({'uid': 0})
+        self.assertEqual(p.projection['uid'], 0)  # not included
+        self.assertIn('uid', p)  # but loaded
+
         # === Test: default_projection
         pr = Reusable(Article_project(default_projection=dict(id=1, title=1)))
 
