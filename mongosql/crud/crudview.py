@@ -402,8 +402,9 @@ class CrudViewMixin:
                     The method wrapped with this helper.
         """
         # Pluck relations out of the entity dict
-        relations_to_be_saved = {k: entity_dict.pop(k, None)
-                                 for k in self._saves_relations_names}
+        relations_to_be_saved = {k: entity_dict.pop(k)
+                                 for k in self._saves_relations_names
+                                 if k in entity_dict}
 
         # Update it
         new_instance = wrapped_method(entity_dict)
@@ -477,6 +478,8 @@ class saves_relations(method_decorator):
         for decorator in cls.all_decorators_from(View):
             # Get the kwargs: the relationships (or whatever fields)
             decorator_kwargs = {name: input_data.get(name, None)
-                                for name in decorator.field_names}
+                                for name in decorator.field_names
+                                if name in input_data}
+            
             # Call it
             decorator.method(view, *decorator_args, **decorator_kwargs)
