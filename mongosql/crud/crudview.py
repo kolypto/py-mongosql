@@ -480,6 +480,10 @@ class saves_relations(method_decorator):
             decorator_kwargs = {name: input_data.get(name, None)
                                 for name in decorator.field_names
                                 if name in input_data}
+
+            # Skip the method if the input data contains no relationships for this method.
+            if not decorator_kwargs:
+                continue
             
             # Call it
             decorator.method(view, *decorator_args, **decorator_kwargs)
