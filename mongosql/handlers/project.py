@@ -154,7 +154,7 @@ class MongoProject(MongoQueryHandlerBase):
             Note: a `None` will default to "include all fields"; an empty value (empty list, set, dict) will default
             to "exclude all fields".
         :param bundled_project: A dict of column names mapped to a list of column names.
-            If the key is included, the values are included as well.
+            If the key is included, the values are included as well. Quietly.
         :param default_exclude: A list of column names that are excluded even in exclusion mode.
             You can only get these properties if you request them explicitly.
             This only affects projections in exclusion mode: when the user has specified
@@ -476,6 +476,9 @@ class MongoProject(MongoQueryHandlerBase):
                 self._process_simple_merge(self.mode, self._projection, dict.fromkeys(more_keys, 1))
             relations.update(more_rels)
 
+            # Those bundled columns must be included quietly
+            self.quietly_included.update(more_keys)
+            # TODO: relationships should also be included quietly
 
         # Done
         return relations
@@ -766,7 +769,9 @@ class MongoProject(MongoQueryHandlerBase):
         proj = self._projection.copy()
 
         # Force 0s on quietly included fields
-        proj.update({k: 0 for k in self.quietly_included})
+        if self.quietly_included:
+            # Do a proper merge
+            _, proj, _ = self._process_simple_merge(self.mode, proj, dict.fromkeys(self.quietly_included, 0))
 
         return proj
 

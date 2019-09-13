@@ -32,6 +32,7 @@ class HandlersTest(unittest.TestCase):
                 * __contains__() of a projection using its full projection
                 * compile_columns()
             """
+            # Test: get_full_projection()
             try:
                 self.assertEqual(p.get_full_projection(), expected_full_projection)
             except:
@@ -55,6 +56,17 @@ class HandlersTest(unittest.TestCase):
                     for col_name in p.bags.columns.names
                     if expected_full_projection.get(col_name, 0))
             )
+
+            # Test: projection
+            if p.mode == p.MODE_MIXED:
+                self.assertEqual(p.projection, expected_full_projection)
+            elif p.mode == p.MODE_INCLUDE or p.mode == p.MODE_EXCLUDE:
+                self.assertEqual(p.projection,
+                                 {k: v for k, v in expected_full_projection.items()
+                                  if (v == p.mode)})  # 1 if `MODE_INCLUDE`, 0 if `MODE_EXCLUDE`
+            else:
+                raise Exception('How did we get here?')
+
 
         # === Test: input() can be called only once
         with self.assertRaises(RuntimeError):
@@ -202,11 +214,11 @@ class HandlersTest(unittest.TestCase):
         pr = Reusable(Article_project(ensure_loaded=('uid',)))
 
         p = pr.input(['id'])
-        self.assertEqual(p.projection['uid'], 0)  # not included into the projecttion
+        self.assertEqual(p.get_full_projection()['uid'], 0)  # not included into the projecttion
         self.assertIn('uid', p)  # but loaded nevertheless
 
         p = pr.input({'uid': 0})
-        self.assertEqual(p.projection['uid'], 0)  # not included
+        self.assertEqual(p.get_full_projection()['uid'], 0)  # not included
         self.assertIn('uid', p)  # but loaded
 
         # === Test: default_projection
@@ -321,7 +333,7 @@ class HandlersTest(unittest.TestCase):
         # === Test: merge, quiet mode
         # Originally include, merge include
         pr = project_id_uid_title_to(1).merge(dict(data=1), quietly=True)
-        self.assertEqual(pr.projection, dict(id=1, uid=1, title=1, data=0))  # TODO: Fix!
+        self.assertEqual(pr.projection, dict(id=1, uid=1, title=1))  # not data
         self.assertEqual(pr.get_full_projection(),
                          dict(id=1, uid=1, title=1, theme=0, data=0, calculated=0, hybrid=0))  # not 'data'
         self.assertIn('data', pr)  # included quietly, and the `in` test will tell!
@@ -402,24 +414,46 @@ class HandlersTest(unittest.TestCase):
         pr = Reusable(Article_project(bundled_project={'calculated': ['title', 'uid']}))
         p = pr.input(dict(calculated=1))
         self.assertIn('calculated', p)
-        self.assertIn('title', p)
+        self.assertIn('title', p)  # the bundled field is actually loaded ...
         self.assertIn('uid', p)
-        test_by_full_projection(p, **inc_none_but('calculated', 'title', 'uid'))
+        self.assertEqual(p.get_full_projection(), inc_none_but('calculated'))  # ... but quietly; not included into the projection
+        self.assertEqual(p.projection, dict(calculated=1))
 
         # === Test: bundled_project, relationships
         mq = MongoQuery(Article, dict(bundled_project={'calculated': ['comments']}))
         mq = mq.query(project=dict(calculated=1))
         self.assertEqual(mq.get_projection_tree(), dict(calculated=1, comments=dict(comment_calc=0)))
+        self.assertEqual(p.projection, dict(calculated=1))
 
         # === Test: bundled_project, force_include
         mq = MongoQuery(Article, dict(bundled_project={'calculated': ['title', 'id']}, force_include=('calculated',)))
         mq = mq.query(project=dict(data=1))
         self.assertEqual(mq.get_projection_tree(), dict(
             calculated=1,  # the force-included field
-            id=1, title=1,  # dependencies loaded
+            #id=0, title=0,  # dependencies not included into the projection ...
             data=1,  # asked by the user
         ))
-        test_by_full_projection(mq.handler_project, **inc_none_but('calculated', 'id', 'title', 'data'))
+        self.assertIn('id', mq)  # ... but are loaded
+        self.assertIn('title', mq)
+        self.assertIn('data', mq)
+
+        # === Test: bundled_project, default_exclude, default_unexclude_properties
+        # Let's assume that `title` is a fat field, and the `calculated` property exposes the relevant part of it.
+        # To save traffic, we hide `title` by default, and expose `calculated` by default
+        pr = Reusable(Article_project(
+            bundled_project={'calculated': ['title']},
+            default_exclude=('title',),
+            default_unexclude_properties=('calculated',),
+        ))
+        p = pr.input(None)
+        self.assertIn('calculated', p)
+        self.assertIn('title', p)  # quietly included
+        self.assertEqual(p.get_full_projection(), inc_all_except('title', 'hybrid'))
+        self.assertEqual(p.projection, inc_all_except('title', 'hybrid'))  # this is a quirk; projection = full projection. It does not have to; can be just dict(calculated=1)
+
+        p = pr.input(dict(id=1))
+        self.assertEqual(p.get_full_projection(), inc_none_but('id'))
+        self.assertEqual(p.projection, dict(id=1))
 
         # === Test: Invalid projection, dict, problem: invalid arguments passed to __init__()
         with self.assertRaises(InvalidColumnError):
@@ -951,7 +985,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1}})  # no 'comments'
 
         j.merge({'articles': dict(project=('data',))}, quietly=True)
-        self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1, 'data': 0}})  # no 'data'
+        self.assertEqual(j.get_projection_tree(), {'articles': {'title': 1}})  # no 'data'
 
 
 

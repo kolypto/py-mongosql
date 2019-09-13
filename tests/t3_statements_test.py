@@ -1051,7 +1051,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # === Test: Article: ensure_loaded
         mq = a_mq.query(project=('id',))
         self.assertSelectedColumns(mq.end(), 'a.id', 'a.uid')  # `uid` loaded
-        self.assertEqual(mq.get_projection_tree(), dict(id=1, uid=0))  # `uid` missing from projection
+        self.assertEqual(mq.get_projection_tree(), dict(id=1))  # `uid` missing from projection
 
         mq = a_mq.query(project=('id', 'uid'))
         self.assertSelectedColumns(mq.end(), 'a.id', 'a.uid')  # `uid` loaded
@@ -1062,7 +1062,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         mq = a_mq.query(project=('title', 'data'))
         # will include `a.uid` because it's ensure_loaded()
         self.assertSelectedColumns(mq.end(), 'a.id', 'a.uid', 'a.title')  # no `a.data`
-        self.assertEqual(mq.get_projection_tree(), dict(title=1, uid=0))  # `uid` missing from projection because it's `ensure_loaded`
+        self.assertEqual(mq.get_projection_tree(), dict(title=1))  # `uid` missing from projection because it's `ensure_loaded`
 
         # === Test: Article: aggregate=False
         # aggregation is disabled for Article, and must raise an exception
@@ -1935,10 +1935,10 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         self.assertEqual(mq.get_projection_tree(),
                          {'name': 1,
-                          'age': 0,  # quietly
+                          # 'age' is loaded, but quietly
                           'articles': {
                               'title': 1,
-                              'data': 0  # quietly
+                              # 'data' is loaded, but quietly
                           },
                           # 'comments' not even mentioned
                           })

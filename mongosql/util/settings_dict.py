@@ -128,6 +128,7 @@ class MongoQuerySettingsDict(dict):
                 When you have a property that depends on some columns, and the user wants it loaded, the setting
                 got to have the name of the property mapped to the list of dependent columns.
                 Example: {'full_name': ['first_name', 'last_name']}
+                The additional columns would be loaded quietly, without being included into the projection.
             force_include (list[str]): (for: project)
                 A list of attributes that will always be loaded and included into the output.
             force_exclude (list[str]): (for: project)

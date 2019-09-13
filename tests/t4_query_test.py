@@ -82,7 +82,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
         ))
         user = mq.with_session(ssn).query(project=['id'],
                                           join=['user_calculated']).end().first()
-        self.assertEqual(mq.get_projection_tree(), dict(id=1, user_calculated=1, age=1))
+        self.assertEqual(mq.get_projection_tree(), dict(id=1, user_calculated=1))
 
     def test_join_query(self):
         """ Test join(dict) """

@@ -1,3 +1,7 @@
+## 2.0.6 (2019-09-14)
+* `bundled_project` are now loaded quietly (meaning, they are loaded, but not included into the projection)
+* Bugfix: in some cases, the `projection` property returned invalid results
+
 ## 2.0.5 (2019-08-27)
 * `ensure_loaded` setting for projections
 
