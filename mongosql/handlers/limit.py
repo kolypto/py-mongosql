@@ -167,11 +167,10 @@ class MongoLimit(MongoQueryHandlerBase):
                 query = query.offset(self.skip)
             if self.limit:
                 query = query.limit(self.limit)
+            return query
         else:
             # Use a window function
             return self._limit_using_window_function(query)
-
-        return query
 
     def _limit_using_window_function(self, query):
         """ Apply a limit using a window function

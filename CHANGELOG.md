@@ -1,4 +1,4 @@
-## 2.0.6 (2019-09-14)
+## 2.0.6 (2019-09-17)
 * `bundled_project` are now loaded quietly (meaning, they are loaded, but not included into the projection)
 * `MongoQuerySettingsDict.pluck_from()`: now skips the `max_items` key because it does not make sense when inherited
 * Bugfix: in some cases, the `projection` property returned invalid results
