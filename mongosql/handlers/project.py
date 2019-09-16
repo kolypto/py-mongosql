@@ -788,7 +788,9 @@ class MongoProject(MongoQueryHandlerBase):
         return self._generate_full_projection_for(self.mode, self._projection, self.quietly_included)
 
     def get_final_input_value(self):
-        return self.projection
+        # Make sure that Default() does not make it out. Otherwise, jsonify() would fail on it
+        return {k: Default.unwrap(v)
+                for k, v in self.projection.items()}
 
     def __contains__(self, name):
         """ Test whether a column name is included into projection (by name)

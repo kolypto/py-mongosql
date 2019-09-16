@@ -20,6 +20,11 @@ class Marker:
 
     __slots__ = ('key',)
 
+    @classmethod
+    def unwrap(cls, value):
+        """ Unwrap the value if it's wrapped with a marker """
+        return value.key if isinstance(value, cls) else value
+
     def __init__(self, key):
         # Store the original key
         self.key = key

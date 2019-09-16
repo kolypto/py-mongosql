@@ -5,6 +5,7 @@ from sqlalchemy.orm import Load, Query
 from mongosql import Reusable, MongoQuery, ModelPropertyBags, MongoQuerySettingsDict
 from mongosql.handlers import *
 from mongosql.exc import InvalidColumnError, DisabledError, InvalidQueryError, InvalidRelationError
+from mongosql.handlers.project import Default
 from .models import *
 from .util import stmt2sql
 
@@ -133,6 +134,12 @@ class HandlersTest(unittest.TestCase):
                                 theme=0, data=0,
                                 calculated=0, hybrid=0,  # now excluded
                                 )
+
+        # Make sure that Default() markers don't make it out of get_final_input_value()
+        # If it does, jsonify() would fail
+        def assert_no_Default_markers_in(d: dict):
+            self.assertTrue(all(not isinstance(v, Default) for v in d.values()))
+        assert_no_Default_markers_in(p.get_final_input_value())
 
         # === Test: `default_exclude` in include mode (no effect)
         p = Article_project(default_exclude=('calculated', 'hybrid')) \
