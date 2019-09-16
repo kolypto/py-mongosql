@@ -356,6 +356,14 @@ class HandlersTest(unittest.TestCase):
         pr = project_id_uid_title_to(0).merge(dict(data=1)).merge(dict(hybrid=1), quietly=True)
         self.assertEqual(pr.projection, dict(id=0, uid=0, title=0, theme=1, data=1, calculated=0, hybrid=0))  # not 'hybrid'
 
+        # === Test: merge quietly, then override publicly
+        pr = project_id_uid_title_to(1).merge(dict(data=1), quietly=True)
+        self.assertEqual(pr.projection, dict(id=1, uid=1, title=1))  # not data
+
+        # now override
+        pr = pr.merge(dict(data=1), quietly=False)
+        #self.assertEqual(pr.projection, dict(id=1, uid=1, title=1, data=1))  # now data is publicly merged  # TODO: not working!
+
         # === Test: force_include
         pr = Reusable(Article_project(force_include=('id',)))
 
@@ -445,6 +453,23 @@ class HandlersTest(unittest.TestCase):
         self.assertIn('data', mq)
 
         # === Test: bundled_project, default_exclude, default_unexclude_properties
+        # A property is unexcluded and bundled
+        pr = Reusable(Article_project(
+            bundled_project={'calculated': ['title']},
+            default_unexclude_properties=('calculated',),
+        ))
+
+        # Include all
+        p = pr.input(dict(id=1, title=1, calculated=1))
+        test_by_full_projection(p, **inc_none_but('id', 'title', 'calculated'))
+
+        # Default: inc all, nothing quietly
+        p = pr.input(None)
+        # 'title' will be included, not quietly, but boldly.. :)
+        # There was a bug that an attribute was included quietly even if it was explicitly requested
+        test_by_full_projection(p, **inc_all_except('hybrid'))
+
+        # === Test: bundled_project, default_exclude, default_unexclude_properties
         # Let's assume that `title` is a fat field, and the `calculated` property exposes the relevant part of it.
         # To save traffic, we hide `title` by default, and expose `calculated` by default
         pr = Reusable(Article_project(
@@ -452,13 +477,19 @@ class HandlersTest(unittest.TestCase):
             default_exclude=('title',),
             default_unexclude_properties=('calculated',),
         ))
+
+        # By default, everything's included, except `title`
+        # However, it gets quietly included because of `default_unexclude_properties`
         p = pr.input(None)
         self.assertIn('calculated', p)
         self.assertIn('title', p)  # quietly included
         self.assertEqual(p.get_full_projection(), inc_all_except('title', 'hybrid'))
         self.assertEqual(p.projection, inc_all_except('title', 'hybrid'))  # this is a quirk; projection = full projection. It does not have to; can be just dict(calculated=1)
 
+        # The user excluded everything but `id`, so both `calculated` and `title` are out
         p = pr.input(dict(id=1))
+        self.assertNotIn('calculated', p)
+        self.assertNotIn('title', p)
         self.assertEqual(p.get_full_projection(), inc_none_but('id'))
         self.assertEqual(p.projection, dict(id=1))
 

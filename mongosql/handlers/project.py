@@ -469,7 +469,11 @@ class MongoProject(MongoQueryHandlerBase):
             more_keys = set()
             for bundle_key, bundled_keys in self.bundled_project.items():
                 if bundle_key in self:
-                    more_keys.update(bundled_keys)
+                    # Only add those that are not already added.
+                    # Otherwise, we may end up "quieting up" keys that were explicitly requested
+                    more_keys.update({key
+                                      for key in bundled_keys
+                                      if key not in self})
 
             # Merge
             self.mode, self._projection, more_rels = \
