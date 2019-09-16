@@ -1355,7 +1355,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         limited_u_mq = Reusable(MongoQuery(models.User, limited_user_settings))
         limited_c_mq = Reusable(MongoQuery(models.Comment, limited_comment_settings))
 
-        # # User -> Article: selectinload()
+        # ### User -> Article: selectinload()
         with QueryLogger(engine) as ql:
             mq = limited_u_mq.query(join={'articles': dict(project=['id'])})
             mq.with_session(ssn).end().all()
@@ -1364,41 +1364,111 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             self.assertQuery(ql[1], 'WHERE group_row_n <= 10')
             self.assertEqual(len(ql), 2)
 
-        # User -> Article -> User: selectinload() -> joinedload()
+        with QueryLogger(engine) as ql:
+            # Query limit: users
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'])}, limit=3)
+            mq.with_session(ssn).end().all()
+
+            self.assertQuery(ql[0], 'LIMIT 3')  # limit from the Query Object
+            self.assertQuery(ql[1], 'WHERE group_row_n <= 10')
+            self.assertEqual(len(ql), 2)
+
+        with QueryLogger(engine) as ql:
+            # Query limit: articles
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'], limit=3)})
+            mq.with_session(ssn).end().all()
+
+            self.assertQuery(ql[0], 'LIMIT 20')
+            self.assertQuery(ql[1], 'WHERE group_row_n <= 3')  # limit from the Query Object
+            self.assertEqual(len(ql), 2)
+
+        # ### User -> Article -> User: selectinload() -> joinedload()
         # Will fail: joinedload() does not support LIMIT
         with self.assertRaises(ValueError):
             mq = limited_u_mq.query(join={'articles': dict(project=['id'],
                                                            join={'user': dict(project=['id'])})})
-            mq.with_session(ssn).end().all()
+            mq.with_session(ssn).end().all()  # ERROR
 
-        # User -> Article -> Comment: selectinload() -> selectinload()
+        # ### User -> Article -> Comment: selectinload() -> selectinload()
         # This one WORKS!
         with QueryLogger(engine) as ql:
             mq = limited_u_mq.query(join={'articles': dict(project=['id'],
                                                            join={'comments': dict(project=['id'])})})
             mq.with_session(ssn).end().all()
 
+            self.assertQuery(ql[0],
+                             'FROM u',
+                             'LIMIT 20')
+            self.assertQuery(ql[1],
+                             'FROM a' if SA_13 else 'JOIN a',
+                             'WHERE group_row_n <= 10')
+            self.assertQuery(ql[2],
+                             'FROM c' if SA_13 else 'JOIN c',
+                             'WHERE group_row_n <= 5')
             self.assertEqual(len(ql), 3)  # no error!
 
-        # Comment -> Article: joinedload()
+
+        with QueryLogger(engine) as ql:
+            # Query limit: users
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'],
+                                                           join={'comments': dict(project=['id'])}),},
+                                    limit=3)
+            mq.with_session(ssn).end().all()
+
+            self.assertQuery(ql[0],
+                             'LIMIT 3')  # <-- limit applied
+            self.assertQuery(ql[1],
+                             'WHERE group_row_n <= 10')
+            self.assertQuery(ql[2],
+                             'WHERE group_row_n <= 5')
+
+        with QueryLogger(engine) as ql:
+            # Query limit: articles
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'],
+                                                           limit=3,
+                                                           join={'comments': dict(project=['id'])})})
+            mq.with_session(ssn).end().all()
+
+            self.assertQuery(ql[0],
+                             'LIMIT 20')
+            self.assertQuery(ql[1],
+                             'WHERE group_row_n <= 3')  # <-- limit applied
+            self.assertQuery(ql[2],
+                             'WHERE group_row_n <= 5')
+
+        with QueryLogger(engine) as ql:
+            # Query limit: comments
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'],
+                                                           join={'comments': dict(project=['id'],
+                                                                                  limit=3)})})
+            mq.with_session(ssn).end().all()
+
+            self.assertQuery(ql[0],
+                             'LIMIT 20')
+            self.assertQuery(ql[1],
+                             'WHERE group_row_n <= 10')
+            self.assertQuery(ql[2],
+                             'WHERE group_row_n <= 3')  # <-- limit applied
+
+        # ### Comment -> Article: joinedload()
         # Will fail: joinedload() does not support LIMIT
         with self.assertRaises(ValueError):
             mq = limited_c_mq.query(join={'article': dict(project=['id'])})
-            mq.with_session(ssn).end().all()
+            mq.with_session(ssn).end().all()  # ERROR
 
-        # Comment -> Article -> User: joinedload() -> joinedload()
+        # ### Comment -> Article -> User: joinedload() -> joinedload()
         # Will fail: joinedload() does not support LIMIT
         with self.assertRaises(ValueError):
             mq = limited_c_mq.query(join={'article': dict(project=['id'],
                                                           join={'user': dict(project=['id'])})})
-            mq.with_session(ssn).end().all()
+            mq.with_session(ssn).end().all()  # ERROR
 
-        # Comment -> Article -> Comment: joinedload() -> selectinload()
+        # ### Comment -> Article -> Comment: joinedload() -> selectinload()
         # Will fail: joinedload() does not support LIMIT
         with self.assertRaises(ValueError):
             mq = limited_c_mq.query(join={'article': dict(project=['id'],
                                                           join={'comments': dict(project=['id'])})})
-            mq.with_session(ssn).end().all()
+            mq.with_session(ssn).end().all()  # ERROR
 
 
         # === Test: intermediate limit
