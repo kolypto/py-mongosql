@@ -1356,13 +1356,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         limited_c_mq = Reusable(MongoQuery(models.Comment, limited_comment_settings))
 
         # # User -> Article: selectinload()
-        # with QueryLogger(engine) as ql:
-        #     mq = limited_u_mq.query(join={'articles': dict(project=['id'])})
-        #     mq.with_session(ssn).end().all()
-        #
-        #     self.assertQuery(ql[0], 'LIMIT 20')
-        #     self.assertQuery(ql[1], 'WHERE group_row_n <= 10')
-        #     self.assertEqual(len(ql), 2)
+        with QueryLogger(engine) as ql:
+            mq = limited_u_mq.query(join={'articles': dict(project=['id'])})
+            mq.with_session(ssn).end().all()
+
+            self.assertQuery(ql[0], 'LIMIT 20')
+            self.assertQuery(ql[1], 'WHERE group_row_n <= 10')
+            self.assertEqual(len(ql), 2)
 
         # User -> Article -> User: selectinload() -> joinedload()
         # Will fail: joinedload() does not support LIMIT
