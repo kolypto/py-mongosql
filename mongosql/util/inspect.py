@@ -1,6 +1,6 @@
 import inspect
 from functools import lru_cache
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Tuple
 
 
 @lru_cache(100)
@@ -21,13 +21,14 @@ def get_function_defaults(for_func: Callable) -> dict:
     return defaults
 
 
-def pluck_kwargs_from(dct: Mapping, for_func: Callable) -> dict:
+def pluck_kwargs_from(dct: Mapping, for_func: Callable, skip: Tuple[str] = ()) -> dict:
     """ Analyze a function, pluck the arguments it needs from a dict """
     defaults = get_function_defaults(for_func)
 
     # Get the values for these kwargs
     kwargs = {k: dct.get(k, defaults[k])
-              for k in defaults.keys()}
+              for k in defaults.keys()
+              if k not in skip}
 
     # Done
     return kwargs

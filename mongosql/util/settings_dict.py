@@ -288,15 +288,21 @@ class MongoQuerySettingsDict(dict):
         return self.__class__(**{**self, **settings})
 
     @classmethod
-    def pluck_from(cls, dict):
+    def pluck_from(cls, dict, skip=('max_items',)):
         """ Initialize the class by plucking kwargs from a dictionary.
 
             This is useful when you have a dict with configuration for multiple classes, and you want to initialize
             this one by getting only the keys you need.
 
             Example: pluck MongoQuerySettingsDict from a StrictCrudHelperSettingsDict.
+
+            Args:
+                skip: List of key names to skip when copying. Sometimes it just does not make sense to copy all values.
         """
-        kwargs = pluck_kwargs_from(dict, for_func=cls.__init__)
+        kwargs = pluck_kwargs_from(dict,
+                                   for_func=cls.__init__,
+                                   skip=skip
+                                   )
         return cls(**kwargs)
 
 
