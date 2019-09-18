@@ -728,6 +728,82 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             }
         )
 
+    def test_join__one_to_one__twice(self):
+        """ Test join() one-to-one, twice """
+        c = models.Comment
+
+        # === Test: Make two LEFT JOINs
+        query_obj = dict(
+            project=['id'],
+            join={
+                # 1-1, MongoJoin will choose RELSTRATEGY_LEFT_JOIN
+                'article': dict(project=['id']),
+                # 1-1, MongoJoin will choose RELSTRATEGY_LEFT_JOIN
+                'user': dict(project=['id']),
+            },
+            # two LEFT JOINs here
+        )
+        mq = c.mongoquery().query(**query_obj)
+        # This is the sort of query you'd expect if I fixed it properly
+        qs = self.assertQuery(mq.end(),
+                              'FROM c',
+                              'LEFT OUTER JOIN a AS a_1 ON a_1.id = c.aid',
+                              'LEFT OUTER JOIN u AS u_1 ON u_1.id = c.uid'
+                              )
+        self.assertSelectedColumns(qs,
+                                   'c.id',
+                                   'a_1.id',
+                                   'u_1.id',
+                                   )
+
+        # === Test: same, with LIMIT
+        # When MongoSQL used the RELSTRATEGY_LEFT_JOIN with LIMIT, it used to corrupt the query beyond recognition,
+        # and the second LEFT JOIN was unable to attach to that mutilated query at all.
+        # This test sees what happens if we join two relations by LEFT JOIN
+        mq = c.mongoquery().query(
+            **query_obj,
+            # two LEFT JOINs here
+            limit=1
+        )
+
+        # This is the sort of query you'd expect if I fixed it properly
+        qs = self.assertQuery(mq.end(),
+                              'FROM (SELECT c.id',
+                              'FROM c',
+                              'LIMIT 1) AS anon_1',
+                              'LEFT OUTER JOIN a AS a_1 ON a_1.id = anon_1.c_aid',
+                              # This second line used to contain a wrong, unaliased ON clause: "ON u_1.id = c.uid"
+                              # In fact, I didn't fix it at all ; I moved it into a selectinquery() handler
+                              # 'LEFT OUTER JOIN u AS u_1 ON u_1.id = anon_1.c_aid'
+                              )
+        self.assertNotIn('JOIN u', qs)  # not here because selectinload() would handle it
+
+        self.assertSelectedColumns(qs,
+                                   'anon_1.c_id', 'anon_1.c_aid',
+                                   'a_1.id',
+                                   # 'u_1.id',  # not here because selectinload() would handle it
+                                   )
+
+    def test_join__one_to_one__twice__same_model(self):
+        """ Test join() same table multiple times"""
+        e = models.Edit
+
+        # === Test: join to multiple relationships
+        mq = e.mongoquery().query(project=['description'],
+                                  join={'user': dict(project=['name']),
+                                        'creator': dict(project=['tags'],
+                                                        filter={'id': {'$lt': 1}})})
+        qs = self.assertQuery(mq.end(),
+                              "FROM e ",
+                              "LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid ",
+                              "LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid AND u_2.id < 1"
+                              )
+        self.assertSelectedColumns(qs,
+                                   'u_1.id', 'u_1.name',
+                                   'u_2.id', 'u_2.tags',
+                                   'e.id', 'e.description'
+                                   )
+
     def test_join__one_to_many(self):
         """ Test: join() one-to-many """
         u = models.User
@@ -2317,26 +2393,6 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          "WHERE a_1.title IS NOT NULL",
                          # Grouping ok
                          "GROUP BY u.name")
-
-    def test_join_multiple_relationships(self):
-        """ Test join() same table multiple times"""
-        e = models.Edit
-
-        # === Test: join to multiple relationships
-        mq = e.mongoquery().query(project=['description'],
-                                  join={'user': dict(project=['name']),
-                                        'creator': dict(project=['tags'],
-                                                        filter={'id': {'$lt': 1}})})
-        qs = self.assertQuery(mq.end(),
-                              "FROM e ",
-                              "LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid ",
-                              "LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid AND u_2.id < 1"
-                              )
-        self.assertSelectedColumns(qs,
-                                   'u_1.id', 'u_1.name',
-                                   'u_2.id', 'u_2.tags',
-                                   'e.id', 'e.description'
-                                   )
 
     def test_limit_with_filtered_join(self):
         u = models.User

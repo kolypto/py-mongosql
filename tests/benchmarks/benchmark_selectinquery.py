@@ -8,7 +8,7 @@ This benchmark compares the performance of:
 
 from tests.benchmarks.benchmark_utils import benchmark_parallel_funcs
 
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from mongosql import selectinquery
 from tests.models import get_working_db_for_tests, User, Article

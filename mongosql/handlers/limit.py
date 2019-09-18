@@ -120,6 +120,11 @@ class MongoLimit(MongoQueryHandlerBase):
     compile_statement = NotImplemented
     compile_statements = NotImplemented
 
+    @property
+    def has_limit(self):
+        """ Check thether there's a limit on this handler """
+        return self.limit is not None or self.skip is not None
+
     def limit_groups_over_columns(self, fk_columns):
         """ Instead of the usual limit, use a window function over the given columns.
 

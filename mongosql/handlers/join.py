@@ -108,6 +108,9 @@ class MongoJoin(MongoQueryHandlerBase):
         self.legacy_fields = frozenset(legacy_fields or ())
         self.legacy_fields_not_faked = self.legacy_fields - self.bags.all_names  # legacy_fields not faked as a @property
 
+        # Use LEFT_JOIN strategy only once
+        self._used_up_left_join_strategy = False
+
         # Validate
         if self.allowed_relations:
             self.validate_properties(self.allowed_relations, where='join:allowed_relations')
@@ -211,6 +214,24 @@ class MongoJoin(MongoQueryHandlerBase):
 
             # Choose the loading strategy
             mjp.loading_strategy = self._choose_relationship_loading_strategy(mjp)
+
+            # There's a bug in the LEFT_JOIN strategy that prevents it from functioning correctly
+            # if there are two relationships using left join and a LIMIT in the same clause.
+            # I'm not going to fix it; instead, I switch to SELECTINQUERY
+            if self.mongoquery:
+                mq_qo = self.mongoquery.input_value or dict()
+                query_has_limit = (
+                        'skip' in mq_qo or
+                        'limit' in mq_qo or
+                        self.mongoquery.handler_limit.max_items)
+                if query_has_limit:
+                    if mjp.loading_strategy == self.RELSTRATEGY_LEFT_JOIN:
+                        # Switch to SELECTINQUERY if this MongoJoin has already used LEFT_JOIN once
+                        if self._used_up_left_join_strategy:
+                            mjp.loading_strategy = self.RELSTRATEGY_SELECTINQUERY
+
+                        # Don't let this MongoJoin use a LEFT JOIN again
+                        self._used_up_left_join_strategy = True
 
             # Unfortunately, a MongoQuery has to be aliased() upfront, before query() is called.
             # Therefore, we have to do it right now.
