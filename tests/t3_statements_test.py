@@ -744,16 +744,18 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # two LEFT JOINs here
         )
         mq = c.mongoquery().query(**query_obj)
-        # This is the sort of query you'd expect if I fixed it properly
+
         qs = self.assertQuery(mq.end(),
                               'FROM c',
                               'LEFT OUTER JOIN a AS a_1 ON a_1.id = c.aid',
-                              'LEFT OUTER JOIN u AS u_1 ON u_1.id = c.uid'
+                              # 'LEFT OUTER JOIN u AS u_1 ON u_1.id = c.uid'  # not here because selectinload() would handle it
                               )
+        self.assertNotIn('JOIN u', qs)  # not here because selectinload() would handle it
+
         self.assertSelectedColumns(qs,
                                    'c.id',
                                    'a_1.id',
-                                   'u_1.id',
+                                   # 'u_1.id',  # not here because selectinload() would handle it
                                    )
 
         # === Test: same, with LIMIT
@@ -796,11 +798,12 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         qs = self.assertQuery(mq.end(),
                               "FROM e ",
                               "LEFT OUTER JOIN u AS u_1 ON u_1.id = e.uid ",
-                              "LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid AND u_2.id < 1"
+                              # "LEFT OUTER JOIN u AS u_2 ON u_2.id = e.cuid AND u_2.id < 1"  # not here because selectinload() would handle it
                               )
+        self.assertNotIn('JOIN u AS u_2', qs)  # not here because selectinload() would handle it
         self.assertSelectedColumns(qs,
                                    'u_1.id', 'u_1.name',
-                                   'u_2.id', 'u_2.tags',
+                                   # 'u_2.id', 'u_2.tags',  # not here because selectinload() would handle it
                                    'e.id', 'e.description'
                                    )
 

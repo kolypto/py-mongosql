@@ -218,20 +218,14 @@ class MongoJoin(MongoQueryHandlerBase):
             # There's a bug in the LEFT_JOIN strategy that prevents it from functioning correctly
             # if there are two relationships using left join and a LIMIT in the same clause.
             # I'm not going to fix it; instead, I switch to SELECTINQUERY
-            if self.mongoquery:
-                mq_qo = self.mongoquery.input_value or dict()
-                query_has_limit = (
-                        'skip' in mq_qo or
-                        'limit' in mq_qo or
-                        self.mongoquery.handler_limit.max_items)
-                if query_has_limit:
-                    if mjp.loading_strategy == self.RELSTRATEGY_LEFT_JOIN:
-                        # Switch to SELECTINQUERY if this MongoJoin has already used LEFT_JOIN once
-                        if self._used_up_left_join_strategy:
-                            mjp.loading_strategy = self.RELSTRATEGY_SELECTINQUERY
+            # And we don't care whether there's a limit; just don't let two LEFT JOINs happen.
+            if mjp.loading_strategy in (self.RELSTRATEGY_LEFT_JOIN, self.RELSTRATEGY_EAGERLOAD):
+                # Switch to SELECTINQUERY if this MongoJoin has already used LEFT_JOIN once
+                if self._used_up_left_join_strategy:
+                    mjp.loading_strategy = self.RELSTRATEGY_SELECTINQUERY
 
-                        # Don't let this MongoJoin use a LEFT JOIN again
-                        self._used_up_left_join_strategy = True
+                # Don't let this MongoJoin use a LEFT JOIN again
+                self._used_up_left_join_strategy = True
 
             # Unfortunately, a MongoQuery has to be aliased() upfront, before query() is called.
             # Therefore, we have to do it right now.
@@ -630,7 +624,7 @@ class MongoJoin(MongoQueryHandlerBase):
         """
         # Check the Query Object
         for unsupported in ('aggregate', 'group'):
-            if unsupported in mjp.query_object:
+            if mjp.query_object and unsupported in mjp.query_object:
                 raise InvalidQueryError('MongoSQL does not support `{}` for joined queries (relationship={}, strategy={})'
                                         .format(unsupported, mjp.relationship_name, mjp.loading_strategy))
 
