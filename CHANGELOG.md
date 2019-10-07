@@ -3,6 +3,7 @@
 * `MongoQuerySettingsDict.pluck_from()`: now skips the `max_items` key because it does not make sense when inherited
 * Bugfix: in some cases, the `projection` property returned invalid results
 * Bugfix: when the `join` operation includes two relationships that are LEFT JOINed, the query is not broken anymore.
+* Bugfix: compilation of dialect-specific clauses used to fail with some JOINs
 
 ## 2.0.5 (2019-08-27)
 * `ensure_loaded` setting for projections
