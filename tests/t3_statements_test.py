@@ -1167,6 +1167,18 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'u_1.name'  # force_include
                                    )
 
+        # === Test: User: force_filter + max_items + join
+        mq = MongoQuery(u, {**user_settings, 'max_items': 10}).query(
+            project=('name',), 
+            sort=['age-'],
+            join={'articles': {'join':[]}},
+        )
+        self.assertQuery(mq.end(),
+                         'FROM u',
+                         # The condition is inserted
+                         'WHERE u.age >= 18',
+                         'LIMIT 10')
+
         # === Test: Article: user: force_filter, dict
         mq = a_mq.query(project=('data',),
                         join={'user': dict(project=('age',))})
@@ -1263,6 +1275,22 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'u_1.id', 'u_1.name', 'u_1.age',  # `tags` excluded
                                    'a.uid',  # TODO: FIXME: this column was included by SqlAlchemy? It's not supposed to be here
                                    )
+
+        # === Test: related(force_filter + max_items)
+        mq = MongoQuery(models.Article, MongoQuerySettingsDict(
+            related={'user': MongoQuerySettingsDict(
+                force_filter=lambda User: [User.age > 1]
+            )},
+            max_items=100
+        )).query(project=['title'],
+                 join=['user'])
+
+        qs = self.assertQuery(mq.end(),
+                              'FROM (SELECT a.',
+                              'FROM a',
+                              'LIMIT 100) AS anon_1',
+                              'anon_1 LEFT OUTER JOIN u AS u_1',
+                              'ON u_1.id = anon_1.a_uid AND u_1.age > 1')
 
         # ###
         # ### Test related settings

@@ -479,13 +479,14 @@ class MongoJoin(MongoQueryHandlerBase):
             :type mjp: MongoJoinParams
         """
         # Check the Query Object
-        for unsupported in ('aggregate', 'group'):
-            if unsupported in mjp.query_object:
-                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries (relationship={}, strategy={})'
-                                        .format(unsupported, mjp.relationship_name, mjp.loading_strategy))
-        if 'skip' in mjp.query_object or 'limit' in mjp.query_object:
-            raise InvalidQueryError('MongoSQL does not support `skip` or `limit` for this kind of `join` (relationship={}, strategy={})'
-                                    .format(mjp.relationship_name, mjp.loading_strategy))
+        if mjp.query_object:
+            for unsupported in ('aggregate', 'group'):
+                if unsupported in mjp.query_object:
+                    raise InvalidQueryError('MongoSQL does not support `{}` for joined queries (relationship={}, strategy={})'
+                                            .format(unsupported, mjp.relationship_name, mjp.loading_strategy))
+            if 'skip' in mjp.query_object or 'limit' in mjp.query_object:
+                raise InvalidQueryError('MongoSQL does not support `skip` or `limit` for this kind of `join` (relationship={}, strategy={})'
+                                        .format(mjp.relationship_name, mjp.loading_strategy))
         if mjp.nested_mongoquery:
             if mjp.nested_mongoquery.handler_limit.max_items:
                 raise ValueError('MongoSQL does not support `max_items` for this kind of relationship (relationship={}, strategy={})'
@@ -583,10 +584,11 @@ class MongoJoin(MongoQueryHandlerBase):
             :type mjp: MongoJoinParams
         """
         # Check the Query Object
-        for unsupported in ('aggregate', 'group', 'skip', 'limit'):
-            if unsupported in mjp.query_object:
-                raise InvalidQueryError('MongoSQL does not support `{}` for queries joined with `joinf`'
-                                        .format(unsupported))
+        if mjp.query_object:
+            for unsupported in ('aggregate', 'group', 'skip', 'limit'):
+                if unsupported in mjp.query_object:
+                    raise InvalidQueryError('MongoSQL does not support `{}` for queries joined with `joinf`'
+                                            .format(unsupported))
         if mjp.nested_mongoquery:
             if mjp.nested_mongoquery.handler_limit.max_items:
                 raise ValueError('MongoSQL does not support `max_items` for this kind of relationship (relationship={}, strategy={})'
@@ -624,10 +626,11 @@ class MongoJoin(MongoQueryHandlerBase):
             :type mjp: MongoJoinParams
         """
         # Check the Query Object
-        for unsupported in ('aggregate', 'group'):
-            if mjp.query_object and unsupported in mjp.query_object:
-                raise InvalidQueryError('MongoSQL does not support `{}` for joined queries (relationship={}, strategy={})'
-                                        .format(unsupported, mjp.relationship_name, mjp.loading_strategy))
+        if mjp.query_object:
+            for unsupported in ('aggregate', 'group'):
+                if unsupported in mjp.query_object:
+                    raise InvalidQueryError('MongoSQL does not support `{}` for joined queries (relationship={}, strategy={})'
+                                            .format(unsupported, mjp.relationship_name, mjp.loading_strategy))
 
         # It's not being loaded as a relation anymore ; it' loaded in a separate query.
         # Thus, we need it un-aliased().
@@ -826,11 +829,11 @@ class MongoJoin(MongoQueryHandlerBase):
 
         # Helpers
         is_mjp_simple = lambda mjp: mjp is None \
-                                    or not mjp.has_nested_query or \
+                                    or not mjp.query_object or \
                                     set(mjp.query_object.keys()) <= merge_allowed_keys
 
         mjp_has_something = lambda mjp, key: mjp is not None and \
-                                   mjp.has_nested_query and \
+                                   mjp.query_object and \
                                    key in mjp.query_object
         mjp_has_sort = lambda mjp: mjp_has_something(mjp, 'sort')
         mjp_has_filter = lambda mjp: mjp_has_something(mjp, 'filter')
@@ -1057,7 +1060,24 @@ class MongoJoinParams:
 
         :rtype: bool
         """
-        return self.query_object is not None
+        # A nested query may result in two cases:
+        # 1. There is a Query Object
+        # 2. There is a setting that works like a Query Object
+
+        # Nested query will happen in case of a Query Object
+        if self.query_object is not None:
+            return self.query_object
+
+        # Some settings will require a nested query to make sense
+        nmq = self.nested_mongoquery
+        if nmq:
+            return any((
+                nmq.handler_limit.max_items is not None,
+                nmq.handler_filter.force_filter is not None,
+            ))
+
+        # No nested query in all other cases
+        return False
 
     def __repr__(self):
         return '<MongoJoinParams(' \
