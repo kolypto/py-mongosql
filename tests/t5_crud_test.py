@@ -8,7 +8,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from . import models
 from .crud_view import ArticleView, GirlWatcherView
-from mongosql import StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
+from mongosql import StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations, ABSENT
 
 
 class CrudTestBase(unittest.TestCase):
@@ -446,6 +446,13 @@ class ArticleViewTest(CrudTestBase):
 
     def test_saves_relations(self):
         """ Test how @saves_relations works """
+
+        # === Test: ABSENT
+        self.assertIsNotNone(ABSENT)
+        self.assertFalse(ABSENT)
+        self.assertTrue(ABSENT is ABSENT)
+        self.assertEqual(str(ABSENT), '-')
+        self.assertEqual(repr(ABSENT), '-')
 
         # === Test: @saves_relations
         # Test the behavior of the decorator on a custom view class

@@ -489,4 +489,12 @@ class saves_relations(method_decorator):
             decorator.method(view, *decorator_args, **decorator_kwargs)
 
 
-ABSENT = type('ABSENT', (), {})
+class _ABSENT_TYPE:
+    """ A falsy marker to be used for arguments not provided to a function """
+    def __repr__(self):
+        return '-'
+    def __bool__(self):
+        return False
+
+
+ABSENT = _ABSENT_TYPE()  # A falsy marker to be used for @saves_relations
