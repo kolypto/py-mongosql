@@ -136,15 +136,16 @@ that implement most of this logic for you.
 
 from copy import copy
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, exc as sa_exc
 from sqlalchemy.orm import Query, Load, defaultload
 
+from mongosql import RuntimeQueryError, BaseMongoSqlException
 from .bag import ModelPropertyBags
 from . import handlers
 from .exc import InvalidQueryError
 from .util import MongoQuerySettingsHandler, CountingQuery
 
-from typing import Union, Mapping, Iterable, Tuple
+from typing import Union, Mapping, Iterable, Tuple, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import RelationshipProperty
@@ -316,7 +317,7 @@ class MongoQuery:
 
         return self
 
-    def query(self, **query_object: Mapping) -> 'MongoQuery':
+    def query(self, **query_object: Any) -> 'MongoQuery':
         """ Build a MongoSql query from an object
 
         :param query_object: The Query Object to execute.
@@ -370,7 +371,21 @@ class MongoQuery:
         # Apply every handler
         for handler_name, handler in self._handlers_ordered_for_end_method():
             if not handler.skip_this_handler:
-                q = handler.alter_query(q, as_relation=self._as_relation)
+                # Apply the handler
+                try:
+                    q = handler.alter_query(q, as_relation=self._as_relation)
+                # Enrich SqlAlchemy errors with MongoSQL context (because it's very difficult to debug its cryptic messages)
+                except sa_exc.SQLAlchemyError as e:
+                    # Get model name by backtracing MongoQuery objects
+                    model_name = []
+                    mq = self
+                    while mq is not None:
+                        model_name.append(mq.bags.model_name)
+                        mq = mq._parent_mongoquery
+                    model_name = ' -> '.join(reversed(model_name))
+
+                    # Finally, raise one rich error
+                    raise RuntimeQueryError(f'Error processing MongoQuery({model_name}).{handler_name}: {e}') from e
 
         return q
 

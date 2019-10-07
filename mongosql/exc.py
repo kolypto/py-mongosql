@@ -43,3 +43,10 @@ class InvalidRelationError(InvalidColumnError, BaseMongoSqlException):
                 model=model,
                 where=where)
         )
+
+
+class RuntimeQueryError(BaseMongoSqlException):
+    """ Uncaught error while processing a MongoQuery
+
+    This class is used to augment other errors
+    """
