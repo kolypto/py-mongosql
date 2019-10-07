@@ -1962,7 +1962,8 @@ NOTE: this method is executed before _save_hook() is.
 Example usage:
 
 ```python
-ABSENT = object()  # unique marker to detect when an argument was not provided
+from mongosql import saves_relations
+from mongosql import ABSENT  # unique marker used to detect values not provided
 
 class UserView(CrudViewMixin):
     @saves_relations('articles')
