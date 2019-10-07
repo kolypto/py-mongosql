@@ -2016,6 +2016,33 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                              'u.age >= 0',
                              )
 
+        # === Test 2: querying with Postgres-specific features
+
+        # BUG: It has turned out that when a query uses Postgres-specific features, it's unable to compile the query.
+        # It looks like this:
+        # > stmt_compiled = query.statement.compile()
+        # > sqlalchemy.exc.UnsupportedCompilationError: Compiler can't render element of type <class 'sqlalchemy.dialects.postgresql.array.array'>
+        # This was because the dialect was not provided.
+        # Seems like MongoSQL is becoming increasingly Postgres-bound.
+
+        # Query a model that has ARRAY fields
+        with QueryLogger(engine) as ql:
+            mq = u.mongoquery(ssn.query(u)).query(
+                filter={'tags': {'$in': ['beautiful']}},
+                # The bug only showed up when two relationships were joined
+                # This happens because MongoJoin switches to SELECTINQUERY when two LEFT JOINS are added
+                #join=['articles', 'comments'],
+                # But we won't rely on that.
+                # A more reproducible way to test that would be to force a SELECTINQUERY strategy:
+                # for instance, by providing a Query Object! :)
+                join={'articles': {'join':[]}, 'comments': {'join': []}},
+            )
+            res = mq.end().all()
+
+            # Query 1:
+            self.assertEqual(len(ql), 1)
+
+
     def test_join_when_fk_is_deferred(self):
         c = models.ManyForeignKeysModel
 

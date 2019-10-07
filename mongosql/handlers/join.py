@@ -62,6 +62,7 @@ Examples follow.
 import json
 from types import SimpleNamespace
 
+from sqlalchemy import exc as sa_exc
 from sqlalchemy.orm import aliased, Query
 
 from .base import MongoQueryHandlerBase
@@ -1105,8 +1106,27 @@ def get_mongoquery_cache_key(query, nested_mongoquery):
         a hash of every MongoQuery object down to the current one
     """
     # First, get some sort of hash from the sqlalchemy query
+    # First, compile the query into a string. That's the first part of our key.
+    if query.session:
+        # Get the current dialect from the session's engine and use it for compilation
+        dialect = query.session.bind.dialect
+        stmt_compiled = query.statement.compile(dialect=dialect)
+    else:
+        # When there's no session, try to compile it without a dialect.
+        # This may throw errors about DB-specific types that are counter-intuitive, so we have to explain them to the user
+        try:
+            stmt_compiled = query.statement.compile()
+        except sa_exc.UnsupportedCompilationError as e:
+            raise RuntimeError(
+                "Failed to compile an SQL statement. "
+                "This is likely because your Query object is not bound to a Session, "
+                "and SqlAlchemy doesn't know the SQL dialect you're using. "
+                "Please use Query.with_session() or MongoQuery.with_session() "
+                "so that the Query you're using is bound to an SqlAlchemy Session"
+            ) from e
+    # The second part of that key are the values. But we do not compile them into the query, but it turns out that
+    # keeping them as (stmt, json-encoded params) is more robust.
     # stmt_compiled = query.statement.compile(compile_kwargs={"literal_binds": True})
-    stmt_compiled = query.statement.compile()
     q_hash = (stmt_compiled.string, stmt_compiled.params)
     q_hash = json.dumps(q_hash, cls=JSONCacheKeyEncoder, sort_keys=True)
 
