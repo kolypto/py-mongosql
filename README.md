@@ -183,6 +183,16 @@ The Project operation supports the following syntaxes:
     { project: ['login', 'first_name'] }
     ```
 
+* String syntax
+
+    Give a list of field names, separated by spaces.
+
+    Example:
+
+    ```javascript
+    { project: 'login first_name' }
+    ```
+
 * Object syntax.
 
     Provide an object of field names mapped to either a `1` (include) or a `0` (exclude).
@@ -1952,10 +1962,13 @@ NOTE: this method is executed before _save_hook() is.
 Example usage:
 
 ```python
+ABSENT = object()
+
 class UserView(CrudViewMixin):
     @saves_relations('articles')
-    def save_articles(self, new: object, prev: object = None, articles = None):
-        # ... articles-saving logic
+    def save_articles(self, new: object, prev: object = None, articles = ABSENT):
+        if articles is not ABSENT:
+            ...  # articles-saving logic
 ```
 
 NOTE: the handler method is called with two positional arguments, and the rest being keyword arguments:

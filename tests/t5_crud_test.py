@@ -453,24 +453,27 @@ class ArticleViewTest(CrudTestBase):
             def __init__(self):
                 self.log = set()
 
+            # Will use this as a marker that no value was provided
+            NOT_PROVIDED = '-'
+
             # simple: save once
             @saves_relations('a')
-            def save_a(self, new, old=None, a=None):
+            def save_a(self, new, old=None, a=NOT_PROVIDED):
                 self.log.add('save_a: new={new}, old={old}, a={a}'.format(**locals()))
 
             # save twice
             @saves_relations('a')
-            def save_a_again(self, new, old=None, a=None):
+            def save_a_again(self, new, old=None, a=NOT_PROVIDED):
                 self.log.add('save_a_again: new={new}, old={old}, a={a}'.format(**locals()))
 
             # save another
             @saves_relations('b')
-            def save_b(self, new, old=None, b=None):
+            def save_b(self, new, old=None, b=NOT_PROVIDED):
                 self.log.add('save_b: new={new}, old={old}, b={b}'.format(**locals()))
 
             # save both
             @saves_relations('a', 'b')
-            def save_ab(self, new, old=None, a=None, b=None):
+            def save_ab(self, new, old=None, a=NOT_PROVIDED, b=NOT_PROVIDED):
                 self.log.add('save_ab: new={new}, old={old}, a={a}, b={b}'.format(**locals()))
 
         # Construct a view
@@ -520,10 +523,10 @@ class ArticleViewTest(CrudTestBase):
 
         self.assertEqual(view.log, {
             # all handlers were executed,even though there was no input
-            'save_a: new=a, old=None, a=None',
-            'save_a_again: new=a, old=None, a=None',
-            'save_ab: new=a, old=None, a=None, b=None',
-            'save_b: new=a, old=None, b=None',
+            'save_a: new=a, old=None, a=-',
+            'save_a_again: new=a, old=None, a=-',
+            'save_ab: new=a, old=None, a=-, b=-',
+            'save_b: new=a, old=None, b=-',
         })
 
         # === Test: execute_handler_methods(), 'a' provided
@@ -534,8 +537,8 @@ class ArticleViewTest(CrudTestBase):
             # all handlers executed, 'a' now provided
             'save_a: new=a, old=None, a=A',
             'save_a_again: new=a, old=None, a=A',
-            'save_ab: new=a, old=None, a=A, b=None',
-            'save_b: new=a, old=None, b=None',
+            'save_ab: new=a, old=None, a=A, b=-',
+            'save_b: new=a, old=None, b=-',
         })
 
         # === Test: @saves_relations actually handles requests

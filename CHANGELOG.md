@@ -2,6 +2,7 @@
 * `bundled_project` are now loaded quietly (meaning, they are loaded, but not included into the projection)
 * `MongoQuerySettingsDict.pluck_from()`: now skips the `max_items` key because it does not make sense when inherited
 * `project`: now allow using a string of field names, separated by whitespace. Example: `{project: "name age weight"}`
+* `@saves_relations`: now possible to differentiate a value not provided from a provided `None`
 * Better sqlalchemy error messages: a new `mongosql.exc.RuntimeQueryError` provides more details about internal errors. 
     
     Example:

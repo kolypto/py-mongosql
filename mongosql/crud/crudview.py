@@ -438,10 +438,14 @@ class saves_relations(method_decorator):
         Example usage:
 
         ```python
+        from mongosql import saves_relations
+        from mongosql import ABSENT  # unique marker used to detect values not provided
+
         class UserView(CrudViewMixin):
             @saves_relations('articles')
-            def save_articles(self, new: object, prev: object = None, articles = None):
-                # ... articles-saving logic
+            def save_articles(self, new: object, prev: object = None, articles = ABSENT):
+                if articles is not ABSENT:
+                    ...  # articles-saving logic
         ```
 
         NOTE: the handler method is called with two positional arguments, and the rest being keyword arguments:
@@ -481,5 +485,8 @@ class saves_relations(method_decorator):
                                 for name in decorator.field_names
                                 if name in input_data}
             
-            # Call it
+            # Call it -- even if no kwargs were provided
             decorator.method(view, *decorator_args, **decorator_kwargs)
+
+
+ABSENT = type('ABSENT', (), {})

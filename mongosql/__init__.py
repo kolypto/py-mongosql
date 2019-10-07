@@ -55,7 +55,7 @@ from .sa import MongoSqlBase
 # CrudHelper is something that you'll need when building JSON API that implements CRUD:
 # Create/Read/Update/Delete
 from .crud import CrudHelper, StrictCrudHelper, CrudViewMixin
-from .crud import saves_relations
+from .crud import saves_relations, ABSENT
 
 # Helpers
 # Reusable query objects (so that you don't have to initialize them over and over again)
