@@ -10,7 +10,7 @@ if not sys.version_info >= (3, 6, 0):
 
 setup(
     name='mongosql',
-    version='2.0.6-4',
+    version='2.0.7',
     author='Mark Vartanyan',
     author_email='kolypto@gmail.com',
 

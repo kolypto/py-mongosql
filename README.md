@@ -1962,7 +1962,7 @@ NOTE: this method is executed before _save_hook() is.
 Example usage:
 
 ```python
-ABSENT = object()
+ABSENT = object()  # unique marker to detect when an argument was not provided
 
 class UserView(CrudViewMixin):
     @saves_relations('articles')

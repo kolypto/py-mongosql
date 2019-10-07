@@ -1,17 +1,19 @@
-## 2.0.6 (2019-09-17)
-* `bundled_project` are now loaded quietly (meaning, they are loaded, but not included into the projection)
-* `MongoQuerySettingsDict.pluck_from()`: now skips the `max_items` key because it does not make sense when inherited
+## 2.0.7 (2019-10-07)
 * `project`: now allow using a string of field names, separated by whitespace. Example: `{project: "name age weight"}`
 * `@saves_relations`: now possible to differentiate a value not provided from a provided `None`
 * Better sqlalchemy error messages: a new `mongosql.exc.RuntimeQueryError` provides more details about internal errors. 
     
     Example:
     > mongosql.exc.RuntimeQueryError: Error processing MongoQuery(Assignment -> Category).join: (cryptic sqlalchemy message)
-* Bugfix: in some cases, the `projection` property returned invalid results
-* Bugfix: when the `join` operation includes two relationships that are LEFT JOINed, the query is not broken anymore.
 * Bugfix: compilation of dialect-specific clauses used to fail with some JOINs
 * Bugfix: `max_items` + `force_filter` used to cause trouble because MongoSQL could not make the correct decision 
     that a nested query is necessary
+
+## 2.0.6 (2019-09-17)
+* `bundled_project` are now loaded quietly (meaning, they are loaded, but not included into the projection)
+* `MongoQuerySettingsDict.pluck_from()`: now skips the `max_items` key because it does not make sense when inherited
+* Bugfix: in some cases, the `projection` property returned invalid results
+* Bugfix: when the `join` operation includes two relationships that are LEFT JOINed, the query is not broken anymore.
 
 ## 2.0.5 (2019-08-27)
 * `ensure_loaded` setting for projections
