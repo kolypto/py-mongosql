@@ -39,6 +39,16 @@ The Project operation supports the following syntaxes:
     { project: ['login', 'first_name'] }
     ```
 
+* String syntax
+
+    Give a list of field names, separated by spaces.
+
+    Example:
+
+    ```javascript
+    { project: 'login first_name' }
+    ```
+
 * Object syntax.
 
     Provide an object of field names mapped to either a `1` (include) or a `0` (exclude).
@@ -334,10 +344,15 @@ class MongoProject(MongoQueryHandlerBase):
             # The default mode depends on the actual values.
             default_mode = None
 
+        # String syntax
+        if isinstance(projection, str):
+            # Split by whitespace and convert to dict
+            projection = dict.fromkeys(projection.split(), 1)
+
         # Array syntax
         if isinstance(projection, (list, tuple)):
             # Convert to dict
-            projection = {k: 1 for k in projection}
+            projection = dict.fromkeys(projection, 1)
 
         # Dict syntax
         if not isinstance(projection, dict):

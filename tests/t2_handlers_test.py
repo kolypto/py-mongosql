@@ -85,6 +85,11 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(p.projection, dict())
         test_by_full_projection(p, **ALL_EXCLUDED)
 
+        # === Test: valid projection, string
+        p = Article_project().input('id uid title')
+        self.assertEqual(p.mode, p.MODE_INCLUDE)
+        self.assertEqual(p.projection, dict(id=1, uid=1, title=1))
+
         # === Test: Valid projection, array
         p = Article_project().input(['id', 'uid', 'title'])
         self.assertEqual(p.mode, p.MODE_INCLUDE)
