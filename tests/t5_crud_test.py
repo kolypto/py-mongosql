@@ -260,6 +260,59 @@ class ArticleViewTest(CrudTestBase):
             # @saves_relations() called even though it's a legacy field
             self.assertEqual(ArticleView._save_removed_column, dict(removed_column='something'))
 
+    def test_create__save_many(self):
+        """ Test create() with submitting many objects at once """
+        with self.app.test_client() as c:
+            # === Test: 3 x create()
+            # Submit 3 new objects
+            res = c.post('/article/', json={'articles': [
+                {'title': 'a'},
+                {'title': 'b'},
+                {'title': 'c'},
+            ]}).get_json()
+            self.assertNotIn('error', res)  # no generic error
+            self.assertEqual(res['errors'], {})  # no individual errors
+
+            # All saved just fine
+            self.assertEqual(res['articles'], [
+                # All saved fine
+                {'id': 1, 'uid': 3, 'title': 'a', 'theme': None, 'data': None},
+                {'id': 2, 'uid': 3, 'title': 'b', 'theme': None, 'data': None},
+                {'id': 3, 'uid': 3, 'title': 'c', 'theme': None, 'data': None},
+            ])
+
+            # === Test: update, create, delegate
+            self.db.begin()  # the previous request has closed it
+            # Submit:
+            #   1 new object
+            #   1 updated object
+            #   1 object with a custom PK but which is missing
+            #   1 object with title='z': the view is programmed to raise an exception in this case :)
+            res = c.post('/article/', json={'articles': [
+                # save: 1 new object: no PK
+                {'title': 'd'},
+                # save: 1 updated object
+                {'id': 1, 'title': 'A'},  # now uppercase
+                # save: 1 object with a custom PK: will be ignored
+                {'id': 9, 'title': 'e'},  # will be ignored
+                # save: 1 object with error
+                {'title': 'z'},
+            ]}).get_json()
+
+            self.assertNotIn('error', res)  # no generic error
+            self.assertEqual(res['errors'], {
+                '3': 'This method inexplicably fails when title="z"',
+            })
+
+            # Everything else is saved just fine
+            self.assertEqual(res['articles'], [
+                {'id': 4, 'uid': 3, 'title': 'd', 'theme': None, 'data': None},
+                {'id': 1, 'uid': 3, 'title': 'A', 'theme': None, 'data': None},
+                None,
+                None,
+            ])
+
+
     def test_get(self):
         """ Test get() """
 

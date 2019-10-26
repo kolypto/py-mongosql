@@ -1,10 +1,13 @@
 from functools import wraps
+from logging import getLogger
 
 from mongosql import CrudViewMixin, StrictCrudHelper, StrictCrudHelperSettingsDict, saves_relations
 
 from . import models
 from flask import request, g, jsonify
 from flask_jsontools import jsonapi, RestfulView
+
+logger = getLogger(__name__)
 
 
 def passthrough_decorator(f):
@@ -49,11 +52,18 @@ class RestfulModelView(RestfulView, CrudViewMixin):
     # This is our method: it plucks an instance using the current projection
     # This is just convenience: if the user has requested
     def _return_instance(self, instance):
-        """ Modify a returned instance: for GET and LIST methods
-
-            Note: create(), update(), delete() instances are returned unadulterated.
-        """
+        """ Modify a returned instance """
         return self._mongoquery.pluck_instance(instance)
+
+    def _save_hook(self, new: models.Article, prev: models.Article = None):
+        # There's one special case for a failure: title='z'.
+        # This is how unit-tests can test exceptions
+        if new.title == 'z':
+            # Simulate a bug
+            raise RuntimeError(
+                'This method inexplicably fails when title="z"'
+            )
+        super()._save_hook(new, prev)
 
     # region CRUD methods
 
@@ -64,7 +74,7 @@ class RestfulModelView(RestfulView, CrudViewMixin):
 
         # Format response
         # NOTE: can't return map(), because it's not JSON serializable
-        return {self.entity_name+'s': results}
+        return {self.entity_names: results}
 
     def _method_list_result__groups(self, dicts):
         """ Format the result from GET /article/ when the result is a list of dicts (GROUP BY) """
@@ -82,6 +92,11 @@ class RestfulModelView(RestfulView, CrudViewMixin):
         return {self.entity_name: self._return_instance(item)}
 
     def create(self):
+        # Trying to save many objects at once?
+        if self.entity_names in request.get_json():
+            return self.save_many()
+
+        # Saving only one object
         input_entity_dict = request.get_json()[self.entity_name]
         instance = self._method_create(input_entity_dict)
 
@@ -90,6 +105,40 @@ class RestfulModelView(RestfulView, CrudViewMixin):
         ssn.commit()
 
         return {self.entity_name: self._return_instance(instance)}
+
+    def save_many(self):
+        # Get the input
+        input_json = request.get_json()
+        entity_dicts = input_json[self.entity_names]
+
+        # Process
+        results = self._method_create_or_update_many(entity_dicts)
+
+        # Save
+        ssn = self._get_db_session()
+        ssn.add_all(res.instance for res in results if res.instance is not None)
+        ssn.commit()
+
+        # Log every error
+        for res in results:
+            if res.error:
+                logger.exception(str(res.error), exc_info=res.error)
+
+        # Results
+        return {
+            # Entities
+            self.entity_names: [
+                # Each one goes through self._return_instance()
+                self._return_instance(res.instance) if res.instance else None
+                for res in results
+            ],
+            # Errors
+            'errors': {
+                res.ordinal_number: str(res.error)
+                for res in results
+                if res.error
+            },
+        }
 
     def update(self, id):
         input_entity_dict = request.get_json()[self.entity_name]

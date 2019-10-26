@@ -1928,6 +1928,8 @@ Returns `MongoQuery`
 This allows to make some changes to the instance before it's actually saved.
 The hook is provided with both the old and the new versions of the instance (!).
 
+Note that it is executed before flush(), so DB defaults are not available yet.
+
 
 Arguments:
 
@@ -1938,6 +1940,47 @@ Arguments:
 
 
 
+
+
+
+
+
+
+### `CrudViewMixin._method_create_or_update_many(entity_dicts, *filter, **filter_by) -> Iterable[mongosql.util.bulk.EntityDictWrapper]`
+(CRUD method) Create-or-update many objects (aka upsert): create if no PK, update with PK
+
+This smart method can be used to save (upsert: insert & update) many objects at once.
+
+It will *load* those objects that have primary key fields set and update them with _method_update().
+It will *create* objects that do not have primary key fields with _method_create()
+It will *delegate* to _method_create_or_update_many__create_arbitrary_pk() that have primary key fields
+but were not found in the database.
+
+Note that the method uses EntityDictWrapper to preserve the order of entity dicts
+and return results associated with them:
+
+* EntityDictWrapper.instance is the resulting instance to be saved
+* EntityDictWrapper.error is the exception (if any). It's not raised! Raise it if you will.
+
+Note that you may wrap entity dicts with EntityDictWrapper yourself.
+In this case, you may:
+
+* set EntityDictWrapper.skip = True to cause the method to ignore it completely
+
+
+Arguments:
+
+
+* `entity_dicts: Iterable[dict]`: 
+
+* `*filter`: 
+
+* `**filter_by`: 
+
+
+
+
+Returns `Iterable[mongosql.util.bulk.EntityDictWrapper]`
 
 
 

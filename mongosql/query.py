@@ -176,6 +176,10 @@ class MongoQuery:
 
         # Initialize the settings
         self.handler_settings = self._init_handler_settings(handler_settings or {})
+        self._query_options = {
+            # See: options()
+            'no_limit_offset': False,
+        }
 
         # Initialized later
         self._query = None  # type: Query | None
@@ -217,11 +221,32 @@ class MongoQuery:
         for name in self.HANDLER_ATTR_NAMES:
             setattr(result, name, copy(getattr(result, name)))
 
+        # Copy mutable objects
+        result._query_options = result._query_options.copy()
+
         # Re-initialize properties that can't be copied
         self.as_relation(None)  # reset the Load() interface. Outside code will have to set it up properly
         self._query = None
 
         return result
+
+    def options(self, *, no_limit_offset=False):
+        """ Set options for this query to alter its behavior
+
+        Args:
+            no_limit_offset: Disable putting LIMIT/OFFSET on the query.
+                This is useful when you already have a MongoQuery configured but want to make
+                an unrestricted query with the same settings.
+                Note that this setting only has effect on the immediate query; it does not remove limits/offsets
+                from nested queries (i.e. queries for related objects)
+        """
+        # Option: no limit offset
+        assert isinstance(no_limit_offset, bool)
+        self._query_options['no_limit_offset'] = no_limit_offset
+        # Can apply immediately
+        self.handler_limit.skip_this_handler = no_limit_offset
+
+        return self
 
     def from_query(self, query: Query) -> 'MongoQuery':
         """ Specify a custom sqlalchemy query to work with.

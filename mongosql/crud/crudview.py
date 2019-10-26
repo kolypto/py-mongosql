@@ -1,13 +1,16 @@
 from enum import Enum
-from functools import partial, reduce, lru_cache
+from functools import reduce
 
-from mongosql.util.method_decorator import method_decorator
+from ..util.method_decorator import method_decorator
+from ..util import load_many_instance_dicts, EntityDictWrapper
+from ..util import model_primary_key_columns_and_names, entity_dict_has_primary_key
+
 from ..query import MongoQuery
 from ..util.history_proxy import ModelHistoryProxy
 from .crudhelper import CrudHelper, StrictCrudHelper
 
 from typing import Iterable, Mapping, Set, Union, Tuple, Callable, List
-from sqlalchemy.orm import Query, Session
+from sqlalchemy.orm import Query, Session, object_session
 
 
 class CRUD_METHOD(Enum):
@@ -97,6 +100,8 @@ class CrudViewMixin:
 
             This allows to make some changes to the instance before it's actually saved.
             The hook is provided with both the old and the new versions of the instance (!).
+
+            Note that it is executed before flush(), so DB defaults are not available yet.
 
             :param new: The new instance
             :param prev: Previously persisted version (is provided only when updating).
@@ -237,7 +242,14 @@ class CrudViewMixin:
         self._current_crud_method = CRUD_METHOD.UPDATE
 
         # Load the instance
-        instance = self._get_one(self._get_query_object(), *filter, **filter_by)
+        if isinstance(entity_dict, EntityDictWrapper):
+            # _method_create_or_update_many() feeds us with pre-loaded objects. Use if available.
+            # This gives a nice performance boost because then we make only one query per object
+            instance = entity_dict.loaded_instance
+        else:
+            instance = self._get_one(self._get_query_object(), *filter, **filter_by)
+
+        # Old instance: is used to provide the _save_hook() with the previous state of the instance
         old_instance = ModelHistoryProxy(instance)
 
         # Update it
@@ -279,6 +291,112 @@ class CrudViewMixin:
         # Return
         # We don't delete anything here
         return instance
+
+    # CRUD methods for bulk operations
+
+    def _method_create_or_update(self, entity_dict: dict, *filter, **filter_by) -> object:
+        """ (CRUD method) Create-or-update (aka upsert): create if no PK is given, update if PK is given
+
+        Is normally used when the primary key may or may not be supplied inside the entity dict.
+
+        Note that this method is sub-optimal when used on many objects because it will make one SELECT query per object.
+        """
+        # Determine whether the PK is provided: all Primary Key columns must be present in the entity dict
+        pk_provided = entity_dict_has_primary_key(self.crudhelper.bags.pk.names, entity_dict)
+
+        # Update or Create?
+        if pk_provided:
+            return self._method_update(entity_dict, *filter, **filter_by)
+        else:
+            return self._method_create(entity_dict)
+
+    def _method_create_or_update_many(self,
+                                      entity_dicts: Iterable[dict],
+                                      *filter, **filter_by) -> Iterable[EntityDictWrapper]:
+        """ (CRUD method) Create-or-update many objects (aka upsert): create if no PK, update with PK
+
+        This smart method can be used to save (upsert: insert & update) many objects at once.
+
+        It will *load* those objects that have primary key fields set and update them with _method_update().
+        It will *create* objects that do not have primary key fields with _method_create()
+        It will *delegate* to _method_create_or_update_many__create_arbitrary_pk() that have primary key fields
+        but were not found in the database.
+
+        Note that the method uses EntityDictWrapper to preserve the order of entity dicts
+        and return results associated with them:
+
+        * EntityDictWrapper.instance is the resulting instance to be saved
+        * EntityDictWrapper.error is the exception (if any). It's not raised! Raise it if you will.
+
+        Note that you may wrap entity dicts with EntityDictWrapper yourself.
+        In this case, you may:
+
+        * set EntityDictWrapper.skip = True to cause the method to ignore it completely
+        """
+        # Process these entity dicts, load those that have primary keys set
+        pk_columns, pk_names = model_primary_key_columns_and_names(self.crudhelper.model)
+        wrapped_entity_dicts = load_many_instance_dicts(
+            pk_columns=pk_columns,
+            query=self._mquery_simple(self._get_query_object(), *filter, **filter_by).options(no_limit_offset=True).end(),
+            entity_dicts=EntityDictWrapper.from_entity_dicts(self.crudhelper.model, entity_dicts, pk_names=pk_names)
+        )
+
+        # Create some, update others
+        # The update handler is patched to use EntityDictWrappers and the instance object that's available within
+        for wrapped_entity_dict in wrapped_entity_dicts:
+            # Skip objects marked for skipping
+            if wrapped_entity_dict.skip:
+                continue
+
+            # Create, Update, Delegate
+            try:
+                # is_new: create (no pk provided)
+                if wrapped_entity_dict.is_new:
+                    instance = self._method_create(wrapped_entity_dict)
+                # is_found: update (pk provided & is found in the DB)
+                elif wrapped_entity_dict.is_found:
+                    # It's safe to update because the primary key has 100% match with the submitted entity dict.
+                    # Otherwise, it wouldn't have been found by this very primary key, right? ;)
+                    instance = self._method_update(wrapped_entity_dict)
+                # is_not_found: custom handler (pk provided & is not found in the DB)
+                elif wrapped_entity_dict.is_not_found:
+                    # Delegate to the custom handler
+                    instance = self._method_create_or_update_many__create_arbitrary_pk(wrapped_entity_dict)
+                else:
+                    raise RuntimeError('How did we get here?')
+            except BaseException as e:
+                # Uncomment to debug errors raised while processing individual objects
+                #raise
+
+                # Collect every exception into the `error` field
+                wrapped_entity_dict.error = e
+
+                # Undo any possible changes done to the instance
+                if wrapped_entity_dict.loaded_instance:
+                    # Get the session and expire the object. This will undo all changes
+                    ssn: Session = object_session(wrapped_entity_dict.loaded_instance)
+                    ssn.expire(wrapped_entity_dict.loaded_instance)
+                    ssn.expunge(wrapped_entity_dict.loaded_instance)
+            else:
+                # Put it into `instance`
+                wrapped_entity_dict.instance = instance
+
+        # Done
+        return wrapped_entity_dicts
+
+    def _method_create_or_update_many__create_arbitrary_pk(self, entity_dict: EntityDictWrapper) -> object:
+        """ Custom handler for that particular case when the user has submitted an object with a primary key that's not found in the DB
+
+        In general, it's not safe to let the user choose arbitrary primary keys,
+        so the best strategy is to either ignore such values (the default) or raise errors.
+
+        However, in some cases it may be desirable to create such objects (e.g. when natural primary keys are used).
+        Whatever logic best applies to your views, implement it here.
+
+        Returns:
+            The created instance, or None if none should be created; or perhaps, raise an error?
+        """
+        return None
 
     # region Helpers
 
@@ -345,6 +463,7 @@ class CrudViewMixin:
         """ Use a MongoQuery to make a Query, with the Query Object, and initial custom filtering applied.
 
             This method does not run the View's hooks; that's why it is "simple".
+            See _mquery() to everything that's left out.
 
             :param query_object: Query Object
             :type query_object: dict | None
@@ -498,3 +617,4 @@ class _ABSENT_TYPE:
 
 
 ABSENT = _ABSENT_TYPE()  # A falsy marker to be used for @saves_relations
+

@@ -93,7 +93,7 @@ class CrudHelper:
             :raises exc.DisabledError: A feature is disabled; likely, due to a configuration issue. See handler_settings.
         """
         # Validate
-        if not isinstance(query_obj, (dict, NoneType)):
+        if not isinstance(query_obj, (Mapping, NoneType)):
             raise exc.InvalidQueryError('Query Object must be either an object, or null')
 
         # Query
@@ -141,7 +141,7 @@ class CrudHelper:
     def validate_incoming_entity_dict_fields(self, entity_dict: dict, action: str) -> dict:
         """ Validate the incoming JSON data """
         # Validate
-        if not isinstance(entity_dict, dict):
+        if not isinstance(entity_dict, Mapping):
             raise exc.InvalidQueryError(f'Model "{action}": the value has to be an object, '
                                         f'not {type(entity_dict)}')
 
@@ -234,7 +234,7 @@ class CrudHelper:
         """
         # Update
         for name, val in entity_dict.items():
-            if isinstance(val, dict) and self.bags.columns.is_column_json(name):
+            if isinstance(val, Mapping) and self.bags.columns.is_column_json(name):
                 # JSON column with a dict: do a shallow merge
                 getattr(instance, name).update(val)
                 # Tell SqlAlchemy that a mutable collection was updated

@@ -1,3 +1,8 @@
+## 2.0.8 (2019-10-27)
+* `CrudView._method_create_or_update_many()`: saving many objects at once
+* `MongoQuery.options()`: `no_limit_offset=True` lets you disable limits & offsets for a specific query
+* Tested with SqlAlchemy 1.3.9-10
+
 ## 2.0.7 (2019-10-07)
 * `project`: now allow using a string of field names, separated by whitespace. Example: `{project: "name age weight"}`
 * `@saves_relations`: now possible to differentiate a value not provided from a provided `None`
