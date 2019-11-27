@@ -1,3 +1,9 @@
+## 2.0.9 (2019-11-27)
+* Support string input for: `project`, `sort`, `group`, `join`, `joinf`.
+    Previously, they only accepted arrays or objects. 
+    Now, they also accept strings: whitespace-separated as a list of columns.
+* Tested with SqlAlchemy 1.3.11
+
 ## 2.0.8 (2019-10-27)
 * `CrudView._method_create_or_update_many()`: saving many objects at once
 * `MongoQuery.options()`: `no_limit_offset=True` lets you disable limits & offsets for a specific query
