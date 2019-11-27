@@ -25,6 +25,7 @@ setup(
     scripts=[],
     entry_points={},
 
+    python_requires='>= 3.6',
     install_requires=[
         'sqlalchemy >= 1.2.0,!=1.2.9',
     ],
