@@ -48,6 +48,27 @@ $.get('/api/user?query=' + JSON.stringify({
 #### Syntax
 The Group Operator, as you have seen, receives an array of column names.
 
+* Array syntax.
+
+    List of column names, optionally suffixed by the sort direction: `-` for `DESC`, `+` for `ASC`.
+    The default is `+`.
+
+    Example:
+
+    ```javascript
+    { group: [ 'a+', 'b-', 'c' ] } // -> a ASC, b DESC, c DESC
+    ```
+
+* String syntax
+
+    List of columns, with optional `+` / `-`, separated by whitespace.
+
+    Example:
+
+    ```javascript
+    { group: 'a+ b- c' }
+    ```
+
 """
 
 from .sort import MongoSort

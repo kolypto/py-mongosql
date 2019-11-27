@@ -27,6 +27,16 @@ Examples follow.
     }))
     ```
 
+* String syntax.
+
+    List of relationships, separated by whitespace:
+
+    ```javascript
+    $.get('/api/user?query=' + JSON.stringify({
+        join: 'user_profile user_posts',
+    }))
+    ```
+
 * Object syntax.
 
     This syntax offers you great flexibility: with a nested Query Object, it is now posible to apply operations
@@ -166,12 +176,15 @@ class MongoJoin(MongoQueryHandlerBase):
         # Validation
         if not relations:
             relations = {}
+        elif isinstance(relations, str):
+            relations = {relname: None for relname in relations.split()}
         elif isinstance(relations, (list, tuple)):
             relations = {relname: None for relname in relations}
         elif isinstance(relations, dict):
             relations = relations
         else:
-            raise InvalidQueryError('Join must be one of: null, array, object')
+            raise InvalidQueryError('Join must be one of: null, string, array, object;'
+                                    '{type} provided'.format(type=type(relations)))
 
         self.validate_properties(set(relations.keys()) - self.legacy_fields)
 

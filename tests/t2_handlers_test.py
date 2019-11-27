@@ -563,6 +563,10 @@ class HandlersTest(unittest.TestCase):
         s = sr.input(['id', 'uid+', 'title-'])
         self.assertEqual(s.sort_spec, OrderedDict([('id', +1),('uid', +1),('title', -1)]))
 
+        # === Test: string
+        s = sr.input('id uid+ title-')
+        self.assertEqual(s.sort_spec, OrderedDict([('id', +1),('uid', +1),('title', -1)]))
+
         # === Test: OrderedDict
         s = sr.input(OrderedDict([('id', +1),('uid', +1),('title', -1)]))
         self.assertEqual(s.sort_spec, OrderedDict([('id', +1),('uid', +1),('title', -1)]))
@@ -611,6 +615,9 @@ class HandlersTest(unittest.TestCase):
 
         g = Article_group().input(['uid-'])
         self.assertEqual(g.group_spec, OrderedDict(uid=-1))
+
+        # We don't test much, because this `group` operation is essentially the same with `sort`,
+        # and `sort` is already tested
 
     def test_filter(self):
         Article_filter = lambda **kw: MongoFilter(Article, ModelPropertyBags.for_model(Article))
@@ -947,6 +954,10 @@ class HandlersTest(unittest.TestCase):
 
         # === Test: list
         j = mj.input(('articles',))
+        test_mongojoin(j, dict(relname='articles', qo=None))
+
+        # === Test: string
+        j = mj.input('articles')
         test_mongojoin(j, dict(relname='articles', qo=None))
 
         # Test: dict + None

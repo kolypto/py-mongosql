@@ -41,7 +41,7 @@ The Project operation supports the following syntaxes:
 
 * String syntax
 
-    Give a list of field names, separated by spaces.
+    Give a list of field names, separated by whitespace.
 
     Example:
 
@@ -56,8 +56,8 @@ The Project operation supports the following syntaxes:
     Examples:
 
     ```javascript
-    { 'a': 1, 'b': 1 }  # Include specific fields. All other fields are excluded
-    { 'a': 0, 'b': 0 }  # Exclude specific fields. All other fields are included
+    { project: { 'a': 1, 'b': 1 } } # Include specific fields. All other fields are excluded
+    { project: { 'a': 0, 'b': 0 } }  # Exclude specific fields. All other fields are included
     ```
 
     Note that you can't intermix the two: you either use all `1`s to specify the fields you want included,
@@ -356,7 +356,7 @@ class MongoProject(MongoQueryHandlerBase):
 
         # Dict syntax
         if not isinstance(projection, dict):
-            raise InvalidQueryError('Projection must be one of: null, array, object; '
+            raise InvalidQueryError('Projection must be one of: null, string, array, object; '
                                     '{type} provided'.format(type=type(projection)))
 
         # Remove items that are relationships

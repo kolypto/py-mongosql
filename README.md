@@ -185,7 +185,7 @@ The Project operation supports the following syntaxes:
 
 * String syntax
 
-    Give a list of field names, separated by spaces.
+    Give a list of field names, separated by whitespace.
 
     Example:
 
@@ -200,8 +200,8 @@ The Project operation supports the following syntaxes:
     Examples:
 
     ```javascript
-    { 'a': 1, 'b': 1 }  # Include specific fields. All other fields are excluded
-    { 'a': 0, 'b': 0 }  # Exclude specific fields. All other fields are included
+    { project: { 'a': 1, 'b': 1 } } # Include specific fields. All other fields are excluded
+    { project: { 'a': 0, 'b': 0 } }  # Exclude specific fields. All other fields are included
     ```
 
     Note that you can't intermix the two: you either use all `1`s to specify the fields you want included,
@@ -267,7 +267,17 @@ $.get('/api/user?query=' + JSON.stringify({
     Example:
 
     ```javascript
-    [ 'a+', 'b-', 'c' ]  // -> a ASC, b DESC, c DESC
+    { sort: [ 'a+', 'b-', 'c' ] }  // -> a ASC, b DESC, c DESC
+    ```
+
+* String syntax
+
+    List of columns, with optional `+` / `-`, separated by whitespace.
+
+    Example:
+
+    ```javascript
+    { sort: 'a+ b- c' }
     ```
 
 Object syntax is not supported because it does not preserve the ordering of keys.
@@ -387,6 +397,16 @@ Examples follow.
     ```javascript
     $.get('/api/user?query=' + JSON.stringify({
         join: ['user_profile', 'user_posts'],
+    }))
+    ```
+
+* String syntax.
+
+    List of relationships, separated by whitespace:
+
+    ```javascript
+    $.get('/api/user?query=' + JSON.stringify({
+        join: 'user_profile user_posts',
     }))
     ```
 
@@ -591,6 +611,27 @@ $.get('/api/user?query=' + JSON.stringify({
 
 #### Syntax
 The Group Operator, as you have seen, receives an array of column names.
+
+* Array syntax.
+
+    List of column names, optionally suffixed by the sort direction: `-` for `DESC`, `+` for `ASC`.
+    The default is `+`.
+
+    Example:
+
+    ```javascript
+    { group: [ 'a+', 'b-', 'c' ] } // -> a ASC, b DESC, c DESC
+    ```
+
+* String syntax
+
+    List of columns, with optional `+` / `-`, separated by whitespace.
+
+    Example:
+
+    ```javascript
+    { group: 'a+ b- c' }
+    ```
 ### Slice Operation
 Slicing corresponds to the `LIMIT .. OFFSET ..` part of an SQL query.
 

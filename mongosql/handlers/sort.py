@@ -28,7 +28,17 @@ $.get('/api/user?query=' + JSON.stringify({
     Example:
 
     ```javascript
-    [ 'a+', 'b-', 'c' ]  // -> a ASC, b DESC, c DESC
+    { sort: [ 'a+', 'b-', 'c' ] }  // -> a ASC, b DESC, c DESC
+    ```
+
+* String syntax
+
+    List of columns, with optional `+` / `-`, separated by whitespace.
+
+    Example:
+
+    ```javascript
+    { sort: 'a+ b- c' }
     ```
 
 Object syntax is not supported because it does not preserve the ordering of keys.
@@ -80,6 +90,11 @@ class MongoSort(MongoQueryHandlerBase):
         if not spec:
             spec = []
 
+        # String syntax
+        if isinstance(spec, str):
+            # Split by whitespace and convert to a list
+            spec = spec.split()
+
         # List
         if isinstance(spec, (list, tuple)):
             # Strings: convert "column[+-]" into an ordered dict
@@ -102,8 +117,8 @@ class MongoSort(MongoQueryHandlerBase):
                                         .format(self.query_object_section_name))
             spec = OrderedDict(spec)
         else:
-            raise InvalidQueryError('{} must be either an object or a list'
-                                    .format(self.query_object_section_name))
+            raise InvalidQueryError('{name} must be either a list, a string, or an object; {type} provided.'
+                                    .format(name=self.query_object_section_name, type=type(spec)))
 
         # Validate directions: +1 or -1
         if not all(dir in {-1, +1} for field, dir in spec.items()):
