@@ -1,3 +1,6 @@
+## 2.0.10 (2020-01-29)
+* Tested with SqlAlchemy 1.3.12, 1.3.13
+
 ## 2.0.9 (2019-11-27)
 * Support string input for: `project`, `sort`, `group`, `join`, `joinf`.
     Previously, they only accepted arrays or objects. 

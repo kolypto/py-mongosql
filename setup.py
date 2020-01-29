@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mongosql',
-    version='2.0.9-1',
+    version='2.0.10',
     author='Mark Vartanyan',
     author_email='kolypto@gmail.com',
 
@@ -22,7 +22,7 @@ setup(
 
     python_requires='>= 3.6',
     install_requires=[
-        'sqlalchemy >= 1.2.0,!=1.2.9,<1.3.13',
+        'sqlalchemy >= 1.2.0,!=1.2.9',
     ],
     extras_require={},
     include_package_data=True,

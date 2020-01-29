@@ -46,6 +46,7 @@ matrix:
     - {python: 3.7-dev, env: TOXENV=py37-sa1.3.10}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.3.11}
     - {python: 3.7-dev, env: TOXENV=py37-sa1.3.12}
+    - {python: 3.7-dev, env: TOXENV=py37-sa1.3.13}
 
 install:
   - pip install tox

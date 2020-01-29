@@ -1,3 +1,4 @@
+j2cli
 wheel
 nose
 psycopg2-binary

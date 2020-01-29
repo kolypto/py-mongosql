@@ -1,4 +1,3 @@
-from sqlalchemy.orm.path_registry import EntityRegistry
 from sqlalchemy.orm.strategy_options import loader_option, _UnboundLoad, sa_exc
 from sqlalchemy.orm.strategies import properties, LoaderStrategy
 
