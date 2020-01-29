@@ -1,12 +1,7 @@
 #!/usr/bin/env python
 """ A JSON query engine with SqlAlchemy as a back-end """
 
-import sys
 from setuptools import setup, find_packages
-
-if not sys.version_info >= (3, 6, 0):
-    raise ImportError('MongoSQL 2.0 only supports Python 3.6+')
-
 
 setup(
     name='mongosql',

@@ -739,8 +739,9 @@ class MongoQuery:
         # A special case for 'raiseload'
         if handler_settings.pop('raiseload', False):
             # Can't combine
-            assert 'raiseload_col' not in handler_settings
-            assert 'raiseload_rel' not in handler_settings
+            assert not handler_settings.get('raiseload_col', False)
+            assert not handler_settings.get('raiseload_rel', False)
+
             # Both True
             handler_settings['raiseload_col'] = True
             handler_settings['raiseload_rel'] = True

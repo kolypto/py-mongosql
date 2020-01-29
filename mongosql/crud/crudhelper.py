@@ -69,6 +69,7 @@ class CrudHelper:
         :param handler_settings: Settings for the MongoQuery used to make queries
         """
         self.model = model
+        self.handler_settings = handler_settings
         self.bags = self._MODEL_PROPERTY_BAGS_CLS.for_model(model)
         self.reusable_mongoquery = Reusable(self._MONGOQUERY_CLS(self.model, handler_settings))  # type: MongoQuery
 
