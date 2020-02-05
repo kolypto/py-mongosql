@@ -2,7 +2,7 @@ import warnings
 from itertools import chain, repeat
 from copy import copy
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, TypeDecorator
 from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.associationproxy import AssociationProxy
@@ -15,6 +15,7 @@ from sqlalchemy.orm.base import InspectionAttr
 from sqlalchemy.orm.interfaces import MapperProperty
 from sqlalchemy.orm.util import AliasedClass
 from sqlalchemy.sql.elements import BinaryExpression
+from sqlalchemy.sql.type_api import TypeEngine
 
 from mongosql import SA_12, SA_13
 try: from sqlalchemy.ext.associationproxy import ColumnAssociationProxyInstance  # SA 1.3.x
@@ -773,14 +774,23 @@ def _get_model_relationships(model, ins):
             for name, c in ins.relationships.items()}
 
 
+def _get_column_type(col: MapperProperty) -> TypeEngine:
+    """ Get column's SQL type """
+    if isinstance(col.type, TypeDecorator):
+        # Type decorators wrap other types, so we have to handle them carefully
+        return col.type.impl
+    else:
+        return col.type
+
+
 def _is_column_array(col: MapperProperty) -> bool:
     """ Is the column a PostgreSql ARRAY column? """
-    return isinstance(col.type, pg.ARRAY)
+    return isinstance(_get_column_type(col), pg.ARRAY)
 
 
 def _is_column_json(col: MapperProperty) -> bool:
     """ Is the column a PostgreSql JSON column? """
-    return isinstance(col.type, (pg.JSON, pg.JSONB))
+    return isinstance(_get_column_type(col), (pg.JSON, pg.JSONB))
 
 
 def _is_relationship_array(rel: RelationshipProperty) -> bool:

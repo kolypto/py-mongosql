@@ -1,5 +1,7 @@
+import sqlalchemy
 from sqlalchemy import create_engine
 from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import sessionmaker, scoped_session, column_property
 
 from sqlalchemy.sql.expression import and_
@@ -408,6 +410,26 @@ class ConfiguredLazyloadModel(Base):
     comment = relationship(Comment, foreign_keys=comment_id)
 
 
+class DecoratedJSONB(sqlalchemy.types.TypeDecorator):
+    # A decorated JSONB. MongoSQL bags might fail to detect it?
+    impl = pg.JSONB
+
+
+class DecoratedARRAY(sqlalchemy.types.TypeDecorator):
+    # A decorated ARRAY. MongoSQL bags might fail to detect it?
+    impl = pg.ARRAY
+
+
+
+class CollectionOfSpecialCases(Base):
+    __tablename__ = 'ww'
+
+    id = Column(Integer, primary_key=True)
+
+    # Decorated fields. MongoPropertyBags might not detect them successfully.
+    decorated_jsonb = Column(DecoratedJSONB)
+    decorated_mutable_jsonb = Column(MutableDict.as_mutable(DecoratedJSONB))
+    decorated_array = Column(DecoratedARRAY(Integer))
 
 
 

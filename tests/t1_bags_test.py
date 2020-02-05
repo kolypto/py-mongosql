@@ -477,3 +477,14 @@ class BagsTest(unittest.TestCase):
                                                   })
         self.assertSetEqual(bags.properties.names, set())
         self.assertSetEqual(bags.hybrid_properties.names, set())
+
+    def test_special_cases(self):
+        bags = ModelPropertyBags.for_model(models.CollectionOfSpecialCases)
+
+        # Make sure that decorated column types (JSON, JSONB, ARRAY) are detected properly
+        # It matters, because if a CrudHelper fails to detect a field as JSON, it will not do a shallow merge.
+        # Here: mongosql.crud.crudhelper.CrudHelper._update_model
+        bag = bags.columns
+        self.assertTrue(bag.is_column_json('decorated_jsonb'))
+        self.assertTrue(bag.is_column_json('decorated_mutable_jsonb'))
+        self.assertTrue(bag.is_column_array('decorated_array'))
