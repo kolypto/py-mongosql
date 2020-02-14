@@ -774,7 +774,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(e.operator_str, '$size')
         self.assertEqual(stmt2sql(e.compile_expression()), 'array_length(m.kk, 1) = 99')
 
-        # === Test: operators on JSON columns
+        # === Test: operators on JSON columns, 1st level
         f = ManyFieldsModel_filter().input(OrderedDict([
             ('j_a.rating', {'$lt': 100}),
             ('j_b.rating', {'$in': [1, 2, 3]}),
@@ -789,6 +789,17 @@ class HandlersTest(unittest.TestCase):
         e = f.expressions[1]
         self.assertEqual(e.operator_str, '$in')
         self.assertEqual(stmt2sql(e.compile_expression()), "CAST((m.j_b #>> ['rating']) AS TEXT) IN (1, 2, 3)")
+
+        # === Test: operators on JSON columns, 2nd level
+        f = ManyFieldsModel_filter().input(OrderedDict([
+            ('j_a.embedded.field', {'$eq': 'hey'}),
+        ]))
+
+        self.assertEqual(len(f.expressions), 1)
+
+        e = f.expressions[0]
+        self.assertEqual(e.operator_str, '$eq')
+        self.assertEqual(stmt2sql(e.compile_expression()), "CAST((m.j_a #>> ['embedded', 'field']) AS TEXT) = hey")
 
         # === Test: boolean expression
         f = ManyFieldsModel_filter().input({
