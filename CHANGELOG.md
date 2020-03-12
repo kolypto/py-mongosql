@@ -1,5 +1,5 @@
 ## 2.0.10 (2020-01-29)
-* Tested with SqlAlchemy 1.3.12, 1.3.13
+* Tested with SqlAlchemy 1.3.12-15
 * Fixed an issue with MongoSQL not detecting `TypeDecorator()`-wrapped JSON columns as JSON
 
 ## 2.0.9 (2019-11-27)
