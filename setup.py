@@ -23,6 +23,7 @@ setup(
     python_requires='>= 3.6',
     install_requires=[
         'sqlalchemy >= 1.2.0,!=1.2.9',
+        'nplus1loader',
     ],
     extras_require={},
     include_package_data=True,

@@ -1,4 +1,4 @@
-from .raiseload_col import raiseload_col
+from nplus1loader import raiseload_col, raiseload_rel, raiseload_all
 from .selectinquery import selectinquery
 from .counting_query_wrapper import CountingQuery
 from .reusable import Reusable

@@ -61,7 +61,7 @@ from .crud import saves_relations, ABSENT
 # Reusable query objects (so that you don't have to initialize them over and over again)
 from mongosql.util import Reusable
 # raiseload_col() that can be applied to columns, not only relationships
-from mongosql.util import raiseload_col
+from mongosql.util import raiseload_col, raiseload_rel, raiseload_all
 # selectinquery() relationship loader that supports custom queries
 from mongosql.util import selectinquery
 # `Query` object wrapper that is able to query and count() at the same time

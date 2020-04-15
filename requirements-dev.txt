@@ -3,4 +3,5 @@ wheel
 nose
 psycopg2-binary
 exdoc
+nplus1loader
 -e git://github.com/dignio/py-flask-jsontools.git@v0.1.4#egg=flask_jsontools
