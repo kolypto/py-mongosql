@@ -4,6 +4,7 @@ from sqlalchemy.orm import defaultload, selectinload
 
 from . import models
 from .util import QueryLogger, TestQueryStringsMixin
+from .saversion import SA_SINCE, SA_UNTIL
 from mongosql import selectinquery
 
 
@@ -45,9 +46,10 @@ class SelectInQueryLoadTest(unittest.TestCase, TestQueryStringsMixin):
                 # SqlAlchemy 1.3.x uses foreign keys directly, no joins
                 self.assertNotIn(ql[1], 'JOIN')
                 self.assertQuery(ql[1],
-                                 'WHERE a.uid IN (1, 2, 3) AND '
-                                 'a.id BETWEEN 11 AND 21 '
-                                 'ORDER BY a.uid',
+                                 'WHERE a.uid IN (1, 2, 3) AND ',
+                                 'a.id BETWEEN 11 AND 21 ',
+                                 # v1.3.16: no ordering by PK anymore
+                                 'ORDER BY a.uid' if SA_UNTIL('1.3.15') else '',
                                  )
 
 
@@ -65,13 +67,15 @@ class SelectInQueryLoadTest(unittest.TestCase, TestQueryStringsMixin):
             # Test query
             if SA_12:
                 self.assertQuery(ql[1],
-                                 'WHERE u_1.id IN (1, 2, 3) '
-                                 'ORDER BY u_1.id',
+                                 'WHERE u_1.id IN (1, 2, 3)',
+                                 # v1.3.16: no ordering by PK anymore
+                                 'ORDER BY u_1.id' if SA_UNTIL('1.3.15') else '',
                                  )
             else:
                 self.assertQuery(ql[1],
-                                 'WHERE a.uid IN (1, 2, 3) '
-                                 'ORDER BY a.uid',
+                                 'WHERE a.uid IN (1, 2, 3)',
+                                 # v1.3.16: no ordering by PK anymore
+                                 'ORDER BY a.uid' if SA_UNTIL('1.3.15') else '',
                                  )
 
             # Test results

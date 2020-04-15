@@ -7,6 +7,8 @@ from collections import OrderedDict
 from sqlalchemy import inspect
 from sqlalchemy.orm import aliased
 
+from distutils.version import LooseVersion
+
 from mongosql import SA_12, SA_13
 from mongosql import handlers, MongoQuery, Reusable, MongoQuerySettingsDict
 from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
@@ -14,6 +16,7 @@ from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, Inval
 
 from . import models
 from .util import q2sql, QueryLogger, TestQueryStringsMixin
+from .saversion import SA_SINCE, SA_UNTIL
 
 
 # SqlAlchemy version (see t_selectinquery_test.py)
@@ -1668,7 +1671,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                              # Custom ordering
                              # First: by ForeignKey (so that sqlalchemy has entities coming in nice order)
                              # Next: by our custom ordering
-                             'ORDER BY a.uid, a.title'
+                             # v1.3.16: no longer ordering by the primary key
+                             'ORDER BY a.uid, a.title' if SA_UNTIL('1.3.15') else 'ORDER BY a.title'
                              )
 
             self.assertSelectedColumns(ql[1],
@@ -1692,7 +1696,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             self.assertQuery(ql[1],
                              'FROM a',
                              'WHERE a.uid IN (1, 2, 3) AND a.theme = biography',
-                             'ORDER BY a.uid, a.title DESC'
+                             # v1.3.16: no ordering by PK anymore
+                             'ORDER BY a.uid, a.title DESC' if SA_UNTIL('1.3.15') else 'ORDER BY a.title DESC'
                              )
             self.assertSelectedColumns(ql[1],
                                        'a.id', 'a.title', 'a.uid',  # PK, FK, projected
@@ -1734,7 +1739,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                              # Filter correctly
                              'AND u.age > 1',
                              # Ordering is correct
-                             'ORDER BY gw_1.id, u.age',
+                             # v1.3.16: no ordering by PK anymore
+                             'ORDER BY gw_1.id, u.age' if SA_UNTIL('1.3.15') else 'ORDER BY u.age',
                              )
             self.assertSelectedColumns(ql[first_query],
                                        'gw_1.id',  # PK
@@ -1752,7 +1758,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                              # Filter correctly
                              'AND u.age > 2',
                              # Ordering is correct
-                             'ORDER BY gw_1.id, u.age DESC',
+                             # v1.3.16: no ordering by PK anymore
+                             'ORDER BY gw_1.id, u.age DESC' if SA_UNTIL('1.3.15') else 'ORDER BY u.age DESC',
                              )
             self.assertSelectedColumns(ql[second_query],
                                        'gw_1.id',  # PK
@@ -1835,7 +1842,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             self.assertQuery(ql[1],
                              'FROM a',
                              # Filter
-                             'WHERE a.uid IN (1, 2) AND a.theme IS DISTINCT FROM sci-fi ORDER BY a.uid',
+                             'WHERE a.uid IN (1, 2) AND a.theme IS DISTINCT FROM sci-fi',
+                             # v1.3.16: no ordering by PK anymore
+                             'ORDER BY a.uid' if SA_UNTIL('1.3.15') else '',
                              )
             self.assertSelectedColumns(ql[1],
                                        'a.id', 'a.uid', 'a.title',  # PK, FK, project
@@ -2345,7 +2354,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Query 2
             self.assertQuery(ql[1],
                              # Filtering condition is here
-                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18 ORDER BY gw_1.id',
+                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18',
+                             # v1.3.16: no ordering by PK anymore
+                             'ORDER BY gw_1.id' if SA_UNTIL('1.3.15') else '',
                              )
             self.assertSelectedColumns(ql[1],
                                       'gw_1.id', 'u.id', 'u.name', 'u.age',

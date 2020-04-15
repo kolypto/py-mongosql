@@ -1,6 +1,7 @@
 ## 2.0.11 (2020-01-29)
 * Removed the `raiseload_col()` and imported the implementation from `nplus1loader`. 
   That's a new dependency.
+* Tested with SqlAlchemy 1.3.16
 
 ## 2.0.10 (2020-01-29)
 * Tested with SqlAlchemy 1.3.12-15
