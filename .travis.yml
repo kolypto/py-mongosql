@@ -52,6 +52,9 @@ matrix:
     - {python: 3.8, env: TOXENV=py38-sa1.3.14}
     - {python: 3.8, env: TOXENV=py38-sa1.3.15}
     - {python: 3.8, env: TOXENV=py38-sa1.3.16}
+    - {python: 3.8, env: TOXENV=py38-sa1.3.17}
+    - {python: 3.8, env: TOXENV=py38-sa1.3.18}
+    - {python: 3.8, env: TOXENV=py38-sa1.3.19}
 
 install:
   - pip install tox
