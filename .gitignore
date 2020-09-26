@@ -1,0 +1,55 @@
+# ===[ APP ]=== #
+# it's a library; no lockfile should be committed
+/poetry.lock
+
+# ===[ PYTHON ]=== #
+
+# Env
+/.python-version
+
+# Package
+/build/
+/dist/
+/*.egg-info/
+/*.egg/
+
+# Tests
+/.tox/
+/.nox/
+/.pytest_cache
+/.coverage
+/.noseids
+/profile.*
+
+# Generated
+__pycache__
+*.py[cod]
+
+
+
+# ===[ COMMON ]=== #
+
+# IDE Projects
+/.idea
+/.*project
+/.settings
+/.vscode
+
+# Temps
+*~
+*.tmp
+*.bak
+*.swp
+*.kate-swp
+*.DS_Store
+Thumbs.db
+
+# Generated
+*.pot
+*.mo
+
+# Runtime
+*.log
+
+# But ...
+!.gitkeep
