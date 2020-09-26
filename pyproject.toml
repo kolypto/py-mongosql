@@ -1,9 +1,9 @@
 [tool.poetry]
-name = "project"
+name = "myproject"
 version = "0.0.0"
 description = ""
 authors = ["Mark Vartanyan <kolypto@gmail.com>"]
-repository = 'https://github.com/kolypto/py-project'
+repository = 'https://github.com/kolypto/py-myproject'
 
 [tool.poetry.dependencies]
 python = "^3.7"

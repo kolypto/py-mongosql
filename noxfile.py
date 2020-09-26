@@ -12,4 +12,4 @@ def tests(session: nox.sessions.Session):
     session.run('poetry', 'install')
 
     # Test
-    session.run('pytest', 'tests/', '--cov=project')
+    session.run('pytest', 'tests/', '--cov=myproject')
