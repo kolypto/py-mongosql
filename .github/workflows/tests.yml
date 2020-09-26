@@ -36,3 +36,13 @@ jobs:
           ${{ runner.os }}-nox-2-${{ matrix.python-version }}-
     - run: pip install nox
     - run: nox --report nox-report.json
+
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_nplus1loader
