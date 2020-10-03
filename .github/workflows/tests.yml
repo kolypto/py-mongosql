@@ -45,4 +45,4 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_nplus1loader
+          POSTGRES_DB: test_myproject
