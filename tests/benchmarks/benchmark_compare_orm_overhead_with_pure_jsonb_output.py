@@ -85,6 +85,18 @@ def test_joinedload(n):
         ).all()
 
 
+
+def test_core__left_join_with_no_post_processing(n):
+    """ Use a plain SQL query with LEFT JOIN + generate JSON objects in Python """
+    for i in range(n):
+        rows = ssn.execute("""
+        SELECT u.*, a.*, c.* 
+        FROM u
+        LEFT JOIN a ON u.id = a.uid
+        LEFT JOIN c ON c.aid = a.id
+        """).fetchall()
+
+
 def test_core__left_join_with_python_nesting(n):
     """ Use a plain SQL query with LEFT JOIN + generate JSON objects in Python """
     for i in range(n):
@@ -310,6 +322,7 @@ res = benchmark_parallel_funcs(
     N_REPEATS, 10,
     test_joinedload,
     test_selectinload,
+    test_core__left_join_with_no_post_processing,
     test_core__left_join_with_python_nesting,
     test_core__3_queries__tuples,
     test_core__3_queries__json,
