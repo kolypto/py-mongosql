@@ -375,8 +375,11 @@ class MongoProject(MongoQueryHandlerBase):
                         default_mode = 1 if value else 0
 
                     # When value=1, transform it into a proper MongoJoin value
-                    if value:
-                        relations[name] = {}
+                    if value == 1:
+                        value = {}
+
+                    # Save it
+                    relations[name] = value
             # Every relationship that wasn't removed will cause validation errors
 
         # Validate keys
