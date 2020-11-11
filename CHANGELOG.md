@@ -1,4 +1,8 @@
-## 2.0.11 (2020-01-29)
+## 2.0.12 (2020-11-11)
+* Fixed a bug with joining self-referential relationships
+* Tested with SqlAlchemy 1.3.20
+
+## 2.0.11 (2020-04-15)
 * Removed the `raiseload_col()` and imported the implementation from `nplus1loader`. 
   That's a new dependency.
 * Tested with SqlAlchemy 1.3.16
