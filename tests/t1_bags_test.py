@@ -21,8 +21,8 @@ class BagsTest(unittest.TestCase):
         #=== columns
         bag = bags.columns
 
-        self.assertEqual(bag.names, {'id', 'name', 'tags', 'age'})
-        self.assertEqual(len(list(bag)), 4)
+        self.assertEqual(bag.names, {'id', 'name', 'tags', 'age', 'master_id'})
+        self.assertEqual(len(list(bag)), 5)
 
         self.assertTrue('id' in bag)
         self.assertFalse('user_calculated' in bag)
@@ -39,6 +39,7 @@ class BagsTest(unittest.TestCase):
         self.assertEqual(sorted(list(bag)), [
             ('age', models.User.age),
             ('id', models.User.id),
+            ('master_id', models.User.master_id),
             ('name', models.User.name),
             ('tags', models.User.tags),
         ])
@@ -59,7 +60,7 @@ class BagsTest(unittest.TestCase):
         #=== relations
         bag = bags.relations
 
-        self.assertEqual(bag.names, {'roles', 'comments', 'articles'})
+        self.assertEqual(bag.names, {'roles', 'comments', 'articles', 'master'})
 
         self.assertTrue('roles' in bag)
         self.assertFalse('id' in bag)
@@ -71,11 +72,11 @@ class BagsTest(unittest.TestCase):
 
         self.assertEqual(bag.get_invalid_names(['roles', 'NOPE']), {'NOPE'})
 
-        self.assertEqual(set(dict(bag)), {'roles', 'comments', 'articles'})
+        self.assertEqual(set(dict(bag)), {'roles', 'comments', 'articles', 'master'})
 
         #=== pk, nullable, properties, hybrid properties
         self.assertEqual(bags.pk.names, {'id'})
-        self.assertEqual(bags.nullable.names, {'name', 'tags', 'age'})
+        self.assertEqual(bags.nullable.names, {'name', 'tags', 'age', 'master_id'})
         self.assertEqual(bags.properties.names, {'user_calculated'})
         self.assertEqual(bags.hybrid_properties.names, set())
 
@@ -106,7 +107,7 @@ class BagsTest(unittest.TestCase):
         self.assertIn('roles.id', cbag)
         self.assertNotIn('roles', cbag)
 
-        self.assertEqual(len(list(cbag)), 17)  # all properties properly iterated over
+        self.assertEqual(len(list(cbag)), 23)  # all properties properly iterated over
 
         bag_name, bag, col = cbag['id']
         self.assertEqual(bag_name, 'col')

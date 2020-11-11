@@ -34,11 +34,11 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
 
         # Test: load only 2 props
         user = models.User.mongoquery(ssn).query(project=['id', 'name']).end().first()
-        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles'})
+        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles', 'master_id', 'master'})
 
         # Test: load without 2 props
         user = models.User.mongoquery(ssn).query(project={'age': 0, 'tags': 0}).end().first()
-        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles'})
+        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles', 'master'})
 
     def test_sort(self):
         """ Test sort() """
@@ -92,7 +92,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
         user = models.User.mongoquery(ssn).query(filter={'id': 1},
                                                  join={'comments': None}).end().one()
         self.assertEqual(user.id, 1)
-        self.assertEqual(inspect(user).unloaded, {'articles', 'roles'})
+        self.assertEqual(inspect(user).unloaded, {'articles', 'roles', 'master'})
 
         ssn.close() # need to reset the session: it caches entities and gives bad results
 
@@ -109,7 +109,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
         ).end().one()
 
         self.assertEqual(user.id, 1)
-        self.assertEqual(inspect(user).unloaded, {'comments', 'roles'})
+        self.assertEqual(inspect(user).unloaded, {'comments', 'roles', 'master'})
         self.assertEqual([10], [a.id for a in user.articles])  # Only one article! :)
         self.assertEqual(inspect(user.articles[0]).unloaded, {'theme', 'user', 'comments',  'uid', 'data'})  # No relationships loaded, and projection worked
 
@@ -131,7 +131,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
         ).end().one()
 
         self.assertEqual(user.id, 2)
-        self.assertEqual(inspect(user).unloaded, {'comments', 'roles'})
+        self.assertEqual(inspect(user).unloaded, {'comments', 'roles', 'master'})
         self.assertEqual([20], [a.id for a in user.articles])  # Only one article that has comment with text "20-a-ONE"
         article = user.articles[0]
         self.assertEqual(inspect(article).unloaded, {'theme', 'user', 'uid', 'data'})   # Only "comments" relationship is loaded

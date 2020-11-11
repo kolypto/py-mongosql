@@ -1224,7 +1224,7 @@ def _left_outer_join_with_filter(query, model, relation, related_alias, filter_c
     onclause = primaryjoin
 
     # Build our ON clause, and add the custom filter condition
-    onclause = and_(_add_alias(onclause, relation, related_alias),
+    onclause = and_(onclause, #_add_alias(onclause, relation, related_alias),
                     filter_clause)
 
     # Make a LEFT OUTER JOIN with the custom ON clause

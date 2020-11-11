@@ -143,7 +143,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                 'Expected only {} in {}'.format(expected_columns, qs))
 
         # Empty values
-        test_projection(None, ('id', 'name', 'tags', 'age'))
+        test_projection(None, ('id', 'name', 'tags', 'age', 'master_id'))
         test_projection([], ('id',))  # can't exclude PK from SQL
         test_projection({}, ('id',))
 
@@ -160,9 +160,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         test_projection({'name': 1}, ('id', 'name',))
 
         # Object: exclusion
-        test_projection({'id': 0}, ('id', 'name', 'tags', 'age'))
-        test_projection({'id': 0, 'name': 0}, ('id', 'tags', 'age'))
-        test_projection({'name': 0}, ('id', 'tags', 'age'))
+        test_projection({'id': 0}, ('id', 'name', 'tags', 'age', 'master_id'))
+        test_projection({'id': 0, 'name': 0}, ('id', 'tags', 'age', 'master_id'))
+        test_projection({'name': 0}, ('id', 'tags', 'age', 'master_id'))
 
         # Object: invalid column
         with self.assertRaises(InvalidColumnError):
@@ -177,7 +177,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # This is SqlAlchemy behavior, not MongoSql
         test_projection(['name'], ('id', 'name'))
         test_projection({'name': 1}, ('id', 'name'))
-        test_projection({'id': 0}, ('id', 'name', 'tags', 'age'))
+        test_projection({'id': 0}, ('id', 'name', 'tags', 'age', 'master_id'))
 
         # BUG: With raiseload=True, it was possible to exclude a PK from projection
         test_projection(['name'], ('id', 'name'), project_func=lambda p: MongoQuery(models.User, dict(raiseload=True)).query(project=p))
@@ -206,11 +206,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             self.assertEqual(_get_project(query), project)
 
         _check_query(dict(project=['id', 'name']),
-                     {'id': 1, 'name': 1, 'age': 0, 'tags': 0, 'user_calculated': 0})
+                     {'id': 1, 'name': 1, 'age': 0, 'master_id': 0, 'tags': 0, 'user_calculated': 0})
         _check_query(dict(project={'id': 0, 'name': 0}),
-                     {'id': 0, 'tags': 1, 'age': 1, 'name': 0, 'user_calculated': 0})
+                     {'id': 0, 'tags': 1, 'age': 1, 'master_id': 1, 'name': 0, 'user_calculated': 0})
         _check_query(dict(project={}),
-                     {'id': 0, 'tags': 0, 'age': 0, 'name': 0, 'user_calculated': 0})
+                     {'id': 0, 'tags': 0, 'age': 0, 'master_id': 0, 'name': 0, 'user_calculated': 0})
 
     def test_sort(self):
         """ Test sort() """
@@ -663,7 +663,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                               # Proper join condition, also uses aliases
                               "ON u_1.id = a.uid")
         self.assertSelectedColumns(qs, 'a.id', 'a.uid', 'a.title', 'a.theme', 'a.data',
-                                   'u_1.id', 'u_1.name', 'u_1.tags', 'u_1.age')
+                                   'u_1.id', 'u_1.name', 'u_1.tags', 'u_1.age', 'u_1.master_id')
 
         # === Test: join, projection
         mq = a.mongoquery().query(join={'user': dict(project=['name'])})
@@ -981,6 +981,24 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                    'u_1.id', 'u_1.name',
                                    )
 
+    def test_join_self_referential_model(self):
+        """ Test joining a relationship that points to the same model """
+        u = models.User
+
+        # === Test: load a self-referential relationship
+        mq = u.mongoquery().query(
+            project=['id', 'master_id'],
+            join={'master': dict(project=['id'])}
+        )
+        qs = self.assertQuery(mq.end(),
+                              # Properly aliased
+                              'FROM u',
+                              'LEFT OUTER JOIN u AS u_1 ON u_1.id = u.master_id'
+                              )
+        self.assertSelectedColumns(qs,
+                                   'u.id', 'u.master_id', 'u_1.id',
+                                   )
+
     def test_joinf(self):
         """ Test joinf """
         u = models.User
@@ -1240,7 +1258,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         qs = mq.end()
         self.assertSelectedColumns(qs,
                                    'e.id', 'e.description',  # PK, project
-                                   'u_1.id', 'u_1.age',  # +PK ; -tags
+                                   'u_1.id', 'u_1.age', 'u_1.master_id',  # +PK ; -tags
                                    )
 
         # === Test: Edit: user -> force_filter, callable
@@ -1275,7 +1293,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                               'FROM a LEFT OUTER JOIN u')
         self.assertSelectedColumns(qs,
                                    'a.id', 'a.title',  # PK, project, 'data' excluded
-                                   'u_1.id', 'u_1.name', 'u_1.age',  # `tags` excluded
+                                   'u_1.id', 'u_1.name', 'u_1.age', 'u_1.master_id',  # `tags` excluded
                                    'a.uid',  # TODO: FIXME: this column was included by SqlAlchemy? It's not supposed to be here
                                    )
 
@@ -2359,7 +2377,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                              'ORDER BY gw_1.id' if SA_UNTIL('1.3.15') else '',
                              )
             self.assertSelectedColumns(ql[1],
-                                      'gw_1.id', 'u.id', 'u.name', 'u.age',
+                                      'gw_1.id', 'u.id', 'u.name', 'u.age', 'u.master_id',
                                        # TODO: FIX: `u.tags` shoud NOT be included; but somehow, it does not
                                        #  currently work with aliased models. See mongosql.handlers.project.MongoProject._compile_relationship_options
                                        'u.tags' # not included

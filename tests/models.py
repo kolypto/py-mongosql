@@ -66,6 +66,9 @@ class User(Base):
     tags = Column(pg.ARRAY(String))  # ARRAY field
     age = Column(Integer)
 
+    master_id = Column(ForeignKey('u.id', ondelete='SET NULL'), nullable=True)
+    master = relationship(lambda: User, remote_side=lambda: User.id, foreign_keys=master_id)
+
     @property
     def user_calculated(self):
         return self.age + 10
