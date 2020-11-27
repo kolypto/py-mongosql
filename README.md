@@ -4,5 +4,6 @@
 Project template. Here's how it works:
 
     $ git remote add template git@github.com:kolypto/py-_project-template.git
+    $ git fetch --all
     $ git merge template/master --allow-unrelated-histories
 
