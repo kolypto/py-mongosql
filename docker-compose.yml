@@ -10,3 +10,14 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: test_myproject
+      
+  py-myproject-mysql-test:
+    image: mysql:latest
+    restart: always
+    ports:
+      - '127.0.0.1:3306:3306'
+    environment:
+      MYSQL_USER: mysql
+      MYSQL_PASSWORD: mysql
+      MYSQL_ROOT_PASSWORD: mysql
+      MYSQL_DATABASE: test_myproject
