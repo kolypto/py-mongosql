@@ -1,3 +1,6 @@
+## 2.0.13 (2020-12-03)
+* Proper handling of deferred columns: projections overwrite them
+
 ## 2.0.12 (2020-11-11)
 * Fixed a bug with joining self-referential relationships
 * Tested with SqlAlchemy 1.3.20
