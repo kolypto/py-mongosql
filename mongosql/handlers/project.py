@@ -602,8 +602,8 @@ class MongoProject(MongoQueryHandlerBase):
 
     def _compile_column_options(self, as_relation):
         """ Column options: Get the list of load_only() options for a Query """
-        # Short-circuit
-        if self.mode == self.MODE_EXCLUDE:
+        # Short-circuit: do not apply any options if the default loading strategy is what we want
+        if self.mode == self.MODE_EXCLUDE and not self.bags.has_deferred_columns:
             empty = ()
 
             # Short-circuit: empty projection

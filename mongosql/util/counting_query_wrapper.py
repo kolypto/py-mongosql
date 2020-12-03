@@ -92,7 +92,7 @@ class CountingQuery:
             If that fails due to an OFFSET being present in the query, make an additional, COUNT query.
         """
         # Make a new query
-        self._query = self._query.add_column(
+        self._query = self._query.add_columns(
             func.count().over()  # this window function will count all rows
         )
 
