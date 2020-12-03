@@ -1,4 +1,4 @@
-## 2.0.13 (2020-12-03)
+## 2.0.14 (2020-12-03)
 * Proper handling of deferred columns: projections overwrite them
 
 ## 2.0.12 (2020-11-11)
