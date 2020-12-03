@@ -127,6 +127,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Test query
             try: test_query(query, expected_columns)
             except:
+                print('Query:', q2sql(query))
                 print('Projection:', mq.handler_project.projection)
                 print('Full projection:', mq.handler_project.get_full_projection())
                 raise
@@ -135,7 +136,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             """ Test whether an SQL query selects the given set of columns """
             # String query parse
             qs = q2sql(query)
-            rex = re.compile('u\.(\w+)[, ]')  # reference to u.id columns
+            rex = re.compile(r'\.(\w+)[, ]')  # reference to u.id columns
             actual_columns = set(rex.findall(qs))
             # Compare
             self.assertSetEqual(actual_columns,
@@ -191,6 +192,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             mq.query(project=['id', 'age']),
             project=dict(id=1, age=1)
         )
+
+        # Object: default projection + deferred() fields
+        mq = Reusable(MongoQuery(models.CustomStrategies))
+
+        test_projection(None, ('id', 'login', 'password'))  # 'password' is included, because MongoProject handled it
+        test_projection({}, ('id',))
+
 
     def test_get_project(self):
         # Previously, MongoQuery has a method, get_project(), which allowed to export projections from the query.

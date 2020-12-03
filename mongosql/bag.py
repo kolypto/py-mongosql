@@ -13,6 +13,7 @@ from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import ColumnProperty, RelationshipProperty
 from sqlalchemy.orm.base import InspectionAttr
 from sqlalchemy.orm.interfaces import MapperProperty
+from sqlalchemy.orm.strategies import DeferredColumnLoader
 from sqlalchemy.orm.util import AliasedClass
 from sqlalchemy.sql.elements import BinaryExpression
 from sqlalchemy.sql.type_api import TypeEngine
@@ -104,6 +105,8 @@ class ModelPropertyBags:
         # Additional informational bags
         self.pk = self._init_primary_key(model, insp)
         self.nullable = self._init_nullable_columns(model, insp)
+        self.deferred_columns = self._init_deferred_columns(model, insp)
+        self.has_deferred_columns = len(self.deferred_columns.names) > 0
 
         # Writable entities
         self.writable_properties = self._init_writable_properties(model, insp)
@@ -160,6 +163,12 @@ class ModelPropertyBags:
         return ColumnsBag({name: c
                            for name, c in self.columns
                            if c.nullable})
+
+    def _init_deferred_columns(self, model, insp):
+        """ Initialize: deferred columns """
+        return ColumnsBag({name: c
+                           for name, c in self.columns
+                           if isinstance(c.property.strategy, DeferredColumnLoader)})
 
     def _init_writable_properties(self, model, insp):
         """ Initialize: writable properties """

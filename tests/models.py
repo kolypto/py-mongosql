@@ -2,7 +2,7 @@ import sqlalchemy
 from sqlalchemy import create_engine
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.mutable import MutableDict
-from sqlalchemy.orm import sessionmaker, scoped_session, column_property
+from sqlalchemy.orm import sessionmaker, scoped_session, column_property, deferred
 
 from sqlalchemy.sql.expression import and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
@@ -149,6 +149,18 @@ class Edit(Base):
 
     user = relationship(User, foreign_keys=uid)
     creator = relationship(User, foreign_keys=cuid)
+
+
+class CustomStrategies(Base):
+    __tablename__ = 'd'
+
+    id = Column(Integer, primary_key=True)
+
+    # ColumnLoader
+    login = Column(String)
+
+    # DeferredColumnLoader
+    password = deferred(Column(String))
 
 
 # Models with many columns, many properties, many foreign keys
