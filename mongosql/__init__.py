@@ -60,11 +60,15 @@ from .crud import saves_relations, ABSENT
 # Helpers
 # Reusable query objects (so that you don't have to initialize them over and over again)
 from mongosql.util import Reusable
-# raiseload_col() that can be applied to columns, not only relationships
-from mongosql.util import raiseload_col, raiseload_rel, raiseload_all
 # selectinquery() relationship loader that supports custom queries
 from mongosql.util import selectinquery
 # `Query` object wrapper that is able to query and count() at the same time
 from mongosql.util import CountingQuery
 # Settings objects for MongoQuery and StrictCrudHelper
 from mongosql.util import MongoQuerySettingsDict, StrictCrudHelperSettingsDict
+
+# raiseload_col() that can be applied to columns, not only relationships
+try:
+    from mongosql.util import raiseload_col, raiseload_rel, raiseload_all
+except ImportError:
+    pass

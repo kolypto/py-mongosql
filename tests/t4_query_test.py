@@ -1,5 +1,6 @@
 import unittest
 
+import pytest
 from sqlalchemy import inspect
 
 from mongosql import Reusable, MongoQuery, MongoQuerySettingsDict
@@ -7,6 +8,13 @@ from mongosql import Reusable, MongoQuery, MongoQuerySettingsDict
 from . import t_raiseload_col_test
 from . import models
 from .util import QueryLogger, TestQueryStringsMixin
+
+
+try:
+    import nplus1loader
+except ImportError:
+    nplus1loader = None
+
 
 row2dict = lambda row: dict(zip(row.keys(), row))  # zip into a dict
 
@@ -226,6 +234,7 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
 
         # Aggregate & Group
 
+    @pytest.mark.skipif(nplus1loader is None, reason='nplus1loader is not available')
     def test_raise(self):
         # Prepare settings
         user_settings = dict(

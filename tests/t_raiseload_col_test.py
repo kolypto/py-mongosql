@@ -1,12 +1,17 @@
 import unittest
 
+import pytest
 from sqlalchemy.exc import NoSuchColumnError
 from sqlalchemy.orm import Load
 from sqlalchemy import exc as sa_exc
 
 from .util import ExpectedQueryCounter
 
-from mongosql import raiseload_col
+try:
+    from mongosql import raiseload_col
+except ImportError:
+    raiseload_col = None
+
 from . import models
 
 
@@ -63,6 +68,7 @@ class RaiseloadColTest(RaiseloadTesterMixin, unittest.TestCase):
                 Load(models.User).defer('*'),  # as it happens, sqlalchemy will actually let us defer a PK! be careful!
             ).first()
 
+    @pytest.mark.skipif(raiseload_col is None, reason='nplus1loader is not available')
     def test_raiseload_col(self):
         """ raiseload_col() on a single column """
         # raiseload_rel() some columns
@@ -84,6 +90,7 @@ class RaiseloadColTest(RaiseloadTesterMixin, unittest.TestCase):
                 Load(models.User).raiseload_col(models.User.id),
             ).first()
 
+    @pytest.mark.skipif(raiseload_col is None, reason='nplus1loader is not available')
     def test_raiseload_star(self):
         """ raiseload_col('*') """
         ssn = self.Session()
@@ -107,6 +114,7 @@ class RaiseloadColTest(RaiseloadTesterMixin, unittest.TestCase):
                                    raiseloaded={'age', 'tags'},
                                    unloaded={})
 
+    @pytest.mark.skipif(raiseload_col is None, reason='nplus1loader is not available')
     def test_interaction_with_other_options(self):
         # === Test: just load_only()
         # NOTE: we have to restart ssn = self.Session() every time because otherwise SqlAlchemy is too clever and caches entities in the session!!
