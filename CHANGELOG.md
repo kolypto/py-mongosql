@@ -1,3 +1,9 @@
+## 2.0.15 (2021-)
+* `nplus1loader` is not an optional dependency. Install it if you want `raiseload_col()`
+* Tested with SqlAlchemy 1.3.21-23 and Python 3.9
+* Migrated to Poetry
+
+
 ## 2.0.14 (2020-12-03)
 * Proper handling of deferred columns: projections overwrite them
 
