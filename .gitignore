@@ -1,23 +1,39 @@
 # ===[ APP ]=== #
+# it's a library; no lockfile should be committed
+/poetry.lock
 
-# ===[ PYTHON PACKAGE ]=== #
-/.tox/
-/build/
-/dist/
-/MANIFEST
-/*.egg-info/
-/*.egg/
-
-# ===[ OTHER ]=== #
-
-# IDE Projects
-.idea
-.nbproject
-.project
-*.sublime-project
+# ===[ PYTHON ]=== #
 
 # Env
 /.python-version
+
+# Package
+/build/
+/dist/
+/*.egg-info/
+/*.egg/
+
+# Tests
+/.tox/
+/.nox/
+/.pytest_cache
+/.coverage
+/.noseids
+/profile.*
+
+# Generated
+__pycache__
+*.py[cod]
+
+
+
+# ===[ COMMON ]=== #
+
+# IDE Projects
+/.idea
+/.*project
+/.settings
+/.vscode
 
 # Temps
 *~
@@ -28,22 +44,12 @@
 *.DS_Store
 Thumbs.db
 
-# Utils
-.sass-cache/
-.coverage
-/.noseids
-/profile.*
-
 # Generated
-__pycache__
-*.py[cod]
 *.pot
 *.mo
 
 # Runtime
-/*.log
-/*.pid
+*.log
 
-# ===[ EXCLUDES ]=== #
+# But ...
 !.gitkeep
-!.htaccess

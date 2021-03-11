@@ -1,0 +1,13 @@
+name: Publish to PyPI
+on:
+  # https://help.github.com/en/actions/reference/events-that-trigger-workflows
+  release:
+    types: [ published ]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/setup-python@v2
+    - uses: actions/checkout@v2
+    - run: pip install poetry
+    - run: poetry publish --build -u kolypto -p ${{ secrets.PYPI_PASSWORD }}

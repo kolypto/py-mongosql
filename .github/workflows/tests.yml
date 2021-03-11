@@ -1,0 +1,48 @@
+name: Test
+on:
+  # https://help.github.com/en/actions/reference/events-that-trigger-workflows
+  pull_request:
+    types: [ opened, edited, reopened ]
+  release:
+    types: [ prereleased, released ]
+  push:
+    branches: [ master, development ]
+  # Trigger this workflow manually from the `actions` page
+  workflow_dispatch:
+    inputs:
+      git-ref:
+        description: Git Commit or Branch (Optional)
+        required: false
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    #container:
+
+    strategy:
+      matrix:
+        python-version: ['3.x']
+
+    name: ${{ github.ref }}, Python ${{ matrix.python-version }}
+    steps:
+    - uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: ./.nox/  # what we cache: nox virtualenv (they're expensive)
+        key: ${{ runner.os }}-nox-2-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/noxfile.py') }}  # cache key
+        restore-keys: |
+          ${{ runner.os }}-nox-2-${{ matrix.python-version }}-
+    - run: pip install nox
+    - run: nox --report nox-report.json
+
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_mongosql
