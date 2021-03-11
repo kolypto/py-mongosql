@@ -1,7 +1,7 @@
 import nox.sessions
 
 PYTHON_VERSIONS = ['3.7', '3.8', '3.9']
-SQLALCHEMY_VERIONS = [
+SQLALCHEMY_VERSIONS = [
     *(f'1.3.{x}' for x in range(0, 1 + 20)),
 ]
 
@@ -27,7 +27,7 @@ def tests(session: nox.sessions.Session, sqlalchemy=None):
 
 
 @nox.session(python=PYTHON_VERSIONS[-1])
-@nox.parametrize('sqlalchemy', SQLALCHEMY_VERIONS)
+@nox.parametrize('sqlalchemy', SQLALCHEMY_VERSIONS)
 def tests_sqlalchemy(session: nox.sessions.Session, sqlalchemy):
     """ Test against a specific SqlAlchemy version """
     tests(session, sqlalchemy)
