@@ -1,7 +1,0 @@
-j2cli
-wheel
-nose
-psycopg2-binary
-exdoc
-nplus1loader
-flask_jsontools
