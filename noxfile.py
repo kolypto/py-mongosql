@@ -1,9 +1,11 @@
 import nox.sessions
 
+
 PYTHON_VERSIONS = ['3.7', '3.8', '3.9']
 SQLALCHEMY_VERSIONS = [
     *(f'1.3.{x}' for x in range(0, 1 + 20)),
 ]
+
 
 nox.options.reuse_existing_virtualenvs = True
 nox.options.sessions = [
