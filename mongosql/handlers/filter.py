@@ -282,9 +282,17 @@ class FilterColumnExpression(FilterExpressionBase):
 
         # Case 2. JSON column
         if self.is_column_json():
+            # Get a piece of `val` for type guessing
+            if isinstance(val, list) and len(val):
+                # List? sample the first value
+                value_for_typing = val[0]
+            else:
+                # Otherwise, use the whole value
+                value_for_typing = val
+
             # This is the type to which JSON column is coerced: same as `value`
             # Doc: "Suggest a type for a `coerced` Python value in an expression."
-            coerce_type = col.type.coerce_compared_value('=', val)  # HACKY: use sqlalchemy type coercion
+            coerce_type = col.type.coerce_compared_value('=', value_for_typing)  # HACKY: use sqlalchemy type coercion
             # Now, replace the `col` used in operations with this new coerced expression
             col = cast(col, coerce_type)
 

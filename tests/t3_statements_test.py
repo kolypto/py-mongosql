@@ -7,8 +7,6 @@ from collections import OrderedDict
 from sqlalchemy import inspect
 from sqlalchemy.orm import aliased
 
-from distutils.version import LooseVersion
-
 from mongosql import SA_12, SA_13
 from mongosql import handlers, MongoQuery, Reusable, MongoQuerySettingsDict
 from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError

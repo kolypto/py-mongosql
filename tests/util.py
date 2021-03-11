@@ -13,18 +13,23 @@ def _insert_query_params(statement_str, parameters, dialect):
     return statement_str % parameters
 
 
-def stmt2sql(stmt):
+def stmt2sql(stmt, *, literal: bool = False):
     """ Convert an SqlAlchemy statement into a string """
     # See: http://stackoverflow.com/a/4617623/134904
     # This intentionally does not escape values!
     dialect = pg.dialect()
-    query = stmt.compile(dialect=dialect)
+    query = stmt.compile(
+        dialect=dialect,
+        compile_kwargs={
+            'literal_binds': literal,
+        }
+    )
     return _insert_query_params(query.string, query.params, pg.dialect())
 
 
-def q2sql(q):
+def q2sql(q, *, literal: bool = True):
     """ Convert an SqlAlchemy query to string """
-    return stmt2sql(q.statement)
+    return stmt2sql(q.statement, literal=literal)
 
 
 class TestQueryStringsMixin:
