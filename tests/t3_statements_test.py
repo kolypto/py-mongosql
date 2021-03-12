@@ -286,8 +286,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         filter = lambda criteria: m.mongoquery().query(filter=criteria).end()
 
-        def test_sql_filter(query, expected):
-            qs = q2sql(query)
+        def test_sql_filter(query, expected, *, literal: bool = False):
+            qs = q2sql(query, literal=literal)
             q_where = qs.partition('\nWHERE ')[2]
             if isinstance(expected, tuple):
                 for _ in expected:
@@ -295,10 +295,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             else:  # string
                 self.assertEqual(q_where, expected)
 
-        def test_filter(criteria, expected):
+        def test_filter(criteria, expected, *, literal: bool = False):
             test_sql_filter(
                 filter(criteria),
-                expected
+                expected,
+                literal=literal,
             )
 
         # Empty
@@ -329,13 +330,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # $in
         self.assertRaises(InvalidQueryError, filter, {'tags': {'$in': 1}})
-        test_filter({'name': {'$in': ['a', 'b', 'c']}}, 'u.name IN (a, b, c)')
-        test_filter({'tags': {'$in': ['a', 'b', 'c']}}, 'u.tags && CAST(ARRAY[a, b, c] AS VARCHAR[])')
+        test_filter({'name': {'$in': ['a', 'b', 'c']}}, "u.name IN ('a', 'b', 'c')", literal=True)
+        test_filter({'tags': {'$in': ['a', 'b', 'c']}}, "u.tags && CAST(ARRAY['a', 'b', 'c'] AS VARCHAR[])", literal=True)
 
         # $nin
         self.assertRaises(InvalidQueryError, filter, {'tags': {'$nin': 1}})
-        test_filter({'name': {'$nin': ['a', 'b', 'c']}}, 'u.name NOT IN (a, b, c)')
-        test_filter({'tags': {'$nin': ['a', 'b', 'c']}}, 'NOT u.tags && CAST(ARRAY[a, b, c] AS VARCHAR[])')
+        test_filter({'name': {'$nin': ['a', 'b', 'c']}}, "u.name NOT IN ('a', 'b', 'c')", literal=True)
+        test_filter({'tags': {'$nin': ['a', 'b', 'c']}}, "NOT u.tags && CAST(ARRAY['a', 'b', 'c'] AS VARCHAR[])", literal=True)
 
         # $exists
         test_filter({'name': {'$exists': 0}}, 'u.name IS NULL')
@@ -344,7 +345,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # $all
         self.assertRaises(InvalidQueryError, filter, {'name': {'$all': ['a', 'b', 'c']}})
         self.assertRaises(InvalidQueryError, filter, {'tags': {'$all': 1}})
-        test_filter({'tags': {'$all': ['a', 'b', 'c']}}, "u.tags @> CAST(ARRAY[a, b, c] AS VARCHAR[])")
+        test_filter({'tags': {'$all': ['a', 'b', 'c']}}, "u.tags @> CAST(ARRAY['a', 'b', 'c'] AS VARCHAR[])", literal=True)
 
         # $size
         self.assertRaises(InvalidQueryError, filter, {'name': {'$size': 0}})

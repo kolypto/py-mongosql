@@ -1264,7 +1264,7 @@ def _sa_create_joins(relation, left, right):
     adapt_from = left_info.selectable
 
     # This is the magic sqlalchemy method that produces valid JOINs for the relationship
-    if SA_VERSION.startswith('1.2'):
+    if sav.SA_12:
         # SA 1.2.x
         primaryjoin, secondaryjoin, source_selectable, \
         dest_selectable, secondary, target_adapter = \
@@ -1274,7 +1274,7 @@ def _sa_create_joins(relation, left, right):
                 dest_selectable=adapt_to,
                 dest_polymorphic=True,
                 of_type=right_info.mapper)
-    elif SA_VERSION.startswith('1.3'):
+    elif sav.SA_13:
         # SA 1.3.x: renamed `of_type` to `of_type_mapper`
         primaryjoin, secondaryjoin, source_selectable, \
         dest_selectable, secondary, target_adapter = \
@@ -1284,6 +1284,17 @@ def _sa_create_joins(relation, left, right):
                 source_polymorphic=True,
                 dest_polymorphic=True,
                 of_type_mapper=right_info.mapper)
+    elif sav.SA_14:
+        primaryjoin, secondaryjoin, source_selectable, \
+        dest_selectable, secondary, target_adapter = \
+            relation.prop._create_joins(
+                source_selectable=adapt_from,
+                source_polymorphic=True,
+                of_type_entity=right_info.mapper,
+                alias_secondary=True,
+                dest_selectable=adapt_to,
+                # extra_criteria=(),
+            )
     else:
         raise RuntimeError('Unsupported SqlAlchemy version! Expected 1.2.x or 1.3.x')
 

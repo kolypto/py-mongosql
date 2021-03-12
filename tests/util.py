@@ -27,7 +27,7 @@ def stmt2sql(stmt, *, literal: bool = False):
     return _insert_query_params(query.string, query.params, pg.dialect())
 
 
-def q2sql(q, *, literal: bool = True):
+def q2sql(q, *, literal: bool = False):
     """ Convert an SqlAlchemy query to string """
     return stmt2sql(q.statement, literal=literal)
 
