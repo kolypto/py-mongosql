@@ -1321,7 +1321,7 @@ def has_limit_clause(query: Query) -> bool:
     if sav.SA_12 or sav.SA_13:
         return query._limit is not None or query._offset is not None
     elif sav.SA_14:
-        return query._limit_clause is not None and query._offset_clause is not None
+        return query._limit_clause is not None or query._offset_clause is not None
     else:
         raise NotImplementedError
 
