@@ -35,7 +35,7 @@ def q2sql(q, *, literal: bool = True):
 class TestQueryStringsMixin:
     """ unittest mixin that will help testing query strings """
 
-    def assertQuery(self, qs, *expected_lines):
+    def assertQuery(self, qs, *expected_lines, literal: bool = False):
         """ Compare a query line by line
 
             Problem: because of dict disorder, you can't just compare a query string: columns and expressions may be present,
@@ -50,7 +50,7 @@ class TestQueryStringsMixin:
         try:
             # Query?
             if isinstance(qs, Query):
-                qs = q2sql(qs)
+                qs = q2sql(qs, literal=literal)
 
             # tuple
             expected_lines = '\n'.join(expected_lines)

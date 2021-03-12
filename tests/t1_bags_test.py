@@ -5,7 +5,7 @@ from sqlalchemy.orm import aliased
 from . import models
 
 from mongosql.bag import *
-from mongosql import SA_12, SA_13
+from .saversion import SA_12, SA_13, SA_14, SA_SINCE, SA_UNTIL
 
 class BagsTest(unittest.TestCase):
     """ Test bags """

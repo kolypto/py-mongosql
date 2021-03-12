@@ -3,6 +3,8 @@ from sqlalchemy.orm.strategies import SelectInLoader
 from sqlalchemy.orm import properties
 from sqlalchemy import log, util
 
+from mongosql import sa_version as sav
+
 
 @log.class_logger
 @properties.RelationshipProperty.strategy_for(lazy="selectin_query")
@@ -23,14 +25,23 @@ class SelectInQueryLoader(SelectInLoader, util.MemoizedSlots):
 
     __slots__ = ('_alter_query', '_cache_key', '_bakery')
 
-    def create_row_processor(self, context, path, loadopt, mapper, result, adapter, populators):
+    def create_row_processor(self, *args):
+        if sav.SA_12 or sav.SA_13:
+            # context, path, loadopt, mapper, result, adapter, populators
+            loadopt = args[2]
+        elif sav.SA_14:
+            # context, query_entity, path, loadopt, mapper, result, adapter, populators,
+            loadopt = args[3]
+        else:
+            raise NotImplementedError
+
         # Pluck the custom callable that alters the query out of the `loadopt`
         self._alter_query = loadopt.local_opts['alter_query']
         self._cache_key = loadopt.local_opts['cache_key']
 
         # Call super
         return super(SelectInQueryLoader, self) \
-            .create_row_processor(context, path, loadopt, mapper, result, adapter, populators)
+            .create_row_processor(*args)
 
     # The easiest way would be to just copy `SelectInLoader` and make adjustments to the code,
     # but that would require us supporting it, porting every change from SqlAlchemy.

@@ -7,14 +7,13 @@ from collections import OrderedDict
 from sqlalchemy import inspect
 from sqlalchemy.orm import aliased
 
-from mongosql import SA_12, SA_13
 from mongosql import handlers, MongoQuery, Reusable, MongoQuerySettingsDict
 from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
 
 
 from . import models
 from .util import q2sql, QueryLogger, TestQueryStringsMixin
-from .saversion import SA_SINCE, SA_UNTIL
+from .saversion import SA_SINCE, SA_UNTIL, SA_12, SA_13, SA_14
 
 
 # SqlAlchemy version (see t_selectinquery_test.py)
@@ -2230,7 +2229,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           },
                           })
 
-    @unittest.skipIf(SA_12, 'AssociationProxy is only supported for SA 1.3.x')
+    @unittest.skipIf(SA_12, 'AssociationProxy is only supported for SA 1.3.x and newer')
     def test_association_proxy(self):
         """ Test how MongoSQL deals with association proxy """
         g = models.GirlWatcher
@@ -2252,13 +2251,15 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          # Join condition
                          'WHERE gw.id = gwf.gw_id AND gwf.best = false AND gwf.user_id = u.id',
                          # Filter: at least one
-                         'AND u.name = a)')
+                         "AND u.name = 'a')",
+                         literal=True)
 
         # === Test: Filter: $in
         mq = g.mongoquery().query(filter={'good_names': {'$in': ['a', 'b']}})
         self.assertQuery(mq.end(),
                          # Filter: IN
-                         'AND u.name IN (a, b))')
+                         "AND u.name IN ('a', 'b'))",
+                         literal=True)
 
         # === Test: Project
         with QueryLogger(engine) as ql:

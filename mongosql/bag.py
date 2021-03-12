@@ -18,7 +18,7 @@ from sqlalchemy.orm.util import AliasedClass
 from sqlalchemy.sql.elements import BinaryExpression
 from sqlalchemy.sql.type_api import TypeEngine
 
-from mongosql import SA_12, SA_13
+from mongosql import sa_version as sav
 try: from sqlalchemy.ext.associationproxy import ColumnAssociationProxyInstance  # SA 1.3.x
 except ImportError: ColumnAssociationProxyInstance = None
 
@@ -753,7 +753,7 @@ def _get_model_columns(model, ins):
 def _get_model_association_proxies(model, ins):
     """ Get a dict of model association_proxy attributes """
     # Ignore AssociationProxy attrs for SA 1.2.x
-    if SA_12:
+    if sav.SA_12:
         warnings.warn('MongoSQL only supports AssociationProxy columns with SqlAlchemy 1.3.x')
         return {}
 

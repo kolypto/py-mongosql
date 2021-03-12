@@ -75,7 +75,7 @@ from types import SimpleNamespace
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.orm import aliased, Query
 
-from mongosql import SA_14
+from mongosql import sa_version as sav
 from .base import MongoQueryHandlerBase
 from ..exc import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
 
@@ -1307,9 +1307,12 @@ def has_limit_clause(query: Query) -> bool:
     """ Does the given query have a limit or offset? """
     # In SqlAlchemy 1.2 and 1.3, the properties are called `_limit` and `_offset`;
     # In SqlAlchemy 1.4 it's `_limit_clause` and `_offset_clause` now
-    if SA_14:
+    if sav.SA_12 or sav.SA_13:
+        return query._limit is not None or query._offset is not None
+    elif sav.SA_14:
         return query._limit_clause is not None and query._offset_clause is not None
     else:
-        return query._limit is not None or query._offset is not None
+        raise NotImplementedError
+
 
 # endregion
