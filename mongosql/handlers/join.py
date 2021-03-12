@@ -75,6 +75,7 @@ from types import SimpleNamespace
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.orm import aliased, Query
 
+from mongosql import SA_14
 from .base import MongoQueryHandlerBase
 from ..exc import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
 
@@ -691,7 +692,7 @@ class MongoJoin(MongoQueryHandlerBase):
         #   SELECT * FROM users WHERE ... LIMIT 10
         #   ) AS users
         #   LEFT JOIN articles ....
-        if query._limit is not None or query._offset is not None:  # accessing protected properties of Query
+        if has_limit_clause(query):  # accessing protected properties of Query
             # We're going to make it into a subquery, so let's first make sure that we have enough columns selected.
             # We'll need columns used in the ORDER BY clause selected, so let's get them out, so that we can use them
             # in the ORDER BY clause later on (a couple of statements later)
@@ -1296,5 +1297,19 @@ def _sa_create_joins(relation, left, right):
     )
 
 # endregion
+
+# endregion
+
+
+# region Helpers
+
+def has_limit_clause(query: Query) -> bool:
+    """ Does the given query have a limit or offset? """
+    # In SqlAlchemy 1.2 and 1.3, the properties are called `_limit` and `_offset`;
+    # In SqlAlchemy 1.4 it's `_limit_clause` and `_offset_clause` now
+    if SA_14:
+        return query._limit_clause is not None and query._offset_clause is not None
+    else:
+        return query._limit is not None or query._offset is not None
 
 # endregion
