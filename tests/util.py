@@ -88,7 +88,7 @@ class TestQueryStringsMixin:
         """ Test that the query has certain columns in the SELECT clause
 
         :param qs: Query | query string
-        :param expected: list of expected column names
+        :param expected: list of expected column names. Use `None` for a skip
         :returns: query string
         """
         # Query?
@@ -98,7 +98,7 @@ class TestQueryStringsMixin:
         try:
             self.assertEqual(
                 self._qs_selected_columns(qs),
-                set(expected)
+                set(expected) - {None},  # exclude the skip
             )
             return qs
         except:

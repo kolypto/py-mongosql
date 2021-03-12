@@ -2307,8 +2307,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Query 2: loaded relationship
             self.assertSelectedColumns(ql[1],
                                        'gw_1.id', 'u.id', 'u.name',
-                                       # It has also loaded the extra field requested by `join`
-                                       'u.age'
+                                       # it also loads the extra field requested by `join`
+                                       'u.age',
                                        )
 
         # === Test: project + join-filter
@@ -2328,7 +2328,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Query 2: loaded relationship
             self.assertQuery(ql[1],
                              # The condition is there
-                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18'
+                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18',
+                             literal=True,
                              )
 
         # === Test: in join(): filter + project
