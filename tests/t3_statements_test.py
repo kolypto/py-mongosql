@@ -478,9 +478,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         aggregate_mq = lambda agg_spec: copy(mq).query(project=('id',),aggregate=agg_spec)
 
-        def test_aggregate(agg_spec, expected_starts):
+        def test_aggregate(agg_spec, expected_starts, *, literal: bool = False):
             mq = aggregate_mq(agg_spec)
-            qs = q2sql(mq.end())
+            qs = q2sql(mq.end(), literal=literal)
             self.assertTrue(qs.startswith(expected_starts), '{!r} should start with {!r}'.format(qs, expected_starts))
 
         def test_aggregate_qs(agg_spec, *expected_query):
@@ -543,7 +543,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         aggregate_mq = lambda agg_spec: copy(mq).query(project=('id',),aggregate=agg_spec)
 
-        test_aggregate({'max_rating': {'$max': 'data.rating'}}, "SELECT max(CAST(a.data #>> ['rating'] AS FLOAT)) AS max_rating")
+        test_aggregate(
+            {'max_rating': {'$max': 'data.rating'}},
+            "SELECT max(CAST(a.data #>> '{rating}' AS FLOAT)) AS max_rating",
+            literal=True
+        )
 
         # aggregate + filter
         # TODO: unit-test
