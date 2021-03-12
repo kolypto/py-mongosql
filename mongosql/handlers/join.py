@@ -205,7 +205,7 @@ class MongoJoin(MongoQueryHandlerBase):
             # Get the relationship and its target model
             rel = self._get_relation_securely(relation_name)
             target_model = self.bags.relations.get_target_model(relation_name)
-            target_model_aliased = aliased(rel)  # aliased(rel) and aliased(target_model) is the same thing
+            target_model_aliased = aliased(target_model)  # aliased(rel) does not work anymore; got to use aliased(target_model)
 
             # Prepare the nested MongoQuery
             # We do it here so that all validation errors come on input()

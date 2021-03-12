@@ -185,6 +185,8 @@ class ModelPropertyBags:
     # endregion
 
     def aliased(self, aliased_class: AliasedClass):
+        assert isinstance(aliased_class, AliasedClass)
+
         # Return a wrapper that will lazily apply aliased() on every property when accessed
         # This makes sense because we don't know which of the bags are going to be actually used,
         # and aliased() has a bit of overhead: it involves copying the whole class.

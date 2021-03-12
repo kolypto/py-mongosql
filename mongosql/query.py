@@ -138,6 +138,7 @@ from copy import copy
 
 from sqlalchemy import inspect, exc as sa_exc
 from sqlalchemy.orm import Query, Load, defaultload
+from sqlalchemy.orm.util import AliasedClass
 
 from mongosql import RuntimeQueryError, BaseMongoSqlException
 from .bag import ModelPropertyBags
@@ -307,7 +308,7 @@ class MongoQuery:
         """
         return self.as_relation(mongoquery._join_path + (relationship,))
 
-    def aliased(self, model: DeclarativeMeta) -> 'MongoQuery':
+    def aliased(self, model: AliasedClass) -> 'MongoQuery':
         """ Make a query to an aliased model instead.
 
         This is used by MongoJoin handler to issue subqueries.
@@ -317,6 +318,8 @@ class MongoQuery:
 
         :param model: Aliased model
         """
+        assert isinstance(model, AliasedClass)
+
         # Aliased bags
         self.bags = self.bags.aliased(model)
         self.model = model
