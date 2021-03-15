@@ -4,7 +4,7 @@ PYTHON_VERSIONS = ['3.7', '3.8', '3.9']
 SQLALCHEMY_VERSIONS = [
     *(f'1.2.{x}' for x in range(0, 1 + 19)),
     *(f'1.3.{x}' for x in range(0, 1 + 23)),
-    '1.4.0b3',
+    # '1.4.0b3',  # not yet
 ]
 SQLALCHEMY_VERSIONS.remove('1.2.9')  # bug
 
