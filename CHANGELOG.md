@@ -1,4 +1,4 @@
-## 2.0.15 (2021-)
+## 2.0.15 (2021-04-23)
 * Added support for `column_property()`
 * `nplus1loader` is not an optional dependency. Install it if you want `raiseload_col()`
 * Tested with SqlAlchemy 1.3.21-23 and Python 3.9
