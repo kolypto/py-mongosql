@@ -740,11 +740,9 @@ class CombinedBag(_PropertiesBagBase):
 
 
 def _get_model_columns(model, ins):
-    """ Get a dict of model columns """
+    """ Get a dict of model columns and column_attributes """
     return {name: getattr(model, name)
             for name, c in ins.column_attrs.items()
-            # ignore Labels and other stuff that .items() will always yield
-            if isinstance(c.expression, Column)
             }
 
 
