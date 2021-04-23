@@ -97,6 +97,7 @@ class ModelPropertyBags:
 
         # Init bags: after every column type
         self.columns = self._init_columns(model, insp)
+        self.column_properties = self._init_column_properties(model, insp)
         self.properties = self._init_properties(model, insp)
         self.hybrid_properties = self._init_hybrid_properties(model, insp)
         self.association_proxies = self._init_association_proxies(model, insp)
@@ -128,6 +129,9 @@ class ModelPropertyBags:
     def _init_columns(self, model, insp):
         """ Initialize: Column properties """
         return DotColumnsBag(_get_model_columns(model, insp))
+
+    def _init_column_properties(self, model, insp):
+        return ColumnsBag(_get_model_column_properties(model, insp))
 
     def _init_properties(self, model, insp):
         """ Initialize: Calculated properties: @property """
@@ -163,7 +167,7 @@ class ModelPropertyBags:
         #: Nullable columns
         return ColumnsBag({name: c
                            for name, c in self.columns
-                           if _is_attribute_nullable(c)})
+                           if c.nullable})
 
     def _init_deferred_columns(self, model, insp):
         """ Initialize: deferred columns """
@@ -668,7 +672,7 @@ class CombinedBag(_PropertiesBagBase):
             for column_name, column in bag
         }
 
-        # List of JSON columns
+        # List of JSON columnstests/t2_handlers_test.py:1115
         json_column_names = []
         for bag in self._bags.values():
             # We'll access a protected property, so got to make sure we've got the right class
@@ -741,14 +745,23 @@ class CombinedBag(_PropertiesBagBase):
 
 
 def _get_model_columns(model, ins):
-    """ Get a dict of model columns and column_attributes """
+    """ Get a dict of model columns. Only columns. """
     return {name: getattr(model, name)
             for name, c in ins.column_attrs.items()
             # NOTE: for backwards compatibility, we cannot now exlude underscored properties
             # because they are sometimes mentioned in `bundled_project` and are therefore in use
             # if not name.startswith('_')
+            if isinstance(c.expression, Column)  # exclude column properties (SQL expressions)
             }
 
+
+def _get_model_column_properties(model, ins):
+    """ Get a dict of model column properties """
+    return {name: getattr(model, name)
+            for name, c in ins.column_attrs.items()
+            if not name.startswith('_') and
+               not isinstance(c.expression, Column)  # non-column attributes like SQL expressions
+            }
 
 def _get_model_association_proxies(model, ins):
     """ Get a dict of model association_proxy attributes """
@@ -802,15 +815,6 @@ def _is_column_array(col: MapperProperty) -> bool:
 def _is_column_json(col: MapperProperty) -> bool:
     """ Is the column a PostgreSql JSON column? """
     return isinstance(_get_column_type(col), (pg.JSON, pg.JSONB))
-
-
-def _is_attribute_nullable(col: InstrumentedAttribute) -> bool:
-    # Column()s have `nullable`
-    try:
-        return col.nullable
-    # column_attr()s have no `nullable`
-    except AttributeError:
-        return True
 
 
 def _is_relationship_array(rel: RelationshipProperty) -> bool:
