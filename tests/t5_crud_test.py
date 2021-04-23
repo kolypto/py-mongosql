@@ -343,6 +343,7 @@ class ArticleViewTest(CrudTestBase):
                     'id': 3,
                     'name': 'c',
                     'age': 16,
+                    'age_in_10': 26,
                     'tags': ['3', 'a', 'b', 'c'],
                     'master_id': None,
                 }

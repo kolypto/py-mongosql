@@ -1103,7 +1103,7 @@ class HandlersTest(unittest.TestCase):
         """ Test MongoQuery.pluck_instance() """
         # === Test: pluck one user
         # This is all about projections
-        u = User(id=1, name='a', tags=[], age=18)
+        u = User(id=1, name='a', tags=[], age=18, age_in_10=28)
 
         mq = User.mongoquery().query(project=['name'])
         self.assertEqual(mq.pluck_instance(u), dict(name='a'))
@@ -1112,7 +1112,7 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(mq.pluck_instance(u), dict(name='a', user_calculated=28))
 
         mq = User.mongoquery().query(project={'tags': 0})
-        self.assertEqual(mq.pluck_instance(u), dict(id=1, name='a', age=18, master_id=None))  # note: no @property!
+        self.assertEqual(mq.pluck_instance(u), dict(id=1, name='a', age=18, age_in_10=28, master_id=None))  # note: no @property!
 
         # === Test: pluck user, articles
         # Now we have a join to a one-to-many relationship.

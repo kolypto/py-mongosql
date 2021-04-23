@@ -266,6 +266,7 @@ class MongoProject(MongoQueryHandlerBase):
     def _get_supported_bags(self):
         return CombinedBag(
             col=self.bags.columns,
+            colp=self.bags.column_properties,
             hybrid=self.bags.hybrid_properties,
             prop=self.bags.properties,
             assocproxy=self.bags.association_proxies,

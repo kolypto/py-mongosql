@@ -42,11 +42,11 @@ class QueryTest(t_raiseload_col_test.RaiseloadTesterMixin, TestQueryStringsMixin
 
         # Test: load only 2 props
         user = models.User.mongoquery(ssn).query(project=['id', 'name']).end().first()
-        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles', 'master_id', 'master'})
+        self.assertEqual(inspect(user).unloaded, {'age', 'age_in_10', 'tags', 'articles', 'comments', 'roles', 'master_id', 'master'})
 
         # Test: load without 2 props
         user = models.User.mongoquery(ssn).query(project={'age': 0, 'tags': 0}).end().first()
-        self.assertEqual(inspect(user).unloaded, {'age', 'tags', 'articles', 'comments', 'roles', 'master'})
+        self.assertEqual(inspect(user).unloaded, {'age', 'age_in_10', 'tags', 'articles', 'comments', 'roles', 'master'})
 
     def test_sort(self):
         """ Test sort() """

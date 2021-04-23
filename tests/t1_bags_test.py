@@ -107,7 +107,7 @@ class BagsTest(unittest.TestCase):
         self.assertIn('roles.id', cbag)
         self.assertNotIn('roles', cbag)
 
-        self.assertEqual(len(list(cbag)), 24)  # all properties properly iterated over
+        self.assertEqual(len(list(cbag)), 23)  # all properties properly iterated over
 
         bag_name, bag, col = cbag['id']
         self.assertEqual(bag_name, 'col')
@@ -391,6 +391,13 @@ class BagsTest(unittest.TestCase):
         # both, if writable
         self.assertEqual(bags.writable.names, {'id', 'p_writable', 'hp_writable'})
 
+
+
+        # Test column_property(): should not be writable
+        bags = ModelPropertyBags.for_model(models.Role)
+        self.assertEqual(bags.writable_properties.names, frozenset())
+        self.assertEqual(bags.writable_hybrid_properties.names, frozenset())
+        self.assertEqual(bags.writable.names, {'id', 'uid', 'description', 'title'})  # "is_admin" not here
 
     def test_bag_is_reused(self):
         """ Test that ModelPropertyBags is reused every time """

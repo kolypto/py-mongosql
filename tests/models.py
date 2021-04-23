@@ -64,6 +64,9 @@ class User(Base):
     tags = Column(pg.ARRAY(String))  # ARRAY field
     age = Column(Integer)
 
+    # Maps an SQL expression as a column
+    age_in_10 = column_property(age + 10)
+
     master_id = Column(ForeignKey('u.id', ondelete='SET NULL'), nullable=True)
     master = relationship(lambda: User, remote_side=lambda: User.id, foreign_keys=master_id)
 
@@ -132,11 +135,6 @@ class Role(Base):
     uid = Column(Integer, ForeignKey(User.id))
     title = Column(String)
     description = Column(String)
-
-    # Maps an SQL expression as a column
-    is_admin = column_property(
-        title == 'Admin'
-    )
 
     user = relationship(User, backref=backref("roles"))
 
