@@ -107,7 +107,7 @@ class BagsTest(unittest.TestCase):
         self.assertIn('roles.id', cbag)
         self.assertNotIn('roles', cbag)
 
-        self.assertEqual(len(list(cbag)), 23)  # all properties properly iterated over
+        self.assertEqual(len(list(cbag)), 24)  # all properties properly iterated over
 
         bag_name, bag, col = cbag['id']
         self.assertEqual(bag_name, 'col')

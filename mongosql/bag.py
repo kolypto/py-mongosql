@@ -11,6 +11,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from typing import Union, Set, Mapping, Iterable, Tuple, FrozenSet, List
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import ColumnProperty, RelationshipProperty
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.orm.base import InspectionAttr
 from sqlalchemy.orm.interfaces import MapperProperty
 from sqlalchemy.orm.strategies import DeferredColumnLoader
@@ -162,7 +163,7 @@ class ModelPropertyBags:
         #: Nullable columns
         return ColumnsBag({name: c
                            for name, c in self.columns
-                           if c.nullable})
+                           if _is_attribute_nullable(c)})
 
     def _init_deferred_columns(self, model, insp):
         """ Initialize: deferred columns """
@@ -743,6 +744,9 @@ def _get_model_columns(model, ins):
     """ Get a dict of model columns and column_attributes """
     return {name: getattr(model, name)
             for name, c in ins.column_attrs.items()
+            # NOTE: for backwards compatibility, we cannot now exlude underscored properties
+            # because they are sometimes mentioned in `bundled_project` and are therefore in use
+            # if not name.startswith('_')
             }
 
 
@@ -798,6 +802,15 @@ def _is_column_array(col: MapperProperty) -> bool:
 def _is_column_json(col: MapperProperty) -> bool:
     """ Is the column a PostgreSql JSON column? """
     return isinstance(_get_column_type(col), (pg.JSON, pg.JSONB))
+
+
+def _is_attribute_nullable(col: InstrumentedAttribute) -> bool:
+    # Column()s have `nullable`
+    try:
+        return col.nullable
+    # column_attr()s have no `nullable`
+    except AttributeError:
+        return True
 
 
 def _is_relationship_array(rel: RelationshipProperty) -> bool:

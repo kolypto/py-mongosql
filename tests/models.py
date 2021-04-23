@@ -56,8 +56,6 @@ class MongoJsonSerializableBase(JsonSerializableBase):
 
 Base = declarative_base(cls=(MongoSqlBase, MongoJsonSerializableBase))
 
-# TODO: test column_property() behavior. Treat it as a @property? (default exclude)
-
 class User(Base):
     __tablename__ = 'u'
 
@@ -134,6 +132,11 @@ class Role(Base):
     uid = Column(Integer, ForeignKey(User.id))
     title = Column(String)
     description = Column(String)
+
+    # Maps an SQL expression as a column
+    is_admin = column_property(
+        title == 'Admin'
+    )
 
     user = relationship(User, backref=backref("roles"))
 
