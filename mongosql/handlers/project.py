@@ -275,6 +275,12 @@ class MongoProject(MongoQueryHandlerBase):
             legacy=FakeBag({n: None for n in self.legacy_fields}),
         )
 
+    def _get_supported_bags_for_actually_loading_with_options(self):
+        return CombinedBag(
+            col=self.bags.columns,
+            colp=self.bags.column_properties,
+        )
+
     #: MongoSQL projection handler operation modes
     #: Projection handler can operate in three modes
     #: `1`  Inclusion mode: only include the listed columns
@@ -567,7 +573,7 @@ class MongoProject(MongoQueryHandlerBase):
                 c
                 for c in columns]
 
-    def _compile_list_of_included_columns_from_bag(self, bag):
+    def _compile_list_of_included_columns_from_bag(self, cbag: CombinedBag):
         """ Generate a list of columns, using a bag as a reference point.
 
         Will generate a list of attributes included from that particular bag by the current projection.
@@ -577,22 +583,24 @@ class MongoProject(MongoQueryHandlerBase):
         """
         if self.mode == self.MODE_INCLUDE or self.mode == self.MODE_MIXED:
             # Only {col: 1}
-            return [bag[col_name]
+            return [cbag.get(col_name)
                     for col_name, include in self._projection.items()
-                    if include == 1 and col_name in bag]
+                    if include == 1 and col_name in cbag]
         else:
             # Exclude mode
             # All, except {col: 0}
             return [column
-                    for col_name, column in bag
+                    for bagname, bag, col_name, column in cbag
                     if col_name not in self._projection]
 
     def compile_columns(self):
         """ Get the list of columns to be included into the Query """
-        # Note that here we do not iterate over self.supported_bags
-        # Instead, we iterate over self.bags.columns, because properties and hybrid properties do
-        # not need to be loaded at all!
-        return self._compile_list_of_included_columns_from_bag(self.bags.columns)
+        return self._compile_list_of_included_columns_from_bag(
+            # Note that here we do not iterate over self.supported_bags
+            # Instead, we use a different set of columns: columns and column properties --
+            # because properties and hybrid properties do not need to be loaded at all!
+            self._get_supported_bags_for_actually_loading_with_options()
+        )
 
     def compile_options(self, as_relation):
         """ Get the list of options for a Query: load_only() for columns, and some eager loaders for relationships """
@@ -649,7 +657,9 @@ class MongoProject(MongoQueryHandlerBase):
         relationship in order to get the property values
         """
         # Get the list of included association proxies
-        assproxx = self._compile_list_of_included_columns_from_bag(self.bags.association_proxies)
+        assproxx = self._compile_list_of_included_columns_from_bag(CombinedBag(
+            aprox=self.bags.association_proxies,
+        ))
 
         # Convert that to the list of underlying relationships, and load it's most important property
         return [

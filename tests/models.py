@@ -65,7 +65,7 @@ class User(Base):
     age = Column(Integer)
 
     # Maps an SQL expression as a column
-    age_in_10 = column_property(age + 10)
+    age_in_10 = column_property(age + 10, deferred=True)
 
     master_id = Column(ForeignKey('u.id', ondelete='SET NULL'), nullable=True)
     master = relationship(lambda: User, remote_side=lambda: User.id, foreign_keys=master_id)

@@ -671,7 +671,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                               # Proper join condition, also uses aliases
                               "ON u_1.id = a.uid")
         self.assertSelectedColumns(qs, 'a.id', 'a.uid', 'a.title', 'a.theme', 'a.data',
-                                   'u_1.id', 'u_1.name', 'u_1.tags', 'u_1.age', '10', 'u_1.master_id')
+                                   'u_1.id', 'u_1.name', 'u_1.tags', 'u_1.age', 'u_1.master_id')
 
         # === Test: join, projection
         mq = a.mongoquery().query(join={'user': dict(project=['name'])})
@@ -1265,7 +1265,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                                            )})
         qs = mq.end()
         self.assertSelectedColumns(qs,
-                                   'e.id', 'e.description',  # PK, project
+                                   'e.id', 'e.description', '10',  # PK, project
                                    'u_1.id', 'u_1.age', 'u_1.master_id',  # +PK ; -tags
                                    )
 
@@ -1301,7 +1301,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                               'FROM a LEFT OUTER JOIN u')
         self.assertSelectedColumns(qs,
                                    'a.id', 'a.title',  # PK, project, 'data' excluded
-                                   'u_1.id', 'u_1.name', 'u_1.age', 'u_1.master_id',  # `tags` excluded
+                                   'u_1.id', 'u_1.name', 'u_1.age', '10', 'u_1.master_id',  # `tags` excluded
                                    'a.uid',  # TODO: FIXME: this column was included by SqlAlchemy? It's not supposed to be here
                                    )
 
@@ -1316,11 +1316,10 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         qs = self.assertQuery(mq.end(),
                               'FROM (SELECT a.',
-                              'SELECT u_1.age + 10 AS anon_1',
                               'FROM a',
-                              'LIMIT 100) AS anon_2',
-                              'anon_2 LEFT OUTER JOIN u AS u_1',
-                              'ON u_1.id = anon_2.a_uid AND u_1.age > 1')
+                              'LIMIT 100) AS anon_1',
+                              'anon_1 LEFT OUTER JOIN u AS u_1',
+                              'ON u_1.id = anon_1.a_uid AND u_1.age > 1')
 
         # ###
         # ### Test related settings
@@ -2386,7 +2385,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                              'ORDER BY gw_1.id' if SA_UNTIL('1.3.15') else '',
                              )
             self.assertSelectedColumns(ql[1],
-                                      'gw_1.id', 'u.id', 'u.name', 'u.age', '10', 'u.master_id',
+                                      'gw_1.id', 'u.id', 'u.name', 'u.age', 'u.master_id',
                                        # TODO: FIX: `u.tags` shoud NOT be included; but somehow, it does not
                                        #  currently work with aliased models. See mongosql.handlers.project.MongoProject._compile_relationship_options
                                        'u.tags' # not included
