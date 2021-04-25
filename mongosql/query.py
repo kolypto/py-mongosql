@@ -138,6 +138,7 @@ from copy import copy
 
 from sqlalchemy import inspect, exc as sa_exc
 from sqlalchemy.orm import Query, Load, defaultload
+from sqlalchemy.orm.util import AliasedClass
 
 from mongosql import RuntimeQueryError, BaseMongoSqlException
 from .bag import ModelPropertyBags
@@ -290,6 +291,7 @@ class MongoQuery:
         if join_path:
             self._join_path = join_path
             self._as_relation = defaultload(*self._join_path)
+            # self._as_relation = Load(self._join_path[0].class_).defaultload(*self._join_path)
         else:
             # Set default
             # This behavior is used by the __copy__() method to reset the attribute
@@ -307,7 +309,7 @@ class MongoQuery:
         """
         return self.as_relation(mongoquery._join_path + (relationship,))
 
-    def aliased(self, model: DeclarativeMeta) -> 'MongoQuery':
+    def aliased(self, model: AliasedClass) -> 'MongoQuery':
         """ Make a query to an aliased model instead.
 
         This is used by MongoJoin handler to issue subqueries.
@@ -317,6 +319,8 @@ class MongoQuery:
 
         :param model: Aliased model
         """
+        assert isinstance(model, AliasedClass)
+
         # Aliased bags
         self.bags = self.bags.aliased(model)
         self.model = model
@@ -759,7 +763,7 @@ class MongoQuery:
             When the time comes to build an actual SqlAlchemy query, we're going to use the query that the user has
             provided with from_query(). If none was provided, we'll use the default one.
         """
-        return self._query or Query([self.model])
+        return self._query if self._query is not None else Query([self.model])
 
     def _init_mongoquery_for_related_model(self, relationship_name: str) -> 'MongoQuery':
         """ Create a MongoQuery object for a model, related through a relationship with the given name.

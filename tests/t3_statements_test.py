@@ -7,16 +7,13 @@ from collections import OrderedDict
 from sqlalchemy import inspect
 from sqlalchemy.orm import aliased
 
-from distutils.version import LooseVersion
-
-from mongosql import SA_12, SA_13
 from mongosql import handlers, MongoQuery, Reusable, MongoQuerySettingsDict
 from mongosql import InvalidQueryError, DisabledError, InvalidColumnError, InvalidRelationError
 
 
 from . import models
 from .util import q2sql, QueryLogger, TestQueryStringsMixin
-from .saversion import SA_SINCE, SA_UNTIL
+from .saversion import SA_SINCE, SA_UNTIL, SA_12, SA_13, SA_14
 
 
 # SqlAlchemy version (see t_selectinquery_test.py)
@@ -289,8 +286,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         filter = lambda criteria: m.mongoquery().query(filter=criteria).end()
 
-        def test_sql_filter(query, expected):
-            qs = q2sql(query)
+        def test_sql_filter(query, expected, *, literal: bool = False):
+            qs = q2sql(query, literal=literal)
             q_where = qs.partition('\nWHERE ')[2]
             if isinstance(expected, tuple):
                 for _ in expected:
@@ -298,10 +295,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             else:  # string
                 self.assertEqual(q_where, expected)
 
-        def test_filter(criteria, expected):
+        def test_filter(criteria, expected, *, literal: bool = False):
             test_sql_filter(
                 filter(criteria),
-                expected
+                expected,
+                literal=literal,
             )
 
         # Empty
@@ -332,13 +330,13 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         # $in
         self.assertRaises(InvalidQueryError, filter, {'tags': {'$in': 1}})
-        test_filter({'name': {'$in': ['a', 'b', 'c']}}, 'u.name IN (a, b, c)')
-        test_filter({'tags': {'$in': ['a', 'b', 'c']}}, 'u.tags && CAST(ARRAY[a, b, c] AS VARCHAR[])')
+        test_filter({'name': {'$in': ['a', 'b', 'c']}}, "u.name IN ('a', 'b', 'c')", literal=True)
+        test_filter({'tags': {'$in': ['a', 'b', 'c']}}, "u.tags && CAST(ARRAY['a', 'b', 'c'] AS VARCHAR[])", literal=True)
 
         # $nin
         self.assertRaises(InvalidQueryError, filter, {'tags': {'$nin': 1}})
-        test_filter({'name': {'$nin': ['a', 'b', 'c']}}, 'u.name NOT IN (a, b, c)')
-        test_filter({'tags': {'$nin': ['a', 'b', 'c']}}, 'NOT u.tags && CAST(ARRAY[a, b, c] AS VARCHAR[])')
+        test_filter({'name': {'$nin': ['a', 'b', 'c']}}, "u.name NOT IN ('a', 'b', 'c')", literal=True)
+        test_filter({'tags': {'$nin': ['a', 'b', 'c']}}, "NOT u.tags && CAST(ARRAY['a', 'b', 'c'] AS VARCHAR[])", literal=True)
 
         # $exists
         test_filter({'name': {'$exists': 0}}, 'u.name IS NULL')
@@ -347,7 +345,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
         # $all
         self.assertRaises(InvalidQueryError, filter, {'name': {'$all': ['a', 'b', 'c']}})
         self.assertRaises(InvalidQueryError, filter, {'tags': {'$all': 1}})
-        test_filter({'tags': {'$all': ['a', 'b', 'c']}}, "u.tags @> CAST(ARRAY[a, b, c] AS VARCHAR[])")
+        test_filter({'tags': {'$all': ['a', 'b', 'c']}}, "u.tags @> CAST(ARRAY['a', 'b', 'c'] AS VARCHAR[])", literal=True)
 
         # $size
         self.assertRaises(InvalidQueryError, filter, {'name': {'$size': 0}})
@@ -480,9 +478,9 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         aggregate_mq = lambda agg_spec: copy(mq).query(project=('id',),aggregate=agg_spec)
 
-        def test_aggregate(agg_spec, expected_starts):
+        def test_aggregate(agg_spec, expected_starts, *, literal: bool = False):
             mq = aggregate_mq(agg_spec)
-            qs = q2sql(mq.end())
+            qs = q2sql(mq.end(), literal=literal)
             self.assertTrue(qs.startswith(expected_starts), '{!r} should start with {!r}'.format(qs, expected_starts))
 
         def test_aggregate_qs(agg_spec, *expected_query):
@@ -545,7 +543,11 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
 
         aggregate_mq = lambda agg_spec: copy(mq).query(project=('id',),aggregate=agg_spec)
 
-        test_aggregate({'max_rating': {'$max': 'data.rating'}}, "SELECT max(CAST(a.data #>> ['rating'] AS FLOAT)) AS max_rating")
+        test_aggregate(
+            {'max_rating': {'$max': 'data.rating'}},
+            "SELECT max(CAST(a.data #>> '{rating}' AS FLOAT)) AS max_rating",
+            literal=True
+        )
 
         # aggregate + filter
         # TODO: unit-test
@@ -2228,7 +2230,7 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                           },
                           })
 
-    @unittest.skipIf(SA_12, 'AssociationProxy is only supported for SA 1.3.x')
+    @unittest.skipIf(SA_12, 'AssociationProxy is only supported for SA 1.3.x and newer')
     def test_association_proxy(self):
         """ Test how MongoSQL deals with association proxy """
         g = models.GirlWatcher
@@ -2250,13 +2252,15 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
                          # Join condition
                          'WHERE gw.id = gwf.gw_id AND gwf.best = false AND gwf.user_id = u.id',
                          # Filter: at least one
-                         'AND u.name = a)')
+                         "AND u.name = 'a')",
+                         literal=True)
 
         # === Test: Filter: $in
         mq = g.mongoquery().query(filter={'good_names': {'$in': ['a', 'b']}})
         self.assertQuery(mq.end(),
                          # Filter: IN
-                         'AND u.name IN (a, b))')
+                         "AND u.name IN ('a', 'b'))",
+                         literal=True)
 
         # === Test: Project
         with QueryLogger(engine) as ql:
@@ -2304,8 +2308,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Query 2: loaded relationship
             self.assertSelectedColumns(ql[1],
                                        'gw_1.id', 'u.id', 'u.name',
-                                       # It has also loaded the extra field requested by `join`
-                                       'u.age'
+                                       # it also loads the extra field requested by `join`
+                                       'u.age',
                                        )
 
         # === Test: project + join-filter
@@ -2325,7 +2329,8 @@ class QueryStatementsTest(unittest.TestCase, TestQueryStringsMixin):
             # Query 2: loaded relationship
             self.assertQuery(ql[1],
                              # The condition is there
-                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18'
+                             'WHERE gw_1.id IN (1, 2) AND u.age >= 18',
+                             literal=True,
                              )
 
         # === Test: in join(): filter + project

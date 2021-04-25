@@ -699,11 +699,11 @@ class HandlersTest(unittest.TestCase):
 
         e = f.expressions[5]
         self.assertEqual(e.operator_str, '$in')
-        self.assertEqual(stmt2sql(e.compile_expression()), 'm.f IN (1, 2, 3)')
+        self.assertEqual(stmt2sql(e.compile_expression(), literal=True), 'm.f IN (1, 2, 3)')
 
         e = f.expressions[6]
         self.assertEqual(e.operator_str, '$nin')
-        self.assertEqual(stmt2sql(e.compile_expression()), 'm.g NOT IN (1, 2, 3)')
+        self.assertEqual(stmt2sql(e.compile_expression(), literal=True), 'm.g NOT IN (1, 2, 3)')
 
         e = f.expressions[7]
         self.assertEqual(e.operator_str, '$exists')
@@ -788,7 +788,7 @@ class HandlersTest(unittest.TestCase):
 
         e = f.expressions[1]
         self.assertEqual(e.operator_str, '$in')
-        self.assertEqual(stmt2sql(e.compile_expression()), "CAST((m.j_b #>> ['rating']) AS TEXT) IN (1, 2, 3)")
+        self.assertEqual(stmt2sql(e.compile_expression(), literal=True), "CAST((m.j_b #>> '{rating}') AS INTEGER) IN (1, 2, 3)")
 
         # === Test: operators on JSON columns, 2nd level
         f = ManyFieldsModel_filter().input(OrderedDict([
@@ -892,16 +892,16 @@ class HandlersTest(unittest.TestCase):
         self.assertEqual(stmt2sql(e.compile_expression()), "u.id = 1")
 
         e = f.expressions[3]
-        self.assertEqual(stmt2sql(e.compile_expression()), "u.name NOT IN (a, b)")
+        self.assertEqual(stmt2sql(e.compile_expression(), literal=True), "u.name NOT IN ('a', 'b')")
 
-        s = stmt2sql(f.compile_statement())
+        s = stmt2sql(f.compile_statement(), literal=True)
         # We rely on OrderedDict, so the order of arguments should be perfect
         self.assertIn("(EXISTS (SELECT 1 \n"
                         "FROM a, c \n"
                         "WHERE a.id = c.aid AND c.id = 1 AND c.uid > 18))", s)
         self.assertIn("(EXISTS (SELECT 1 \n"
                         "FROM u, a \n"
-                        "WHERE u.id = a.uid AND u.id = 1 AND u.name NOT IN (a, b)))", s)
+                        "WHERE u.id = a.uid AND u.id = 1 AND u.name NOT IN ('a', 'b')))", s)
 
         # === Test: Hybrid Properties
         f = Article_filter().input(dict(hybrid=1))

@@ -677,7 +677,7 @@ class MongoProject(MongoQueryHandlerBase):
 
     def alter_query(self, query, as_relation):
         assert as_relation is not None
-        return query.options(self.compile_options(as_relation))
+        return query.options(*self.compile_options(as_relation))
 
     # Extra features
 

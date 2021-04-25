@@ -12,7 +12,7 @@ from mongosql import selectinquery
 # We need to differentiate, because:
 # in 1.2.x, selectinload() builds a JOIN query from the left entity to the right entity
 # in 1.3.x, selectinload() queries just the right entity, and filters by the foreign key field directly
-from mongosql import SA_12, SA_13
+from .saversion import SA_12, SA_13, SA_14, SA_SINCE, SA_UNTIL
 
 
 class SelectInQueryLoadTest(unittest.TestCase, TestQueryStringsMixin):

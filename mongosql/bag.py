@@ -19,7 +19,7 @@ from sqlalchemy.orm.util import AliasedClass
 from sqlalchemy.sql.elements import BinaryExpression
 from sqlalchemy.sql.type_api import TypeEngine
 
-from mongosql import SA_12, SA_13
+from mongosql import sa_version as sav
 try: from sqlalchemy.ext.associationproxy import ColumnAssociationProxyInstance  # SA 1.3.x
 except ImportError: ColumnAssociationProxyInstance = None
 
@@ -190,6 +190,8 @@ class ModelPropertyBags:
     # endregion
 
     def aliased(self, aliased_class: AliasedClass):
+        assert isinstance(aliased_class, AliasedClass)
+
         # Return a wrapper that will lazily apply aliased() on every property when accessed
         # This makes sense because we don't know which of the bags are going to be actually used,
         # and aliased() has a bit of overhead: it involves copying the whole class.
@@ -766,7 +768,7 @@ def _get_model_column_properties(model, ins):
 def _get_model_association_proxies(model, ins):
     """ Get a dict of model association_proxy attributes """
     # Ignore AssociationProxy attrs for SA 1.2.x
-    if SA_12:
+    if sav.SA_12:
         warnings.warn('MongoSQL only supports AssociationProxy columns with SqlAlchemy 1.3.x')
         return {}
 

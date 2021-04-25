@@ -1,6 +1,6 @@
 from distutils.version import LooseVersion
 
-from mongosql import SA_VERSION, SA_12, SA_13
+from mongosql.sa_version import SA_VERSION, SA_12, SA_13, SA_14
 
 
 def SA_VERSION_IN(min_version, max_version):

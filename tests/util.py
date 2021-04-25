@@ -13,24 +13,29 @@ def _insert_query_params(statement_str, parameters, dialect):
     return statement_str % parameters
 
 
-def stmt2sql(stmt):
+def stmt2sql(stmt, *, literal: bool = False):
     """ Convert an SqlAlchemy statement into a string """
     # See: http://stackoverflow.com/a/4617623/134904
     # This intentionally does not escape values!
     dialect = pg.dialect()
-    query = stmt.compile(dialect=dialect)
+    query = stmt.compile(
+        dialect=dialect,
+        compile_kwargs={
+            'literal_binds': literal,
+        }
+    )
     return _insert_query_params(query.string, query.params, pg.dialect())
 
 
-def q2sql(q):
+def q2sql(q, *, literal: bool = False):
     """ Convert an SqlAlchemy query to string """
-    return stmt2sql(q.statement)
+    return stmt2sql(q.statement, literal=literal)
 
 
 class TestQueryStringsMixin:
     """ unittest mixin that will help testing query strings """
 
-    def assertQuery(self, qs, *expected_lines):
+    def assertQuery(self, qs, *expected_lines, literal: bool = False):
         """ Compare a query line by line
 
             Problem: because of dict disorder, you can't just compare a query string: columns and expressions may be present,
@@ -45,7 +50,7 @@ class TestQueryStringsMixin:
         try:
             # Query?
             if isinstance(qs, Query):
-                qs = q2sql(qs)
+                qs = q2sql(qs, literal=literal)
 
             # tuple
             expected_lines = '\n'.join(expected_lines)
@@ -83,7 +88,7 @@ class TestQueryStringsMixin:
         """ Test that the query has certain columns in the SELECT clause
 
         :param qs: Query | query string
-        :param expected: list of expected column names
+        :param expected: list of expected column names. Use `None` for a skip
         :returns: query string
         """
         # Query?
@@ -93,7 +98,7 @@ class TestQueryStringsMixin:
         try:
             self.assertEqual(
                 self._qs_selected_columns(qs),
-                set(expected)
+                set(expected) - {None},  # exclude the skip
             )
             return qs
         except:

@@ -3,6 +3,8 @@ import itertools
 from sqlalchemy import func
 from sqlalchemy.orm import Query, Session
 
+from mongosql import sa_version as sav
+
 
 class CountingQuery:
     """ `Query` object wrapper that can count the rows while returning results
@@ -48,11 +50,14 @@ class CountingQuery:
         self._count = None
 
         # Whether the query is going to return single entities
-        self._single_entity = (  # copied from sqlalchemy.orm.loading.instances
-            not getattr(query, '_only_return_tuples', False)  # accessing protected properties
-            and len(query._entities) == 1
-            and query._entities[0].supports_single_entity
-        )
+        if sav.SA_12 or sav.SA_13:
+            self._single_entity = (  # copied from sqlalchemy.orm.loading.instances
+                not getattr(query, '_only_return_tuples', False)  # accessing protected properties
+                and len(query._entities) == 1
+                and query._entities[0].supports_single_entity
+            )
+        else:
+            self._single_entity = query.is_single_entity
 
         # The method that will fix result rows
         self._row_fixer = self._fix_result_tuple__single_entity if self._single_entity else self._fix_result_tuple__tuple
@@ -158,7 +163,10 @@ class CountingQuery:
             The issue is that with an OFFSET large enough, our window function won't have any rows to return its
             result with. Therefore, we'd be forced to make an additional query.
         """
-        return self._query._offset is not None  # accessing protected property
+        if sav.SA_12 or sav.SA_13:
+            return self._query._offset is not None  # accessing protected property
+        else:
+            return self._query._offset_clause is not None  # accessing protected property
 
     # endregion
 

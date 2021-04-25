@@ -3,6 +3,8 @@ from sqlalchemy.orm.strategies import SelectInLoader
 from sqlalchemy.orm import properties
 from sqlalchemy import log, util
 
+from mongosql import sa_version as sav
+
 
 @log.class_logger
 @properties.RelationshipProperty.strategy_for(lazy="selectin_query")
@@ -23,14 +25,28 @@ class SelectInQueryLoader(SelectInLoader, util.MemoizedSlots):
 
     __slots__ = ('_alter_query', '_cache_key', '_bakery')
 
-    def create_row_processor(self, context, path, loadopt, mapper, result, adapter, populators):
+    def create_row_processor(self, *args):
+        if sav.SA_12 or sav.SA_13:
+            # context, path, loadopt, mapper, result, adapter, populators
+            loadopt = args[2]
+        elif sav.SA_14:
+            # context, query_entity, path, loadopt, mapper, result, adapter, populators,
+            loadopt = args[3]
+        else:
+            raise NotImplementedError
+
         # Pluck the custom callable that alters the query out of the `loadopt`
         self._alter_query = loadopt.local_opts['alter_query']
         self._cache_key = loadopt.local_opts['cache_key']
 
         # Call super
         return super(SelectInQueryLoader, self) \
-            .create_row_processor(context, path, loadopt, mapper, result, adapter, populators)
+            .create_row_processor(*args)
+
+    # region SA 1.2, SA 1.3
+
+    # Solution only works for 1.2 and 1.3 because it uses a bakery
+    # 1.4 does not use a bakery anymore
 
     # The easiest way would be to just copy `SelectInLoader` and make adjustments to the code,
     # but that would require us supporting it, porting every change from SqlAlchemy.
@@ -61,6 +77,30 @@ class SelectInQueryLoader(SelectInLoader, util.MemoizedSlots):
             lambda: (self._alter_query, self._cache_key),
             size=300  # we can expect a lot of different queries
         )
+
+    # endregion
+
+    # region SA 1.4
+
+    # In 1.4 it's easier to inject an additional condition into the query:
+    # when the query is built, one of the following methods is called:
+    # * self._load_via_child(.., q, ...)
+    # * self._load_via_parent(.., q, ...)
+    # and the `q` query is the query that we can alter.
+    # Note that these function
+
+    def _load_via_child(self, our_states, none_states, query_info, q, context):
+        if sav.SA_14:
+            q = q.add_criteria(self._alter_query, enable_tracking=False, track_closure_variables=False, track_bound_values=False)
+        super()._load_via_child(our_states, none_states, query_info, q, context)
+
+    def _load_via_parent(self, our_states, query_info, q, context):
+        if sav.SA_14:
+            q = q.add_criteria(self._alter_query, enable_tracking=False, track_closure_variables=False, track_bound_values=False)
+        return super()._load_via_parent(our_states, query_info, q, context)
+
+    # endregion
+
 
 
 # region Bakery Wrapper that will apply alter_query() in the end
