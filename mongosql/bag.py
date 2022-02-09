@@ -4,7 +4,7 @@ from copy import copy
 
 from sqlalchemy import inspect, TypeDecorator
 from sqlalchemy import Column
-from sqlalchemy.dialects import postgresql as pg
+from sqlalchemy.sql import sqltypes as st
 from sqlalchemy.ext.associationproxy import AssociationProxy
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -809,12 +809,12 @@ def _get_column_type(col: MapperProperty) -> TypeEngine:
 
 def _is_column_array(col: MapperProperty) -> bool:
     """ Is the column a PostgreSql ARRAY column? """
-    return isinstance(_get_column_type(col), pg.ARRAY)
+    return isinstance(_get_column_type(col), st.ARRAY)
 
 
 def _is_column_json(col: MapperProperty) -> bool:
     """ Is the column a PostgreSql JSON column? """
-    return isinstance(_get_column_type(col), (pg.JSON, pg.JSONB))
+    return isinstance(_get_column_type(col), st.JSON)
 
 
 def _is_relationship_array(rel: RelationshipProperty) -> bool:
